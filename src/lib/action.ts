@@ -1,0 +1,640 @@
+/**
+ * action.ts - Action 执行器
+ * 统一执行所有 action，所有 action 都必须从这里走
+ * 支持动作类型：state / data / request / page / modal / save / delete / export / import / increment
+ * 支持 action 数组串行执行和 then 链式执行
+ */
+import type { ActionConfig } from './schema'
+import type { PageStore } from './store'
+import { getByPath, isScopedStorePath } from './path'
+import { request } from './request'
+import { createExportTask, readCurrentExportQuery } from './export-task'
+
+type ActionContext = Record<string, any>
+type ActionInvocation = string | ActionConfig
+
+export type ActionRunResult = {
+  success: boolean
+  data?: any
+  message?: string
+}
+
+export type ImportActionPayload = {
+  kind: 'import'
+  path: string
+  importKey: string
+  tableId?: string
+  uploadRuleId?: number
+  then?: string | string[]
+}
+
+/**
+ * 按 action 名称执行
+ */
+export async function runAction(
+  store: PageStore,
+  actionName: string,
+  context?: ActionContext
+): Promise<void> {
+  await runActionWithResult(store, actionName, context)
+}
+
+export async function runActionWithResult(
+  store: PageStore,
+  actionName: string,
+  context?: ActionContext
+): Promise<ActionRunResult> {
+  const state = store.getState()
+  const currentConfig = state.action[actionName]
+  const config =
+    currentConfig && !currentConfig.key
+      ? { ...currentConfig, key: actionName }
+      : currentConfig
+  if (!config) {
+    console.warn('[runAction] action 不存在:', actionName)
+    return { success: false, message: `action 不存在: ${actionName}` }
+  }
+  return await runActionConfigWithResult(store, config, context)
+}
+
+/**
+ * 直接执行 action 配置
+ */
+export async function runActionConfig(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+): Promise<void> {
+  await runActionConfigWithResult(store, config, context)
+}
+
+export async function runActionConfigWithResult(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+): Promise<ActionRunResult> {
+  const { type } = config
+
+  switch (type) {
+    case 'state':
+      handleStateAction(store, config, context)
+      return { success: true }
+    case 'data':
+      handleDataAction(store, config, context)
+      return { success: true }
+    case 'request':
+      return await handleRequestAction(store, config, context)
+    case 'page':
+      handlePageAction(store, config, context)
+      return { success: true }
+    case 'modal':
+      handleModalAction(store, config, context)
+      return { success: true }
+    case 'save':
+      return await handleSaveAction(store, config, context)
+    case 'delete':
+      return await handleDeleteAction(store, config, context)
+    case 'export':
+      return await handleExportAction(store, config, context)
+    case 'import':
+      return await handleImportAction(store, config, context)
+    case 'increment':
+      handleIncrementAction(store, config)
+      return { success: true }
+    default:
+      console.warn('[runActionConfig] 未知 action 类型:', type)
+      return { success: false, message: `未知 action 类型: ${String(type || '')}` }
+  }
+}
+
+/**
+ * 执行 action 名称或名称数组
+ * 用于节点的 action 映射（click: "do-something" 或 click: ["a", "b"]）
+ */
+export async function runActions(
+  store: PageStore,
+  nameOrNames: ActionInvocation | ActionInvocation[],
+  context?: ActionContext
+): Promise<void> {
+  await runActionsWithResult(store, nameOrNames, context)
+}
+
+export async function runActionsWithResult(
+  store: PageStore,
+  nameOrNames: ActionInvocation | ActionInvocation[],
+  context?: ActionContext
+): Promise<ActionRunResult> {
+  const names = Array.isArray(nameOrNames) ? nameOrNames : [nameOrNames]
+  let lastResult: ActionRunResult = { success: true }
+  for (const action of names) {
+    let result: ActionRunResult
+    if (typeof action === 'string') {
+      result = await runActionWithResult(store, action, context)
+    } else {
+      result = await runActionConfigWithResult(store, action, context)
+    }
+
+    if (!result.success) {
+      return result
+    }
+
+    lastResult = result
+  }
+
+  return lastResult
+}
+
+// ========== 各类型处理器 ==========
+
+/**
+ * state: 修改 state
+ */
+function handleStateAction(store: PageStore, config: ActionConfig, context?: ActionContext) {
+  if (config.key != null && config.value !== undefined) {
+    store
+      .getState()
+      .setValueByPath(
+        normalizeActionKeyPath('state', config.key),
+        resolveContextValue(config.value, context)
+      )
+  }
+}
+
+/**
+ * data: 修改 data
+ */
+function handleDataAction(store: PageStore, config: ActionConfig, context?: ActionContext) {
+  if (config.key != null && config.value !== undefined) {
+    store
+      .getState()
+      .setValueByPath(
+        normalizeActionKeyPath('data', config.key),
+        resolveContextValue(config.value, context)
+      )
+  }
+}
+
+/**
+ * request: 调用接口并回写数据
+ */
+async function handleRequestAction(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+): Promise<ActionRunResult> {
+  if (!config.api) {
+    console.warn('[handleRequestAction] 缺少 api')
+    return { success: false, message: '缺少 api' }
+  }
+
+  // 读取参数
+  let params: any = undefined
+  if (config.params !== undefined) {
+    if (typeof config.params === 'string') {
+      if (config.params.startsWith('$')) {
+        params = resolveContextValue(config.params, context)
+      } else {
+        params = store.getState().getValueByPath(config.params)
+      }
+    } else {
+      params = resolveTemplateValue(config.params, context)
+    }
+  }
+
+  // 发起请求
+  const result = await request(config.api, config.method || 'get', params)
+
+  if (result.code !== 0) {
+    applyRequestFieldErrors(store, result.data?.fieldErrors)
+    return {
+      success: false,
+      data: result.data,
+      message: result.message || '请求失败',
+    }
+  }
+
+  // 写回目标
+  if (config.target) {
+    store.getState().setValueByPath(config.target, result.data)
+  }
+
+  // 执行 then 链
+  if (config.then) {
+    const thenResult = await runActionsWithResult(store, config.then, context)
+    return thenResult.success
+      ? {
+          ...thenResult,
+          data: thenResult.data ?? result.data,
+          message: thenResult.message || result.message,
+        }
+      : thenResult
+  }
+
+  return {
+    success: true,
+    data: result.data,
+    message: result.message,
+  }
+}
+
+async function handleSaveAction(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+): Promise<ActionRunResult> {
+  const path = resolveActionPagePath(store, config)
+  if (!path) {
+    console.warn('[handleSaveAction] 缺少页面路径')
+    return { success: false, message: '缺少页面路径' }
+  }
+
+  const payload = resolveActionPayload(store, config.params ?? 'form', context)
+  return await submitCrudAction(store, config, path, payload, context)
+}
+
+async function handleDeleteAction(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+): Promise<ActionRunResult> {
+  const path = resolveActionPagePath(store, config)
+  if (!path) {
+    console.warn('[handleDeleteAction] 缺少页面路径')
+    return { success: false, message: '缺少页面路径' }
+  }
+
+  const payload =
+    config.params !== undefined
+      ? resolveActionPayload(store, config.params, context)
+      : undefined
+
+  return await submitCrudAction(store, config, path, payload, context)
+}
+
+async function handleExportAction(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+): Promise<ActionRunResult> {
+  const pagePath = resolveExportPagePath(store, config, context)
+  if (!pagePath) {
+    return { success: false, message: '缺少页面路径' }
+  }
+
+  const exportKey = resolveExportKey(config, context)
+  if (!exportKey) {
+    return { success: false, message: '缺少导出项标识' }
+  }
+
+  try {
+    const task = await createExportTask({
+      path: pagePath,
+      tableId: resolveExportTableID(config, context),
+      exportKey,
+      query: readCurrentExportQuery(),
+    })
+
+    if (config.then) {
+      const thenResult = await runActionsWithResult(store, config.then, context)
+      return thenResult.success
+        ? {
+            ...thenResult,
+            data: thenResult.data ?? task,
+            message: thenResult.message,
+          }
+        : thenResult
+    }
+
+    return { success: true, data: task }
+  } catch (error: any) {
+    return {
+      success: false,
+      message: error?.message || '创建导出任务失败',
+    }
+  }
+}
+
+async function handleImportAction(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+): Promise<ActionRunResult> {
+  const pagePath = resolveExportPagePath(store, config, context)
+  if (!pagePath) {
+    return { success: false, message: '缺少页面路径' }
+  }
+
+  const importKey = resolveImportKey(config, context)
+  if (!importKey) {
+    return { success: false, message: '缺少导入项标识' }
+  }
+
+  return {
+    success: true,
+    data: {
+      kind: 'import',
+      path: pagePath,
+      importKey,
+      tableId: resolveExportTableID(config, context),
+      uploadRuleId: Number(config.uploadRuleId || 0),
+      then: config.then,
+    },
+  }
+}
+
+/**
+ * page: 切换子页面（本质是修改 state/data 路径）
+ */
+function handlePageAction(store: PageStore, config: ActionConfig, context?: ActionContext) {
+  if (config.target && config.value !== undefined) {
+    store.getState().setValueByPath(config.target, resolveContextValue(config.value, context))
+  }
+}
+
+/**
+ * modal: 控制弹窗状态（本质也是修改 state）
+ */
+function handleModalAction(store: PageStore, config: ActionConfig, context?: ActionContext) {
+  if (config.key != null && config.value !== undefined) {
+    store
+      .getState()
+      .setValueByPath(
+        normalizeActionKeyPath('modal', config.key),
+        resolveContextValue(config.value, context)
+      )
+  }
+}
+
+function handleIncrementAction(store: PageStore, config: ActionConfig) {
+  const key = String(config.key || '').trim()
+  if (!key) {
+    return
+  }
+
+  const currentValue = Number(store.getState().getValueByPath(key) || 0)
+  store
+    .getState()
+    .setValueByPath(key, Number.isFinite(currentValue) ? currentValue + 1 : 1)
+}
+
+async function submitCrudAction(
+  store: PageStore,
+  config: ActionConfig,
+  path: string,
+  payload: any,
+  context?: ActionContext
+): Promise<ActionRunResult> {
+  const requestConfig = resolveCrudRequestConfig(store, config, context)
+  const result = await request(`/front/route/action?path=${path}`, 'post', {
+    action: requestConfig,
+    payload,
+  })
+
+  if (result.code !== 0) {
+    applyRequestFieldErrors(store, result.data?.fieldErrors)
+    return {
+      success: false,
+      data: result.data,
+      message: result.message || '操作失败',
+    }
+  }
+
+  if (config.target) {
+    store.getState().setValueByPath(config.target, result.data)
+  }
+
+  if (config.then) {
+    const thenResult = await runActionsWithResult(store, config.then, context)
+    return thenResult.success
+      ? {
+          ...thenResult,
+          data: thenResult.data ?? result.data,
+          message: thenResult.message || result.message,
+        }
+      : thenResult
+  }
+
+  return {
+    success: true,
+    data: result.data,
+    message: result.message,
+  }
+}
+
+function resolveCrudRequestConfig(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+) {
+  if (String(config.type || '').trim().toLowerCase() !== 'delete') {
+    return config
+  }
+
+  const actionKey = normalizeOperationKey(
+    String(config.key || context?.itemKey || context?.item?.key || context?.item?.id || '').trim()
+  )
+  if (!actionKey) {
+    return config
+  }
+
+  if (actionKey.includes('/')) {
+    return {
+      ...config,
+      key: actionKey,
+    }
+  }
+
+  const pagePath = resolveCurrentPagePath(store)
+  return {
+    ...config,
+    key: pagePath ? `${pagePath}/${actionKey}` : actionKey,
+  }
+}
+
+function normalizeOperationKey(key: string) {
+  return String(key || '').trim().replace(/^\/+|\/+$/g, '').replace(/\./g, '-')
+}
+
+function resolveCurrentPagePath(store: PageStore) {
+  const storePath = normalizeActionPagePath(store.getState().pagePath)
+  if (storePath) {
+    return storePath
+  }
+
+  return normalizeActionPagePath(String(store.getState().schema.page?.route ?? ''))
+}
+
+// ========== 辅助函数 ==========
+
+function resolveContextValue(value: any, context?: ActionContext) {
+  if (typeof value === 'string' && value.startsWith('$')) {
+    const path = value.slice(1)
+    const [root, ...rest] = path.split('.')
+    const rootValue = context?.[root]
+
+    if (rest.length === 0) {
+      return rootValue
+    }
+
+    return getByPath(rootValue, rest.join('.'))
+  }
+
+  return value
+}
+
+function resolveTemplateValue(value: any, context?: ActionContext): any {
+  if (Array.isArray(value)) {
+    return value.map((item) => resolveTemplateValue(item, context))
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, resolveTemplateValue(item, context)])
+    )
+  }
+
+  return resolveContextValue(value, context)
+}
+
+function resolveActionPayload(
+  store: PageStore,
+  source: any,
+  context?: ActionContext
+) {
+  if (typeof source === 'string') {
+    if (source.startsWith('$')) {
+      return resolveContextValue(source, context)
+    }
+
+    return store.getState().getValueByPath(source)
+  }
+
+  return resolveTemplateValue(source, context)
+}
+
+function resolveExportPagePath(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+) {
+  const configPath = String(resolveContextValue(config.path, context) || '').trim()
+  if (configPath) {
+    return configPath
+  }
+
+  const pagePath = String(store.getState().pagePath || '').trim()
+  if (pagePath) {
+    return pagePath
+  }
+
+  return String(store.getState().schema.page?.route || '').trim()
+}
+
+function resolveExportKey(config: ActionConfig, context?: ActionContext) {
+  const configuredKey = String(config.exportKey || '').trim()
+  if (configuredKey) {
+    return configuredKey
+  }
+
+  const contextKey = String(context?.itemKey || '').trim()
+  if (contextKey) {
+    return contextKey
+  }
+
+  const item = context?.item as Record<string, any> | undefined
+  return String(item?.key || item?.id || '').trim()
+}
+
+function resolveImportKey(config: ActionConfig, context?: ActionContext) {
+  const configuredKey = String(config.importKey || '').trim()
+  if (configuredKey) {
+    return configuredKey
+  }
+
+  const contextKey = String(context?.itemKey || '').trim()
+  if (contextKey) {
+    return contextKey
+  }
+
+  const item = context?.item as Record<string, any> | undefined
+  return String(item?.key || item?.id || '').trim()
+}
+
+function resolveExportTableID(config: ActionConfig, context?: ActionContext) {
+  const configuredTableID = String(config.tableId || '').trim()
+  if (configuredTableID) {
+    return configuredTableID
+  }
+
+  const item = context?.item as Record<string, any> | undefined
+  if (item?.meta?.tableId) {
+    return String(item.meta.tableId).trim()
+  }
+
+  const group = context?.group as Record<string, any> | undefined
+  return String(group?.meta?.tableId || '').trim()
+}
+
+function normalizeActionKeyPath(
+  type: 'state' | 'data' | 'modal',
+  key: string
+) {
+  const normalizedKey = String(key || '').trim()
+  if (!normalizedKey) {
+    return ''
+  }
+
+  if (isScopedStorePath(normalizedKey)) {
+    return normalizedKey
+  }
+
+  return type === 'data' ? `data.${normalizedKey}` : `state.${normalizedKey}`
+}
+
+function resolveActionPagePath(store: PageStore, config: ActionConfig) {
+  const configPath = normalizeActionPagePath(config.path)
+  if (configPath) {
+    return configPath
+  }
+
+  const storePath = normalizeActionPagePath(store.getState().pagePath)
+  if (storePath) {
+    return storePath
+  }
+
+  return normalizeActionPagePath(String(store.getState().schema.page?.route ?? ''))
+}
+
+function normalizeActionPagePath(path: string | undefined) {
+  if (!path) {
+    return ''
+  }
+
+  return String(path).replace(/[?#].*$/, '').replace(/^\/+|\/+$/g, '')
+}
+
+function applyRequestFieldErrors(
+  store: PageStore,
+  fieldErrors: unknown
+) {
+  if (!fieldErrors || typeof fieldErrors !== 'object' || Array.isArray(fieldErrors)) {
+    return
+  }
+
+  const items = Object.values(store.getState().schema.nodes ?? {}).flat()
+  const pathToItemId = new Map<string, string>()
+
+  for (const item of items) {
+    if (item.id && item.value) {
+      pathToItemId.set(item.value, item.id)
+    }
+  }
+
+  for (const [path, message] of Object.entries(fieldErrors as Record<string, unknown>)) {
+    const itemId = pathToItemId.get(path)
+    if (!itemId || typeof message !== 'string' || !message.trim()) {
+      continue
+    }
+    store.getState().setError(itemId, message)
+  }
+}

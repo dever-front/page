@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="/images/favicon.svg"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="/config.js"></script>
+    <!-- Primary Meta Tags -->
+    <title>Dever Front</title>
+    <meta name="title" content="Dever Front" />
+    <meta
+      name="description"
+      content="基于 Dever 框架的 JSON 驱动前端界面运行时。"
+    />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="/" />
+    <meta property="og:title" content="Dever Front" />
+    <meta
+      property="og:description"
+      content="基于 Dever 框架的 JSON 驱动前端界面运行时。"
+    />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary" />
+    <meta property="twitter:url" content="/" />
+    <meta property="twitter:title" content="Dever Front" />
+    <meta
+      property="twitter:description"
+      content="基于 Dever 框架的 JSON 驱动前端界面运行时。"
+    />
+
+    <!-- font family -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Manrope:wght@200..800&display=swap"
+      rel="stylesheet"
+    />
+
+    <meta name="theme-color" content="#fff" />
+    <script>
+      ;(() => {
+        const appConfig = window.appConfig || {}
+        const site = appConfig.site || {}
+
+        if (site.name) document.title = site.name
+
+        const setMeta = (selector, value) => {
+          if (!value) return
+          const node = document.querySelector(selector)
+          if (node) node.setAttribute('content', value)
+        }
+
+        setMeta("meta[name='title']", site.shortName || site.name)
+        setMeta("meta[name='description']", site.description)
+        setMeta("meta[property='og:url']", site.url)
+        setMeta("meta[property='og:title']", site.shortName || site.name)
+        setMeta("meta[property='og:description']", site.description)
+        setMeta("meta[property='twitter:url']", site.url)
+        setMeta("meta[property='twitter:title']", site.shortName || site.name)
+        setMeta("meta[property='twitter:description']", site.description)
+
+        const setIcon = (type, href) => {
+          if (!href) return
+          const selector = `link[rel='icon'][type='${type}']`
+          const node = document.querySelector(selector)
+          if (node) node.setAttribute('href', href)
+        }
+
+        setIcon('image/svg+xml', site.favicon)
+      })()
+    </script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
