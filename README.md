@@ -46,13 +46,13 @@ front/
 
 ```bash
 cd front
-npm install
+pnpm install
 ```
 
 启动开发服务：
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 ## 运行时配置
@@ -78,7 +78,7 @@ public/config.js
 - `src/`
 - `public/`
 - `package.json`
-- 锁文件：`package-lock.json`
+- 锁文件：`pnpm-lock.yaml`
 - `vite.config.ts`
 - `tsconfig*.json`
 - `components.json`
@@ -92,7 +92,8 @@ public/config.js
 - `.vite/`
 - `.tanstack/tmp/`
 - `.env`
-- `pnpm-lock.yaml`
+- `package-lock.json`
+- `yarn.lock`
 - 日志文件
 - 本地编辑器缓存
 

@@ -3,8 +3,9 @@ node_modules/
 .pnp
 .pnp.*
 
-# npm is the canonical package manager for this app.
-pnpm-lock.yaml
+# pnpm is the canonical package manager for this app.
+package-lock.json
+yarn.lock
 
 # Build output
 dist/
