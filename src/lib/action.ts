@@ -1,7 +1,7 @@
 /**
  * action.ts - Action 执行器
  * 统一执行所有 action，所有 action 都必须从这里走
- * 支持动作类型：state / data / request / page / modal / save / delete / export / import / increment
+ * 支持动作类型：state / data / request / page / modal / save / delete / export / import / increment / array
  * 支持 action 数组串行执行和 then 链式执行
  */
 import type { ActionConfig } from './schema'
@@ -100,6 +100,9 @@ export async function runActionConfigWithResult(
       return await handleImportAction(store, config, context)
     case 'increment':
       handleIncrementAction(store, config)
+      return { success: true }
+    case 'array':
+      handleArrayAction(store, config, context)
       return { success: true }
     default:
       console.warn('[runActionConfig] 未知 action 类型:', type)
@@ -205,11 +208,11 @@ async function handleRequestAction(
   const result = await request(config.api, config.method || 'get', params)
 
   if (result.code !== 0) {
-    applyRequestFieldErrors(store, result.data?.fieldErrors)
+    const fieldMessages = applyRequestFieldErrors(store, result.data?.fieldErrors)
     return {
       success: false,
       data: result.data,
-      message: result.message || '请求失败',
+      message: resolveActionErrorMessage(result.message, fieldMessages, '请求失败'),
     }
   }
 
@@ -248,7 +251,12 @@ async function handleSaveAction(
     return { success: false, message: '缺少页面路径' }
   }
 
-  const payload = resolveActionPayload(store, config.params ?? 'form', context)
+  const payload = withRoutePrimaryKey(
+    resolveActionPayload(store, config.params ?? 'form', context),
+    store,
+    config,
+    path
+  )
   return await submitCrudAction(store, config, path, payload, context)
 }
 
@@ -377,6 +385,106 @@ function handleIncrementAction(store: PageStore, config: ActionConfig) {
     .setValueByPath(key, Number.isFinite(currentValue) ? currentValue + 1 : 1)
 }
 
+function handleArrayAction(store: PageStore, config: ActionConfig, context?: ActionContext) {
+  const key = String(config.key || '').trim()
+  if (!key) {
+    return
+  }
+
+  const rows = normalizeArrayActionRows(store.getState().getValueByPath(key))
+  const op = String(config.op || 'append').trim().toLowerCase()
+  const nextValue =
+    config.value !== undefined
+      ? resolveTemplateValue(config.value, context)
+      : config.params !== undefined
+        ? resolveActionPayload(store, config.params, context)
+        : undefined
+  const index = normalizeArrayActionIndex(resolveArrayActionIndex(store, config, context))
+
+  switch (op) {
+    case 'append':
+      rows.push(cloneActionValue(nextValue ?? {}))
+      break
+    case 'upsert':
+      if (index >= 0 && index < rows.length) {
+        rows[index] = cloneActionValue(nextValue ?? {})
+      } else {
+        rows.push(cloneActionValue(nextValue ?? {}))
+      }
+      break
+    case 'patch':
+      if (index >= 0 && index < rows.length) {
+        rows[index] = mergeArrayActionPatch(rows[index], nextValue)
+      }
+      break
+    case 'update':
+      if (index >= 0 && index < rows.length) {
+        rows[index] = cloneActionValue(nextValue ?? {})
+      }
+      break
+    case 'remove':
+    case 'delete':
+      if (index >= 0 && index < rows.length) {
+        rows.splice(index, 1)
+      }
+      break
+    default:
+      console.warn('[handleArrayAction] 未知数组操作:', op)
+      return
+  }
+
+  store.getState().setValueByPath(key, rows)
+}
+
+function normalizeArrayActionRows(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((row) => cloneActionValue(row))
+    : []
+}
+
+function resolveArrayActionIndex(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+) {
+  if (config.index === undefined) {
+    return context?.rowIndex
+  }
+  if (typeof config.index === 'string' && !config.index.startsWith('$')) {
+    return store.getState().getValueByPath(config.index)
+  }
+  return resolveContextValue(config.index, context)
+}
+
+function mergeArrayActionPatch(row: unknown, patch: unknown) {
+  const base = row && typeof row === 'object' && !Array.isArray(row)
+    ? cloneActionValue(row as Record<string, any>)
+    : {}
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+    return base
+  }
+
+  return {
+    ...base,
+    ...(patch as Record<string, any>),
+  }
+}
+
+function normalizeArrayActionIndex(value: unknown) {
+  if (value == null || value === '') {
+    return -1
+  }
+  const index = Number(value)
+  return Number.isInteger(index) ? index : -1
+}
+
+function cloneActionValue<T>(value: T): T {
+  if (value == null || typeof value !== 'object') {
+    return value
+  }
+  return structuredClone(value)
+}
+
 async function submitCrudAction(
   store: PageStore,
   config: ActionConfig,
@@ -391,11 +499,11 @@ async function submitCrudAction(
   })
 
   if (result.code !== 0) {
-    applyRequestFieldErrors(store, result.data?.fieldErrors)
+    const fieldMessages = applyRequestFieldErrors(store, result.data?.fieldErrors)
     return {
       success: false,
       data: result.data,
-      message: result.message || '操作失败',
+      message: resolveActionErrorMessage(result.message, fieldMessages, '操作失败'),
     }
   }
 
@@ -512,6 +620,78 @@ function resolveActionPayload(
   return resolveTemplateValue(source, context)
 }
 
+function withRoutePrimaryKey(
+  payload: any,
+  store: PageStore,
+  config: ActionConfig,
+  savePath: string
+) {
+  if (!isPlainActionObject(payload)) {
+    return payload
+  }
+  if (!isCurrentPageSavePath(store, savePath)) {
+    return payload
+  }
+
+  const primaryKey = String(config.pk || 'id').trim() || 'id'
+  if (hasActionValue(payload[primaryKey])) {
+    return payload
+  }
+
+  const routeID = readRoutePrimaryKeyValue(store, primaryKey)
+  if (!hasActionValue(routeID)) {
+    return payload
+  }
+
+  return {
+    ...payload,
+    [primaryKey]: routeID,
+  }
+}
+
+function isCurrentPageSavePath(store: PageStore, savePath: string) {
+  const currentPath = normalizeActionPagePath(store.getState().pagePath)
+  if (currentPath && currentPath === savePath) {
+    return true
+  }
+
+  const schemaPath = normalizeActionPagePath(String(store.getState().schema.page?.route ?? ''))
+  return !!schemaPath && schemaPath === savePath
+}
+
+function readRoutePrimaryKeyValue(store: PageStore, primaryKey: string) {
+  const query = store.getState().state?.route?.query
+  if (!query || typeof query !== 'object' || Array.isArray(query)) {
+    return undefined
+  }
+
+  const value = (query as Record<string, unknown>)[primaryKey]
+  if (hasActionValue(value)) {
+    return firstActionValue(value)
+  }
+
+  if (primaryKey !== 'id') {
+    return firstActionValue((query as Record<string, unknown>).id)
+  }
+
+  return undefined
+}
+
+function firstActionValue(value: unknown) {
+  return Array.isArray(value) ? value[0] : value
+}
+
+function isPlainActionObject(value: unknown): value is Record<string, any> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function hasActionValue(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.some(hasActionValue)
+  }
+  return value !== undefined && value !== null && String(value).trim() !== ''
+}
+
 function resolveExportPagePath(
   store: PageStore,
   config: ActionConfig,
@@ -618,7 +798,7 @@ function applyRequestFieldErrors(
   fieldErrors: unknown
 ) {
   if (!fieldErrors || typeof fieldErrors !== 'object' || Array.isArray(fieldErrors)) {
-    return
+    return []
   }
 
   const items = Object.values(store.getState().schema.nodes ?? {}).flat()
@@ -626,15 +806,68 @@ function applyRequestFieldErrors(
 
   for (const item of items) {
     if (item.id && item.value) {
-      pathToItemId.set(item.value, item.id)
+      for (const path of fieldPathCandidates(item.value)) {
+        pathToItemId.set(path, item.id)
+      }
     }
   }
 
+  const messages: string[] = []
   for (const [path, message] of Object.entries(fieldErrors as Record<string, unknown>)) {
-    const itemId = pathToItemId.get(path)
-    if (!itemId || typeof message !== 'string' || !message.trim()) {
+    const normalizedMessage = String(message ?? '').trim()
+    if (!normalizedMessage) {
       continue
     }
-    store.getState().setError(itemId, message)
+    messages.push(normalizedMessage)
+
+    const itemId = firstMatchedFieldItemID(pathToItemId, path)
+    if (itemId) {
+      store.getState().setError(itemId, normalizedMessage)
+    }
   }
+
+  return messages
+}
+
+function firstMatchedFieldItemID(pathToItemId: Map<string, string>, path: string) {
+  for (const candidate of fieldPathCandidates(path)) {
+    const itemId = pathToItemId.get(candidate)
+    if (itemId) {
+      return itemId
+    }
+  }
+  return ''
+}
+
+function fieldPathCandidates(path: unknown) {
+  const normalized = String(path || '').trim()
+  if (!normalized) {
+    return []
+  }
+
+  const candidates = new Set<string>([normalized])
+  if (normalized.startsWith('data.')) {
+    candidates.add(normalized.slice(5))
+  } else {
+    candidates.add(`data.${normalized}`)
+  }
+  if (normalized.startsWith('state.')) {
+    candidates.add(normalized.slice(6))
+  } else {
+    candidates.add(`state.${normalized}`)
+  }
+
+  return Array.from(candidates)
+}
+
+function resolveActionErrorMessage(
+  message: unknown,
+  fieldMessages: string[],
+  fallback: string
+) {
+  const normalizedMessage = String(message ?? '').trim()
+  if (normalizedMessage) {
+    return normalizedMessage
+  }
+  return fieldMessages.find((current) => current.trim() !== '') || fallback
 }

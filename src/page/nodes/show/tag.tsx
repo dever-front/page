@@ -2,12 +2,15 @@
  * Show/Tag.tsx - 标签展示
  */
 import { Badge } from '@/components/ui/badge'
-import { getByPath } from '@/lib/path'
 import type { NodeItemProps } from '../../nodes'
+import { resolveOptionDisplayTexts } from './option-text'
 
 export function ShowTag({ item, value, option }: NodeItemProps) {
   let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'secondary'
-  const texts = resolveTagTexts(value, option, String(item.meta?.field || ''))
+  const texts = resolveOptionDisplayTexts(value, option, {
+    field: String(item.meta?.field || ''),
+    cases: Array.isArray(item.meta?.cases) ? item.meta.cases : [],
+  })
 
   // 从 meta 读取 variant
   if (item.meta?.variant) {
@@ -27,47 +30,4 @@ export function ShowTag({ item, value, option }: NodeItemProps) {
       ))}
     </div>
   )
-}
-
-function resolveTagTexts(value: any, option: NodeItemProps['option'], field: string) {
-  if (Array.isArray(value)) {
-    return value
-      .map((current) => resolveSingleTagText(current, option, field))
-      .filter((current): current is string => !!current)
-  }
-
-  const single = resolveSingleTagText(value, option, field)
-  return single ? [single] : []
-}
-
-function resolveSingleTagText(value: any, option: NodeItemProps['option'], field: string) {
-  if (value == null || value === '') {
-    return ''
-  }
-
-  if (typeof value === 'object') {
-    if (field) {
-      const fieldValue = getByPath(value, field)
-      if (fieldValue != null && fieldValue !== '') {
-        return String(fieldValue)
-      }
-    }
-
-    for (const key of ['label', 'value', 'name', 'id']) {
-      if (value[key] != null && value[key] !== '') {
-        return String(value[key])
-      }
-    }
-
-    return ''
-  }
-
-  if (Array.isArray(option)) {
-    const found = option.find((current) => String(current.id) === String(value))
-    if (found) {
-      return found.value
-    }
-  }
-
-  return String(value)
 }

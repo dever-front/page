@@ -64,6 +64,14 @@ function resolveDialogWidthClass(meta: Record<string, any> | undefined) {
   return MODAL_SIZE_CLASS_MAP.lg
 }
 
+function resolveDialogOverflowClass(meta: Record<string, any> | undefined) {
+  return meta?.contentOverflow === 'hidden' ? 'overflow-hidden' : 'overflow-visible'
+}
+
+function resolveDialogBodyOverflowClass(meta: Record<string, any> | undefined) {
+  return meta?.bodyScroll === false ? 'overflow-hidden' : 'overflow-y-auto'
+}
+
 export function FeedbackModal({ item, store }: NodeItemProps) {
   // 从 state 读取开关状态
   const stateKey = item.meta?.stateKey || item.id
@@ -87,11 +95,20 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
   const titleFromPath = useStore(store, (s) =>
     readMetaPathValue(s, item.meta?.titlePath)
   )
+  const titleNameFromPath = useStore(store, (s) =>
+    readMetaPathValue(s, item.meta?.titleNamePath)
+  )
+  const titleKeyFromPath = useStore(store, (s) =>
+    readMetaPathValue(s, item.meta?.titleKeyPath)
+  )
   const descriptionFromPath = useStore(store, (s) =>
     readMetaPathValue(s, item.meta?.descriptionPath)
   )
-  const title =
+  const baseTitle =
     titleFromPath || item.meta?.title || item.name || pageSchema?.page?.title || '弹窗'
+  const title = titleNameFromPath
+    ? `${baseTitle}：${titleNameFromPath}${titleKeyFromPath ? `(${titleKeyFromPath})` : ''}`
+    : baseTitle
   const description = descriptionFromPath || item.meta?.description || item.info
   const [hotVersion, setHotVersion] = useState(0)
   const widthStyle = item.meta?.width
@@ -187,6 +204,7 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    event.stopPropagation()
 
     if (pageStore && !pageStore.getState().validateForm()) {
       return
@@ -209,7 +227,12 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
     }
 
     if (item.action?.submit) {
-      const result = await runActionsWithResult(store, item.action.submit)
+      const result = await runActionsWithResult(store, item.action.submit, {
+        modalStore: pageStore,
+        modalData: pageStore?.getState().data,
+        modalState: pageStore?.getState().state,
+        modalForm: pageStore?.getState().data?.form,
+      })
       if (result.success) {
         await closeOverlayAndRefreshParent()
       }
@@ -260,7 +283,8 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
         showCloseButton={false}
         style={widthStyle}
         className={cn(
-          'flex max-h-[85vh] flex-col gap-0 overflow-visible p-0',
+          'flex max-h-[85vh] flex-col gap-0 p-0',
+          resolveDialogOverflowClass(item.meta),
           dialogWidthClass
         )}
       >
@@ -273,7 +297,9 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 space-y-1">
               <DialogTitle>{title}</DialogTitle>
-              {description && <DialogDescription>{description}</DialogDescription>}
+              <DialogDescription className={description ? undefined : 'sr-only'}>
+                {description || `${title}弹窗，请在弹窗内完成操作。`}
+              </DialogDescription>
             </div>
             <DialogClose asChild>
               <Button
@@ -303,7 +329,8 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
         <form id={formId} onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div
             className={cn(
-              'min-h-0 flex-1 overflow-y-auto px-6 py-4',
+              'min-h-0 flex-1 px-6 py-4',
+              resolveDialogBodyOverflowClass(item.meta),
               item.meta?.bodyClassName
             )}
           >
@@ -359,5 +386,11 @@ function readMetaPathValue(
   const { scope, key } = resolvePath(path)
   const source = scope === 'state' ? storeState.state : storeState.data
   const value = getByPath(source, key)
-  return typeof value === 'string' ? value : ''
+  if (value == null) {
+    return ''
+  }
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+  return ''
 }

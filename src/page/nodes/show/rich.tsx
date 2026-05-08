@@ -11,7 +11,7 @@ export function ShowRich({ item, value }: NodeItemProps) {
   return (
     <div
       className={cn(
-        'min-w-0 text-sm leading-6 text-foreground [&_a]:underline [&_p]:my-0',
+        'min-w-0 text-sm leading-6 text-foreground [&_a]:underline [&_audio]:my-4 [&_audio]:block [&_audio]:w-full [&_audio]:max-w-sm [&_img]:my-4 [&_img]:block [&_img]:max-w-[50%] [&_img]:rounded-lg [&_p]:my-0 [&_video]:my-4 [&_video]:block [&_video]:max-w-[50%] [&_video]:rounded-lg [&_video]:bg-black/90',
         preview && 'line-clamp-2 max-w-full overflow-hidden [&_*]:inline [&_br]:hidden',
         item.className
       )}

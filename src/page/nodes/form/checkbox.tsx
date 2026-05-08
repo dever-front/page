@@ -7,7 +7,7 @@ import type { NodeItemProps } from '../../nodes'
 
 export function FormCheckbox({ item, value, setValue, option, optionLoading }: NodeItemProps) {
   const options = option || []
-  const selectedValues: string[] = Array.isArray(value) ? value.map(String) : []
+  const selectedValues = normalizeCheckboxValues(value)
   const horizontal = item.meta?.orientation === 'horizontal'
 
   if (optionLoading && options.length === 0) {
@@ -38,4 +38,20 @@ export function FormCheckbox({ item, value, setValue, option, optionLoading }: N
       ))}
     </div>
   )
+}
+
+function normalizeCheckboxValues(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map(String)
+  }
+  const text = String(value ?? '').trim()
+  if (!text.startsWith('[')) {
+    return []
+  }
+  try {
+    const parsed = JSON.parse(text)
+    return Array.isArray(parsed) ? parsed.map(String) : []
+  } catch {
+    return []
+  }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import Placeholder from '@tiptap/extension-placeholder'
 import Underline from '@tiptap/extension-underline'
 import { EditorContent, useEditor } from '@tiptap/react'
@@ -6,16 +6,38 @@ import StarterKit from '@tiptap/starter-kit'
 import {
   Bold,
   Eraser,
+  FileImage,
   Heading2,
   Italic,
   List,
   ListOrdered,
+  Music4,
   Quote,
   Underline as UnderlineIcon,
+  Video,
 } from 'lucide-react'
+import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
+import { mergeResourceUploadRules, normalizeResourceUploadRules } from '@/lib/resource'
+import type { UploadFileItem } from '@/lib/upload'
+import { uploadFileByRule } from '@/lib/upload'
+import { ResourcePickerDialog } from '@/components/resource/resource-picker-dialog'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import type { NodeItemProps } from '../../nodes'
+import {
+  buildEditorMediaInsertContent,
+  editorMediaExtensions,
+  resolveEditorMediaLabel,
+  normalizeEditorUploadRules,
+  resolveEditorUploadLabel,
+  type EditorMediaKind,
+} from './editor/media'
 
 type ToolbarItem = {
   icon: typeof Bold
@@ -28,12 +50,39 @@ export function FormEditor({ item, value, setValue, error }: NodeItemProps) {
   const placeholder = String(item.placeholder || '请输入内容')
   const disabled = !!item.meta?.disabled
   const minHeight = Number(item.meta?.minHeight || 220)
+  const maxHeight = Math.max(Number(item.meta?.maxHeight || 560), minHeight + 120)
+  const contentMaxHeight = Math.max(maxHeight - 56, minHeight)
   const initialHtml = useMemo(() => normalizeEditorHtml(String(value ?? '')), [value])
+  const rawUploadRules = useMemo(
+    () => normalizeResourceUploadRules(item.meta?.uploadRules),
+    [item.meta?.uploadRules]
+  )
+  const baseUploadRules = useMemo(
+    () => normalizeEditorUploadRules(rawUploadRules),
+    [rawUploadRules]
+  )
+  const uploadRuleMetas = useUploadRuleMetas(rawUploadRules.map((current) => current.ruleId))
+  const uploadRules = useMemo(
+    () => normalizeEditorUploadRules(mergeResourceUploadRules(baseUploadRules, uploadRuleMetas)),
+    [baseUploadRules, uploadRuleMetas]
+  )
+  const uploadRuleMap = useMemo(
+    () => new Map(uploadRules.map((current) => [current.kind, current])),
+    [uploadRules]
+  )
+  const uploadKinds = useMemo(
+    () => baseUploadRules.map((current) => current.kind),
+    [baseUploadRules]
+  )
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const [activeUploadKind, setActiveUploadKind] = useState<EditorMediaKind | ''>('')
+  const [activePickerKind, setActivePickerKind] = useState<EditorMediaKind | ''>('')
+  const [uploadingKind, setUploadingKind] = useState<EditorMediaKind | ''>('')
+  const [uploadMessage, setUploadMessage] = useState('')
+  const [progressText, setProgressText] = useState('')
 
-  const editor = useEditor({
-    editable: !disabled,
-    immediatelyRender: false,
-    extensions: [
+  const editorExtensions = useMemo(
+    () => [
       StarterKit.configure({
         heading: { levels: [2] },
       }),
@@ -43,11 +92,19 @@ export function FormEditor({ item, value, setValue, error }: NodeItemProps) {
         emptyEditorClass:
           'before:pointer-events-none before:absolute before:left-0 before:top-0 before:text-muted-foreground/70 before:content-[attr(data-placeholder)]',
       }),
+      ...editorMediaExtensions,
     ],
+    [placeholder]
+  )
+
+  const editor = useEditor({
+    editable: !disabled,
+    immediatelyRender: false,
+    extensions: editorExtensions,
     editorProps: {
       attributes: {
         class:
-          'tiptap-editor relative text-sm leading-7 outline-none [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_li]:ml-4 [&_ol]:list-decimal [&_p]:min-h-6 [&_ul]:list-disc',
+          'tiptap-editor relative text-sm leading-7 outline-none [&_audio]:my-4 [&_audio]:block [&_audio]:w-full [&_audio]:max-w-md [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_img]:my-4 [&_img]:block [&_img]:max-w-full [&_img]:rounded-lg [&_li]:ml-4 [&_ol]:list-decimal [&_p]:min-h-6 [&_ul]:list-disc [&_video]:my-4 [&_video]:block [&_video]:max-w-full [&_video]:rounded-lg [&_video]:bg-black/90',
         style: `min-height:${minHeight}px`,
       },
     },
@@ -125,6 +182,95 @@ export function FormEditor({ item, value, setValue, error }: NodeItemProps) {
     []
   )
 
+  const openUploadPicker = (kind: EditorMediaKind) => {
+    if (disabled) {
+      return
+    }
+    if (!uploadRuleMap.get(kind)) {
+      setUploadMessage(`未配置${resolveEditorUploadLabel(kind)}规则。`)
+      return
+    }
+
+    setActiveUploadKind(kind)
+    setUploadMessage('')
+    setProgressText('')
+    inputRef.current?.click()
+  }
+
+  const openResourcePicker = (kind: EditorMediaKind) => {
+    if (disabled) {
+      return
+    }
+    if (!uploadRuleMap.get(kind)) {
+      setUploadMessage(`未配置${resolveEditorMediaLabel(kind)}资源规则。`)
+      return
+    }
+
+    setUploadMessage('')
+    setProgressText('')
+    setActivePickerKind(kind)
+  }
+
+  const insertMediaItems = (kind: EditorMediaKind, items: UploadFileItem[]) => {
+    if (!editor) {
+      return
+    }
+
+    let hasInserted = false
+    for (const current of Array.isArray(items) ? items : []) {
+      const insertContent = buildEditorMediaInsertContent(current, kind)
+      if (insertContent.length === 0) {
+        continue
+      }
+
+      editor.chain().focus().insertContent(insertContent).run()
+      hasInserted = true
+    }
+
+    if (hasInserted) {
+      setUploadMessage('')
+    }
+  }
+
+  const handleChooseMedia = async (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files || [])
+    event.target.value = ''
+
+    const uploadKind = activeUploadKind
+    const uploadRule = uploadKind ? uploadRuleMap.get(uploadKind) : undefined
+    if (!editor || !uploadKind || !uploadRule || selectedFiles.length === 0) {
+      setActiveUploadKind('')
+      return
+    }
+
+    setUploadingKind(uploadKind)
+    setUploadMessage('')
+    setProgressText('')
+
+    try {
+      for (const current of selectedFiles) {
+        const uploaded = await uploadFileByRule(uploadRule.ruleId, current, {
+          kind: uploadRule.kind,
+          bizKey: uploadRule.bizKey,
+          bizName: uploadRule.bizName,
+          categoryId: uploadRule.categoryId,
+          onProgress: (loaded, total) => {
+            const percent = Math.min(100, Math.round((loaded / Math.max(total, 1)) * 100))
+            setProgressText(`${current.name} ${percent}%`)
+          },
+        })
+
+        insertMediaItems(uploadRule.kind, [uploaded])
+      }
+    } catch (uploadError) {
+      setUploadMessage(uploadError instanceof Error ? uploadError.message : '上传失败')
+    } finally {
+      setActiveUploadKind('')
+      setUploadingKind('')
+      setProgressText('')
+    }
+  }
+
   return (
     <div
       className={cn(
@@ -134,6 +280,14 @@ export function FormEditor({ item, value, setValue, error }: NodeItemProps) {
         item.meta?.controlClassName
       )}
     >
+      <input
+        ref={inputRef}
+        type="file"
+        className="hidden"
+        multiple
+        accept={activeUploadKind ? uploadRuleMap.get(activeUploadKind)?.accept : undefined}
+        onChange={handleChooseMedia}
+      />
       <div className="flex flex-wrap items-center gap-1 border-b border-border/70 bg-muted/35 px-2.5 py-2">
         {toolbarItems.map(({ icon: Icon, label, isActive, run }) => (
           <Button
@@ -156,7 +310,37 @@ export function FormEditor({ item, value, setValue, error }: NodeItemProps) {
             <span className="sr-only">{label}</span>
           </Button>
         ))}
-        <div className="mx-1 h-4 w-px bg-border/70" />
+        {uploadKinds.length > 0 ? <div className="mx-1 h-4 w-px bg-border/70" /> : null}
+        {uploadKinds.includes('image') ? (
+          <EditorMediaMenuButton
+            icon={FileImage}
+            label="图片"
+            disabled={disabled || !editor || !!uploadingKind}
+            onUpload={() => openUploadPicker('image')}
+            onSelectResource={() => openResourcePicker('image')}
+          />
+        ) : null}
+        {uploadKinds.includes('video') ? (
+          <EditorMediaMenuButton
+            icon={Video}
+            label="视频"
+            disabled={disabled || !editor || !!uploadingKind}
+            onUpload={() => openUploadPicker('video')}
+            onSelectResource={() => openResourcePicker('video')}
+          />
+        ) : null}
+        {uploadKinds.includes('audio') ? (
+          <EditorMediaMenuButton
+            icon={Music4}
+            label="音频"
+            disabled={disabled || !editor || !!uploadingKind}
+            onUpload={() => openUploadPicker('audio')}
+            onSelectResource={() => openResourcePicker('audio')}
+          />
+        ) : null}
+        {(uploadKinds.length > 0 || toolbarItems.length > 0) ? (
+          <div className="mx-1 h-4 w-px bg-border/70" />
+        ) : null}
         <Button
           type="button"
           variant="ghost"
@@ -176,19 +360,105 @@ export function FormEditor({ item, value, setValue, error }: NodeItemProps) {
           <span className="sr-only">清除格式</span>
         </Button>
       </div>
-      <EditorContent
-        editor={editor}
-        id={item.id}
-        aria-invalid={!!error}
-        className={cn(
-          'px-4 py-3 text-sm',
-          disabled && 'cursor-not-allowed opacity-70',
-          '[&_.ProseMirror]:min-h-[inherit] [&_.ProseMirror]:outline-none',
-          '[&_.ProseMirror]:before:text-muted-foreground/75'
-        )}
-        style={{ minHeight }}
+      {progressText || uploadMessage ? (
+        <div className="space-y-1 border-b border-border/70 bg-muted/15 px-4 py-2">
+          {progressText ? (
+            <p className="text-xs text-muted-foreground">{progressText}</p>
+          ) : null}
+          {uploadMessage ? (
+            <p className="text-xs text-muted-foreground">{uploadMessage}</p>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="overflow-y-auto" style={{ maxHeight: contentMaxHeight }}>
+        <EditorContent
+          editor={editor}
+          id={item.id}
+          aria-invalid={!!error}
+          className={cn(
+            'px-4 py-3 text-sm',
+            disabled && 'cursor-not-allowed opacity-70',
+            '[&_.ProseMirror]:min-h-[inherit] [&_.ProseMirror]:outline-none',
+            '[&_.ProseMirror]:before:text-muted-foreground/75'
+          )}
+          style={{ minHeight }}
+        />
+      </div>
+      <ResourcePickerDialog
+        open={!!activePickerKind}
+        title={activePickerKind ? `${resolveEditorMediaLabel(activePickerKind)}资源库` : '资源库'}
+        description={
+          activePickerKind
+            ? `可上传并选择${resolveEditorMediaLabel(activePickerKind)}资源后插入正文。`
+            : undefined
+        }
+        bizKey={activePickerKind ? uploadRuleMap.get(activePickerKind)?.bizKey : undefined}
+        initialScope={activePickerKind && uploadRuleMap.get(activePickerKind)?.bizKey ? 'current' : 'all'}
+        defaultKind={activePickerKind || undefined}
+        fixedKind={true}
+        value={[]}
+        multiple={true}
+        maxSelection={20}
+        uploadRules={
+          activePickerKind && uploadRuleMap.get(activePickerKind)
+            ? [uploadRuleMap.get(activePickerKind)!]
+            : []
+        }
+        onOpenChange={(open) => {
+          if (!open) {
+            setActivePickerKind('')
+          }
+        }}
+        onConfirm={(items) => {
+          if (!activePickerKind) {
+            return
+          }
+          insertMediaItems(activePickerKind, items)
+          setActivePickerKind('')
+        }}
       />
     </div>
+  )
+}
+
+function EditorMediaMenuButton({
+  icon: Icon,
+  label,
+  disabled,
+  onUpload,
+  onSelectResource,
+}: {
+  icon: typeof FileImage
+  label: string
+  disabled?: boolean
+  onUpload: () => void
+  onSelectResource: () => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          className="h-7 rounded-md px-2 text-muted-foreground hover:text-foreground"
+          onMouseDown={(event) => event.preventDefault()}
+          disabled={disabled}
+          title={label}
+        >
+          <Icon className="size-3.5" />
+          <span className="sr-only">{label}</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        <DropdownMenuItem onSelect={onUpload}>
+          上传{label}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onSelectResource}>
+          从资源库选择{label}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -201,6 +471,10 @@ function normalizeEditorHtml(input: string) {
 }
 
 function isEditorHtmlEmpty(input: string) {
+  if (/<(img|video|audio)\b/i.test(String(input || ''))) {
+    return false
+  }
+
   const html = String(input || '')
     .replace(/<p><br><\/p>/gi, '')
     .replace(/<div><br><\/div>/gi, '')

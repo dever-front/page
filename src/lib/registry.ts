@@ -31,8 +31,10 @@ export const layoutRegistry: Record<string, ComponentType<LayoutComponentProps>>
 
 // Show
 import { ShowBase } from '@/page/nodes/show/base'
+import { ShowTitle } from '@/page/nodes/show/title'
 import { ShowRich } from '@/page/nodes/show/rich'
 import { ShowText } from '@/page/nodes/show/text'
+import { ShowDate } from '@/page/nodes/show/date'
 import { ShowLink } from '@/page/nodes/show/link'
 import { ShowButton } from '@/page/nodes/show/button'
 import { ShowButtonGroup } from '@/page/nodes/show/button-group'
@@ -47,6 +49,7 @@ import { ShowIcon } from '@/page/nodes/show/icon'
 import { ShowTooltip } from '@/page/nodes/show/tooltip'
 import { ShowCategoryList } from '@/page/nodes/show/category-list'
 import { ShowResource } from '@/page/nodes/show/resource'
+import { ShowStreamRequest } from '@/page/nodes/show/stream-request'
 import { NavTab } from '@/page/nodes/nav/tab'
 
 // Form
@@ -65,6 +68,7 @@ import { FormTree } from '@/page/nodes/form/tree'
 import { FormCascader } from '@/page/nodes/form/cascader'
 import { FormDate } from '@/page/nodes/form/date'
 import { FormArray } from '@/page/nodes/form/array'
+import { FormComboMapping } from '@/page/nodes/form/combo-mapping'
 
 // Media
 import { MediaImage } from '@/page/nodes/media/image'
@@ -81,8 +85,10 @@ import { FeedbackDrawer } from '@/page/nodes/feedback/drawer'
 export const nodeRegistry: Record<string, ComponentType<NodeItemProps>> = {
   // Show
   'show-base': ShowBase,
+  'show-title': ShowTitle,
   'show-rich': ShowRich,
   'show-text': ShowText,
+  'show-date': ShowDate,
   'show-link': ShowLink,
   'show-button': ShowButton,
   'show-button-group': ShowButtonGroup,
@@ -98,6 +104,7 @@ export const nodeRegistry: Record<string, ComponentType<NodeItemProps>> = {
   'show-category-list': ShowCategoryList,
   'show-resource': ShowResource,
   'show-resource-browser': ShowResource,
+  'show-stream-request': ShowStreamRequest,
   'nav-tab': NavTab,
 
   // Form
@@ -116,6 +123,7 @@ export const nodeRegistry: Record<string, ComponentType<NodeItemProps>> = {
   'form-cascader': FormCascader,
   'form-date': FormDate,
   'form-array': FormArray,
+  'form-combo-mapping': FormComboMapping,
 
   // Media
   'media-image': MediaImage,

@@ -47,17 +47,19 @@ function DialogOverlay({
 
 function DialogContent({
   className,
+  layerClassName,
   children,
   showCloseButton = true,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  layerClassName?: string
   showCloseButton?: boolean
 }) {
   return (
     <DialogPortal data-slot='dialog-portal'>
       <div
         data-slot='dialog-layer'
-        className='pointer-events-none fixed inset-0 z-50'
+        className={cn('pointer-events-none fixed inset-0 z-50', layerClassName)}
       >
         <DialogOverlay className='pointer-events-auto z-0' />
         <DialogPrimitive.Content

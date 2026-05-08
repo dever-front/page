@@ -1,4 +1,10 @@
-import { request, requestBlob } from './request'
+import { request, requestBlob, requestRaw } from './request'
+import {
+  assertRuntimeStreamFrameSuccess,
+  readRuntimeStreamFrame,
+  streamValueText,
+  type RuntimeStreamFrame,
+} from './stream'
 
 export type UploadFileItem = {
   id: string | number
@@ -29,6 +35,16 @@ export type UploadRequestOptions = {
   onProgress?: (loaded: number, total: number) => void
 }
 
+export type ImportRemoteFileOptions = UploadRequestOptions & {
+  name?: string
+  mime?: string
+}
+
+export type ImportRemoteFileStreamOptions = ImportRemoteFileOptions & {
+  blockMs?: number
+  onStatus?: (status: { message: string; progress?: number | null }) => void
+}
+
 export type UploadRuleMeta = {
   id: number
   name?: string
@@ -37,9 +53,13 @@ export type UploadRuleMeta = {
 }
 
 type UploadDirectPayload = {
-  uploadURL: string
+  uploadURL?: string
+  upload_url?: string
+  UploadURL?: string
   method?: string
+  Method?: string
   fields?: Record<string, string>
+  Fields?: Record<string, string>
 }
 
 type UploadInitPayload = {
@@ -81,6 +101,59 @@ export async function uploadFileByRule(
   return completeResult.data as UploadFileItem
 }
 
+export async function importRemoteFileByRule(
+  ruleId: number,
+  url: string,
+  options?: ImportRemoteFileOptions
+) {
+  options?.onProgress?.(0, 0)
+  const result = await request('/front/upload/import_url', 'post', buildImportRemotePayload(ruleId, url, options))
+  if (result.code !== 0 || !result.data) {
+    throw new Error(result.message || '保存资源失败')
+  }
+  options?.onProgress?.(100, 100)
+  return result.data as UploadFileItem
+}
+
+export async function importRemoteFileByRuleStream(
+  ruleId: number,
+  url: string,
+  options?: ImportRemoteFileStreamOptions
+) {
+  const startFrame = (await requestRaw(
+    '/front/upload/import_url_stream',
+    'post',
+    buildImportRemotePayload(ruleId, url, options)
+  )) as RuntimeStreamFrame
+
+  assertRuntimeStreamFrameSuccess(startFrame)
+  applyImportStreamStatus(startFrame, options?.onStatus)
+
+  const requestID = streamValueText(startFrame?.request_id)
+  if (!requestID) {
+    throw new Error('保存资源任务缺少 request_id。')
+  }
+
+  let lastID = streamValueText(startFrame?.stream_id) || '0-0'
+  const blockMs = Number(options?.blockMs || 1000)
+  while (true) {
+    const frame = await readRuntimeStreamFrame('/front/upload/stream', requestID, lastID, blockMs)
+    assertRuntimeStreamFrameSuccess(frame)
+    if (frame.stream_id) {
+      lastID = String(frame.stream_id)
+    }
+    applyImportStreamStatus(frame, options?.onStatus)
+
+    if (frame.type === 'result') {
+      const uploaded = normalizeImportStreamResult(frame)
+      if (!uploaded) {
+        throw new Error(streamValueText(frame.msg) || '保存资源失败')
+      }
+      return uploaded
+    }
+  }
+}
+
 function buildUploadInitPayload(
   ruleId: number,
   file: File,
@@ -116,6 +189,23 @@ function buildUploadInitPayload(
   }
 
   return payload
+}
+
+function buildImportRemotePayload(
+  ruleId: number,
+  url: string,
+  options?: ImportRemoteFileOptions
+) {
+  return {
+    rule_id: ruleId,
+    url,
+    name: String(options?.name || '').trim(),
+    mime: String(options?.mime || '').trim(),
+    kind: String(options?.kind || '').trim(),
+    biz_key: String(options?.bizKey || '').trim(),
+    biz_name: String(options?.bizName || '').trim(),
+    category_id: Number(options?.categoryId || 0),
+  }
 }
 
 export async function listUploadRuleMetas(ruleIds: number[]) {
@@ -211,14 +301,19 @@ async function uploadFileDirect(
   direct: UploadDirectPayload,
   onProgress?: (loaded: number, total: number) => void
 ) {
+  const uploadURL = String(direct.uploadURL || direct.upload_url || direct.UploadURL || '').trim()
+  if (!uploadURL) {
+    throw new Error('直传地址为空')
+  }
+
   const formData = new FormData()
-  Object.entries(direct.fields || {}).forEach(([key, value]) => {
+  Object.entries(direct.fields || direct.Fields || {}).forEach(([key, value]) => {
     formData.append(key, value)
   })
   formData.append('file', file, file.name)
 
-  const response = await fetch(direct.uploadURL, {
-    method: String(direct.method || 'post').toUpperCase(),
+  const response = await fetch(uploadURL, {
+    method: String(direct.method || direct.Method || 'post').toUpperCase(),
     body: formData,
   })
 
@@ -226,6 +321,34 @@ async function uploadFileDirect(
     throw new Error(`直传失败(${response.status})`)
   }
   onProgress?.(file.size, file.size)
+}
+
+function applyImportStreamStatus(
+  frame: RuntimeStreamFrame,
+  onStatus?: ImportRemoteFileStreamOptions['onStatus']
+) {
+  if (!onStatus || !frame?.output) {
+    return
+  }
+  const output = frame.output as Record<string, any>
+  const message = streamValueText(output.text)
+  const rawProgress = Number(output.progress)
+  const progress = Number.isFinite(rawProgress)
+    ? Math.max(0, Math.min(100, Math.round(rawProgress)))
+    : null
+  if (!message && progress == null) {
+    return
+  }
+  onStatus({
+    message,
+    progress,
+  })
+}
+
+function normalizeImportStreamResult(frame: RuntimeStreamFrame) {
+  const output = frame.output as Record<string, any> | undefined
+  const resource = output?.resource
+  return resource && typeof resource === 'object' ? (resource as UploadFileItem) : null
 }
 
 async function digestUploadFile(file: File) {

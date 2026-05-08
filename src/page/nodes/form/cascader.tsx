@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useStore } from 'zustand'
 import {
   Select,
   SelectContent,
@@ -7,6 +8,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { SearchableOptionPicker } from '@/components/searchable-option-picker'
+import {
+  applyOptionFilters,
+  buildOptionRegistrySignature,
+  collectOptionFilterDependencies,
+} from '@/lib/option-filter'
+import { getByPath, resolvePath } from '@/lib/path'
 import { inferRelationPath } from '@/lib/relation-field'
 import { request } from '@/lib/request'
 import { cn } from '@/lib/utils'
@@ -16,11 +23,16 @@ type CascaderOption = {
   id: string | number
   value: string
   leaf?: boolean
-}
+} & Record<string, any>
 
 export function FormCascader({ item, value, setValue, store, error }: NodeItemProps) {
   const api = String(item.meta?.api || '').trim()
-  const selectedValues = useMemo(() => normalizeCascaderValues(value), [value])
+  const leafValueMode = resolveLeafValueMode(item.meta)
+  const [leafPathValues, setLeafPathValues] = useState<any[]>([])
+  const selectedValues = useMemo(
+    () => (leafValueMode ? leafPathValues : normalizeCascaderValues(value)),
+    [leafPathValues, leafValueMode, value]
+  )
   const selectedKeys = useMemo(
     () => selectedValues.map((current) => String(current)).join('|'),
     [selectedValues]
@@ -47,20 +59,68 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
   const [levels, setLevels] = useState<CascaderOption[][]>([])
   const [loadingLevel, setLoadingLevel] = useState<number | null>(null)
   const cacheRef = useRef(new Map<string, CascaderOption[]>())
+  const keepParentOnEmptyRef = useRef(false)
+  const optionFilterDependencies = useMemo(
+    () => collectOptionFilterDependencies(item),
+    [item]
+  )
+  const optionFilterKey = useStore(
+    store,
+    useCallback(
+      (state) =>
+        JSON.stringify({
+          values: optionFilterDependencies.pathValues.map((path) =>
+            resolveFilterPathValue(path, state.data, state.state)
+          ),
+          sourceOptions: optionFilterDependencies.sourceNodeIds.map((id) =>
+            buildOptionRegistrySignature(state.optionRegistry[id])
+          ),
+        }),
+      [optionFilterDependencies.pathValues, optionFilterDependencies.sourceNodeIds]
+    )
+  )
+  const displayLevels = useMemo(
+    () =>
+      levels.map((options, level) => {
+        if (level === 0) {
+          return options
+        }
+        const filteredOptions = applyOptionFilters(options, item, {
+          data: store.getState().data,
+          state: store.getState().state,
+          optionRegistry: store.getState().optionRegistry,
+        }) as CascaderOption[] | undefined
+        return filteredOptions || []
+      }),
+    [item, levels, optionFilterKey, store]
+  )
 
   const buildParams = useCallback(
-    (parentId: any) => {
+    (parentId: any, level: number) => {
+      const childLevel = level > 0 && String(item.meta?.childUse || '').trim() !== ''
+      const use = childLevel
+        ? String(item.meta?.childUse || '').trim()
+        : String(item.meta?.use || '').trim()
+      const parentField = childLevel
+        ? String(item.meta?.childParentField || item.meta?.parentField || 'parent_id').trim()
+        : String(item.meta?.parentField || 'parent_id').trim()
       const params: Record<string, any> = {
         type: String(item.meta?.type || 'model').trim() || 'model',
-        use: String(item.meta?.use || '').trim(),
-        parentField: String(item.meta?.parentField || 'parent_id').trim() || 'parent_id',
+        use,
+        parentField: parentField || 'parent_id',
         parentId,
         rootValue: item.meta?.rootValue ?? 0,
         valueField: String(item.meta?.valueField || 'id').trim() || 'id',
         labelField: String(item.meta?.labelField || 'name').trim() || 'name',
       }
+      const extraFields = childLevel
+        ? String(item.meta?.childExtraFields || '').trim()
+        : String(item.meta?.extraFields || '').trim()
       const leafField = String(item.meta?.leafField || 'leaf').trim()
       const order = String(item.meta?.order || '').trim()
+      if (extraFields) {
+        params.extraFields = extraFields
+      }
       if (leafField) {
         params.leafField = leafField
       }
@@ -70,6 +130,10 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
       return params
     },
     [
+      item.meta?.childExtraFields,
+      item.meta?.childParentField,
+      item.meta?.childUse,
+      item.meta?.extraFields,
       item.meta?.labelField,
       item.meta?.leafField,
       item.meta?.order,
@@ -83,7 +147,8 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
 
   const fetchLevelOptions = useCallback(
     async (parentId: any, level: number) => {
-      const params = buildParams(parentId)
+      const childLevel = level > 0 && String(item.meta?.childUse || '').trim() !== ''
+      const params = buildParams(parentId, level)
       const cacheKey = `${api}?${JSON.stringify(params)}`
       const cached = cacheRef.current.get(cacheKey)
       if (cached) {
@@ -98,9 +163,14 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
         }
 
         const nextOptions = result.data.map((current: any) => ({
+          ...current,
           id: current?.id,
           value: String(current?.value ?? ''),
-          leaf: current?.leaf === true || current?.leaf === 1 || current?.leaf === '1',
+          leaf:
+            childLevel ||
+            current?.leaf === true ||
+            current?.leaf === 1 ||
+            current?.leaf === '1',
         }))
         cacheRef.current.set(cacheKey, nextOptions)
         return nextOptions
@@ -108,8 +178,65 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
         setLoadingLevel((current) => (current === level ? null : current))
       }
     },
-    [api, buildParams]
+    [api, buildParams, item.meta?.childUse]
   )
+
+  useEffect(() => {
+    if (!leafValueMode) {
+      return
+    }
+
+    let cancelled = false
+    async function resolveLeafPath() {
+      const leafValue = String(value ?? '').trim()
+      const childUse = String(item.meta?.childUse || '').trim()
+      const childParentField = String(item.meta?.childParentField || item.meta?.parentField || '').trim()
+      if (!leafValue) {
+        if (keepParentOnEmptyRef.current) {
+          keepParentOnEmptyRef.current = false
+          return
+        }
+        setLeafPathValues([])
+        return
+      }
+      if (!api || !childUse || !childParentField) {
+        setLeafPathValues([])
+        return
+      }
+
+      const result = await request(api, 'get', {
+        type: String(item.meta?.type || 'model').trim() || 'model',
+        use: childUse,
+        selected: leafValue,
+        valueField: String(item.meta?.valueField || 'id').trim() || 'id',
+        labelField: String(item.meta?.labelField || 'name').trim() || 'name',
+        extraFields: childParentField,
+        pageSize: 1,
+      })
+      if (cancelled || result.code !== 0 || !Array.isArray(result.data)) {
+        return
+      }
+
+      const selected = result.data.find((current: any) => String(current?.id) === leafValue) || result.data[0]
+      const parentId = selected?.[childParentField]
+      setLeafPathValues(parentId ? [parentId, selected.id] : [selected.id])
+    }
+
+    void resolveLeafPath()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    api,
+    item.meta?.childParentField,
+    item.meta?.childUse,
+    item.meta?.labelField,
+    item.meta?.parentField,
+    item.meta?.type,
+    item.meta?.valueField,
+    leafValueMode,
+    value,
+  ])
 
   const syncSelectedLabels = useCallback(
     (items: string[]) => {
@@ -181,7 +308,11 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
       setLevels(nextLevels)
       syncSelectedLabels(nextLabels)
       if (nextLevels[0]?.length && !isSameCascaderValues(selectedValues, validValues)) {
-        setValue(validValues)
+        if (leafValueMode) {
+          setLeafPathValues(validValues)
+        } else {
+          setValue(validValues)
+        }
       }
     }
 
@@ -195,17 +326,18 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
     item.meta?.rootValue,
     item.meta?.use,
     fallbackLabels,
+    leafValueMode,
     selectedKeys,
     setValue,
     syncSelectedLabels,
   ])
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {levels.length === 0 ? (
+    <div className="flex w-full flex-wrap items-center gap-2">
+      {displayLevels.length === 0 ? (
         <div
           className={cn(
-            'flex h-10 min-w-[10rem] max-w-[14rem] items-center rounded-md border border-input bg-background px-3 text-sm text-muted-foreground shadow-xs',
+            'flex h-10 min-w-[10rem] w-[14rem] max-w-full items-center rounded-md border border-input bg-background px-3 text-sm text-muted-foreground shadow-xs',
             item.meta?.controlClassName
           )}
         >
@@ -216,7 +348,7 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
               : item.placeholder || '请选择'}
         </div>
       ) : null}
-      {levels.map((options, level) => {
+      {displayLevels.map((options, level) => {
         if (!options.length) {
           return null
         }
@@ -237,11 +369,11 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
               options={options}
               placeholder={loadingLevel === level ? '正在加载...' : placeholder}
               searchPlaceholder={searchPlaceholder}
-              emptyText="未找到匹配地区"
+              emptyText="未找到匹配选项"
               disabled={!!item.meta?.disabled}
               error={!!error}
               className={cn(
-                'min-w-[10rem] max-w-[14rem]',
+                'min-w-[10rem] w-[14rem] max-w-full',
                 item.meta?.controlClassName
               )}
               onChange={(nextValue) => {
@@ -253,6 +385,12 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
                   return
                 }
                 const nextValues = [...selectedValues.slice(0, level), selected.id]
+                if (leafValueMode) {
+                  setLeafPathValues(nextValues)
+                  keepParentOnEmptyRef.current = level === 0 && selected.leaf !== true
+                  setValue(level === 0 && selected.leaf !== true ? '' : selected.id)
+                  return
+                }
                 setValue(nextValues)
               }}
             />
@@ -270,13 +408,19 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
                 return
               }
               const nextValues = [...selectedValues.slice(0, level), selected.id]
+              if (leafValueMode) {
+                setLeafPathValues(nextValues)
+                keepParentOnEmptyRef.current = level === 0 && selected.leaf !== true
+                setValue(level === 0 && selected.leaf !== true ? '' : selected.id)
+                return
+              }
               setValue(nextValues)
             }}
           >
             <SelectTrigger
               aria-invalid={!!error}
               className={cn(
-                'min-w-[10rem] max-w-[14rem]',
+                'min-w-[10rem] w-[14rem] max-w-full',
                 error && 'border-destructive ring-destructive/20 focus-visible:ring-destructive/30',
                 item.meta?.controlClassName
               )}
@@ -305,6 +449,20 @@ function normalizeCascaderValues(value: any) {
     return []
   }
   return [value]
+}
+
+function resolveLeafValueMode(meta: Record<string, any> | undefined) {
+  const mode = String(meta?.valueMode || meta?.saveMode || '').trim().toLowerCase()
+  return mode === 'leaf' || mode === 'last'
+}
+
+function resolveFilterPathValue(
+  path: string,
+  data: Record<string, any>,
+  state: Record<string, any>
+) {
+  const { scope, key } = resolvePath(path)
+  return scope === 'state' ? getByPath(state, key) : getByPath(data, key)
 }
 
 function isSameCascaderValues(left: any[], right: any[]) {

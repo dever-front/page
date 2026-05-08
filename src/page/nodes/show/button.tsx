@@ -167,6 +167,7 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
   return (
     <>
       <Button
+        type="button"
         variant={item.meta?.variant || 'default'}
         size={item.meta?.size || 'sm'}
         className={cn(item.className)}

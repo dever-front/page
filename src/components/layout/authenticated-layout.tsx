@@ -10,7 +10,11 @@ import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppTopbar } from '@/components/layout/app-topbar'
 import { FrontBootScreen } from '@/components/layout/front-boot-screen'
 import { SkipToMain } from '@/components/skip-to-main'
-import { loadMainInfo } from '@/lib/request'
+import {
+  FRONT_RUNTIME_REFRESH_EVENT,
+  loadMainInfo,
+  type FrontRuntimeRefreshDetail,
+} from '@/lib/request'
 import { getResolvedNavGroups } from '@/components/layout/menu'
 
 type AuthenticatedLayoutProps = {
@@ -30,11 +34,13 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   })
 
   useEffect(() => {
-    let cancelled = false
+    let active = true
+    let requestSeq = 0
 
     async function bootstrap() {
+      const seq = ++requestSeq
       const { menu } = await loadMainInfo()
-      if (cancelled) return
+      if (!active || seq !== requestSeq) return
 
       setBootState({
         ready: true,
@@ -42,9 +48,19 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
       })
     }
 
-    bootstrap()
+    function handleRuntimeRefresh(event: Event) {
+      const detail = (event as CustomEvent<FrontRuntimeRefreshDetail>).detail
+      if (detail?.reason !== 'main-sync' && detail?.reason !== 'manual') {
+        return
+      }
+      void bootstrap()
+    }
+
+    void bootstrap()
+    window.addEventListener(FRONT_RUNTIME_REFRESH_EVENT, handleRuntimeRefresh)
     return () => {
-      cancelled = true
+      active = false
+      window.removeEventListener(FRONT_RUNTIME_REFRESH_EVENT, handleRuntimeRefresh)
     }
   }, [])
 

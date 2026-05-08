@@ -10,12 +10,14 @@ import { cn } from '@/lib/utils'
 import { FormInput } from '../../form/input'
 import { FormSelect } from '../../form/select'
 import { FormNumber } from '../../form/number'
+import { FormSwitch } from '../../form/switch'
 import { resolveColumnOptionList } from './options'
 
 type InlineCellProps = {
   column: Column
   value: any
   row: Record<string, any>
+  rowIndex: number
   rowKey: string
   store: PageStore
   onAction: (name: string) => Promise<void>
@@ -28,6 +30,7 @@ export function EditableFormCell({
   column,
   value,
   row,
+  rowIndex,
   rowKey,
   store,
   onAction,
@@ -58,18 +61,21 @@ export function EditableFormCell({
       try {
         const result = await runActionsWithResult(store, inlineAction, {
           row,
+          rowIndex,
           value: nextValue,
           field,
         })
         if (result.success) {
           onValueSaved?.(nextValue)
         }
-        toastActionResult(result, buildInlineToastOptions(column))
+        if (shouldToastInlineAction(result, inlineAction, store.getState().action)) {
+          toastActionResult(result, buildInlineToastOptions(column))
+        }
       } finally {
         setSaving(false)
       }
     },
-    [canEdit, column, draftValue, field, inlineAction, onValueSaved, row, saving, store, value]
+    [canEdit, column, draftValue, field, inlineAction, onValueSaved, row, rowIndex, saving, store, value]
   )
 
   const formItem = {
@@ -90,6 +96,26 @@ export function EditableFormCell({
     return (
       <div className={cn('min-w-[9rem]', saving && 'opacity-70')}>
         <FormSelect
+          item={formItem}
+          value={draftValue}
+          setValue={(nextValue) => {
+            setDraftValue(nextValue)
+            void commit(nextValue)
+          }}
+          option={optionList}
+          runAction={onAction}
+          store={store}
+          layoutId=""
+          error=""
+        />
+      </div>
+    )
+  }
+
+  if (column.type === 'form-switch') {
+    return (
+      <div className={cn('flex min-w-[4rem] items-center justify-center', saving && 'opacity-70')}>
+        <FormSwitch
           item={formItem}
           value={draftValue}
           setValue={(nextValue) => {
@@ -149,6 +175,7 @@ export function EditableShowCell({
   value,
   displayValue,
   row,
+  rowIndex,
   rowKey,
   store,
   onAction,
@@ -191,6 +218,7 @@ export function EditableShowCell({
       try {
         const result = await runActionsWithResult(store, inlineAction, {
           row,
+          rowIndex,
           value: nextValue,
           field,
         })
@@ -198,12 +226,14 @@ export function EditableShowCell({
           onValueSaved?.(nextValue)
           setEditing(false)
         }
-        toastActionResult(result, buildInlineToastOptions(column))
+        if (shouldToastInlineAction(result, inlineAction, store.getState().action)) {
+          toastActionResult(result, buildInlineToastOptions(column))
+        }
       } finally {
         setSaving(false)
       }
     },
-    [canEdit, column, draftValue, field, inlineAction, onValueSaved, row, saving, store, value]
+    [canEdit, column, draftValue, field, inlineAction, onValueSaved, row, rowIndex, saving, store, value]
   )
 
   const cancel = useCallback(() => {
@@ -410,6 +440,41 @@ export function applyInlineRowPatch(
   store.getState().setValueByPath(targetPath, nextRows)
 }
 
+export function applyInlineRowPatchByIndex(
+  store: PageStore,
+  tableValuePath: string,
+  rowIndex: number,
+  patch: Record<string, any>
+) {
+  const targetPath = String(tableValuePath || '').trim()
+  if (!targetPath || !Number.isInteger(rowIndex) || rowIndex < 0) {
+    return
+  }
+
+  const currentRows = store.getState().getValueByPath(targetPath)
+  if (!Array.isArray(currentRows) || rowIndex >= currentRows.length) {
+    return
+  }
+
+  const patchEntries = Object.entries(patch).filter(([field]) => String(field).trim())
+  if (patchEntries.length === 0) {
+    return
+  }
+
+  const nextRows = currentRows.map((currentRow, index) => {
+    if (index !== rowIndex) {
+      return currentRow
+    }
+
+    return patchEntries.reduce(
+      (resultRow, [field, value]) => setByPath(resultRow, field, value),
+      currentRow
+    )
+  })
+
+  store.getState().setValueByPath(targetPath, nextRows)
+}
+
 function resolveEditorType(column: Column) {
   return (
     (column.editor === true ? 'form-input' : '') ||
@@ -530,10 +595,53 @@ function buildInlineEditorStyle(source: unknown, editorType: string): CSSPropert
 }
 
 function buildInlineToastOptions(column: Column) {
+  const fieldName = resolveInlineToastFieldName(column)
   return {
     successMessage: column.meta?.successMessage,
     errorMessage: column.meta?.errorMessage,
-    defaultSuccessMessage: '操作成功',
-    defaultErrorMessage: '修改失败',
+    defaultSuccessMessage: fieldName ? `${fieldName}修改成功` : '操作成功',
+    defaultErrorMessage: fieldName ? `${fieldName}修改失败` : '修改失败',
   }
+}
+
+function resolveInlineToastFieldName(column: Column) {
+  return String(column.name || column.meta?.label || '').trim()
+}
+
+function shouldToastInlineAction(
+  result: { success: boolean },
+  action: any,
+  actionMap: Record<string, any>
+) {
+  if (!result.success) {
+    return true
+  }
+
+  return hasRemoteInlineAction(action, actionMap)
+}
+
+function hasRemoteInlineAction(
+  action: any,
+  actionMap: Record<string, any>,
+  visited = new Set<string>()
+): boolean {
+  if (Array.isArray(action)) {
+    return action.some((current) => hasRemoteInlineAction(current, actionMap, visited))
+  }
+
+  if (typeof action === 'string') {
+    if (visited.has(action)) {
+      return false
+    }
+    visited.add(action)
+    return hasRemoteInlineAction(actionMap[action], actionMap, visited)
+  }
+
+  if (!action || typeof action !== 'object') {
+    return false
+  }
+
+  return ['request', 'save', 'delete', 'export', 'import'].includes(
+    String(action.type || '').trim().toLowerCase()
+  )
 }

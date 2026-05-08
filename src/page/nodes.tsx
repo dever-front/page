@@ -37,6 +37,8 @@ export type NodeItemProps = {
   store: PageStore
   layoutId: string
   error?: string
+  row?: Record<string, any>
+  setRow?: (nextRow: Record<string, any>) => void
 }
 
 // ========== NodeList: 渲染某个 layout 下的所有 nodes ==========
@@ -141,7 +143,9 @@ function ModeWrapper({
   const mode = item.mode
 
   if (mode === 'form') {
-    if (item.meta?.formLayout === 'horizontal') {
+    const formLayout = item.meta?.formLayout ?? 'horizontal'
+
+    if (formLayout === 'horizontal') {
       const hasHelperText = Boolean(error || item.info)
 
       return (
@@ -252,13 +256,44 @@ function useNodeSetValue(store: PageStore, item: Item) {
   return useCallback(
     (newValue: any) => {
       if (!item.value) return
+      const previousValue = store.getState().getValueByPath(item.value)
       store.getState().setValueByPath(item.value, newValue)
+      if (!isSameNodeValue(previousValue, newValue)) {
+        clearDependentValues(store, item)
+      }
       if (item.validate?.length) {
         store.getState().validateItem(item)
       }
     },
     [item, store]
   )
+}
+
+function clearDependentValues(store: PageStore, item: Item) {
+  const clearPaths = normalizeClearOnChangePaths(item.meta?.clearOnChange)
+  for (const path of clearPaths) {
+    if (path && path !== item.value) {
+      store.getState().setValueByPath(path, '')
+    }
+  }
+}
+
+function normalizeClearOnChangePaths(value: unknown) {
+  const paths = Array.isArray(value) ? value : String(value || '').split(',')
+  return Array.from(
+    new Set(
+      paths
+        .map((path) => String(path || '').trim())
+        .filter(Boolean)
+    )
+  )
+}
+
+function isSameNodeValue(left: unknown, right: unknown) {
+  if (left === right) {
+    return true
+  }
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
 }
 
 function useNodeError(store: PageStore, itemId?: string) {

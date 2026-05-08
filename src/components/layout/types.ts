@@ -25,7 +25,7 @@ type NavLink = BaseNavItem & {
 }
 
 type NavCollapsible = BaseNavItem & {
-  items: NavLink[]
+  items: NavItem[]
   url?: never
 }
 

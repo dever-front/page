@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -30,6 +30,7 @@ type ResourcePreviewDialogProps = {
   items?: UploadFileItem[]
   initialItemId?: string | number
   onOpenChange: (open: boolean) => void
+  renderActions?: (item?: UploadFileItem) => ReactNode
 }
 
 export function ResourcePreviewDialog({
@@ -39,6 +40,7 @@ export function ResourcePreviewDialog({
   items = [],
   initialItemId,
   onOpenChange,
+  renderActions,
 }: ResourcePreviewDialogProps) {
   const previewItems = useMemo(() => items.filter(Boolean), [items])
   const [activeIndex, setActiveIndex] = useState(0)
@@ -86,7 +88,10 @@ export function ResourcePreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[88vh] max-h-[88vh] max-w-5xl flex-col gap-0 overflow-hidden p-0">
+      <DialogContent
+        layerClassName="z-[80]"
+        className="flex h-[88vh] max-h-[88vh] max-w-5xl flex-col gap-0 overflow-hidden p-0"
+      >
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -141,6 +146,7 @@ export function ResourcePreviewDialog({
             </div>
 
             <div className="flex shrink-0 flex-nowrap items-center gap-2 sm:justify-end">
+              {renderActions?.(currentItem)}
               {hasMultiple ? (
                 <>
                   <Button type="button" variant="outline" onClick={() => jumpTo(-1)}>

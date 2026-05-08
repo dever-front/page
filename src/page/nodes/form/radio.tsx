@@ -2,13 +2,52 @@
  * Form/Radio.tsx - 单选组
  */
 import { cn } from '@/lib/utils'
+import { setByPath } from '@/lib/path'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import type { NodeItemProps } from '../../nodes'
 
-export function FormRadio({ item, value, setValue, option, optionLoading }: NodeItemProps) {
+export function FormRadio({
+  item,
+  value,
+  setValue,
+  option,
+  optionLoading,
+  store,
+  row,
+  setRow,
+}: NodeItemProps) {
   const options = option || []
   const optionDirection = item.meta?.optionDirection === 'vertical' ? 'vertical' : 'horizontal'
+  const clearPaths = normalizeClearOnChangePaths(item.meta?.clearOnChange)
+
+  const handleValueChange = (nextValue: string) => {
+    if (String(value ?? '') === String(nextValue ?? '')) {
+      return
+    }
+
+    if (row && setRow) {
+      const fieldPath = normalizeRowFieldPath(item.value)
+      let nextRow = fieldPath ? setByPath(row, fieldPath, nextValue) : row
+
+      for (const path of clearPaths) {
+        const rowPath = normalizeRowFieldPath(path)
+        if (rowPath) {
+          nextRow = setByPath(nextRow, rowPath, '')
+          continue
+        }
+        store.getState().setValueByPath(path, '')
+      }
+
+      setRow(nextRow)
+      return
+    }
+
+    setValue(nextValue)
+    for (const path of clearPaths) {
+      store.getState().setValueByPath(path, '')
+    }
+  }
 
   if (optionLoading && options.length === 0) {
     return <p className="text-sm text-muted-foreground">正在加载选项...</p>
@@ -19,7 +58,7 @@ export function FormRadio({ item, value, setValue, option, optionLoading }: Node
       id={item.id}
       value={value != null ? String(value) : ''}
       disabled={!!item.meta?.disabled}
-      onValueChange={(val) => setValue(val)}
+      onValueChange={handleValueChange}
       className={cn(
         optionDirection === 'vertical'
           ? 'flex flex-col gap-2'
@@ -28,13 +67,45 @@ export function FormRadio({ item, value, setValue, option, optionLoading }: Node
       )}
     >
       {options.map((opt) => (
-        <div key={String(opt.id)} className="flex items-center gap-2.5">
+        <Label
+          key={String(opt.id)}
+          htmlFor={`${item.id}-${opt.id}`}
+          className="flex cursor-pointer items-center gap-2.5 font-normal"
+        >
           <RadioGroupItem value={String(opt.id)} id={`${item.id}-${opt.id}`} />
-          <Label htmlFor={`${item.id}-${opt.id}`} className="font-normal">
-            {opt.value}
-          </Label>
-        </div>
+          <span>{opt.value}</span>
+        </Label>
       ))}
     </RadioGroup>
   )
+}
+
+function normalizeClearOnChangePaths(value: unknown) {
+  const paths = Array.isArray(value) ? value : String(value || '').split(',')
+  return Array.from(
+    new Set(
+      paths
+        .map((path) => String(path || '').trim())
+        .filter(Boolean)
+    )
+  )
+}
+
+function normalizeRowFieldPath(path?: string) {
+  const value = String(path || '').trim()
+  if (
+    !value ||
+    value.startsWith('data.') ||
+    value.startsWith('state.') ||
+    value.startsWith('parent.')
+  ) {
+    return ''
+  }
+  if (value === 'form') {
+    return ''
+  }
+  if (value.startsWith('form.')) {
+    return value.slice(5)
+  }
+  return value
 }

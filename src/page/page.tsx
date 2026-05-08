@@ -8,10 +8,23 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { validatePageSchema, type PageSchemaType } from '@/lib/schema'
 import { createPageStore, PageStoreContext, type PageStore } from '@/lib/store'
 import { runAction } from '@/lib/action'
-import { isSamePageReloadRoute, PAGE_RELOAD_EVENT, type PageReloadDetail } from '@/lib/page-reload'
+import {
+  finishPageReload,
+  isSamePageReloadRoute,
+  PAGE_RELOAD_EVENT,
+  type PageReloadDetail,
+} from '@/lib/page-reload'
 import { loadPageSchema } from '@/lib/request'
 import { getSiteConfig } from '@/config/app-config'
-import { finishPageProgress, startPageProgress } from '@/lib/page-progress'
+import {
+  finishPageProgress,
+  startPageProgress,
+} from '@/lib/page-progress'
+import {
+  getActiveRouteNavigationKey,
+  getCurrentRouteNavigationKey,
+  normalizeRouteKey,
+} from '@/lib/route-key'
 import { LayoutRenderer } from './layout'
 
 type PageProps = {
@@ -47,10 +60,6 @@ function buildPageLoadKey(route?: string, schema?: any) {
   return `route:${String(route || '').trim()}`
 }
 
-function buildPageProgressPath(route?: string) {
-  return String(route || '').split('?')[0].replace(/^\/+|\/+$/g, '')
-}
-
 export function Page({
   route,
   schema: schemaProp,
@@ -65,7 +74,6 @@ export function Page({
   const [reloadVersion, setReloadVersion] = useState(0)
   const hasLoadedRef = useRef(false)
   const loadedKeyRef = useRef('')
-  const loadedProgressPathRef = useRef('')
   const loadKey = buildPageLoadKey(route, schemaProp)
 
   useEffect(() => {
@@ -94,13 +102,21 @@ export function Page({
 
     async function load() {
       const isNewPage = loadedKeyRef.current !== loadKey
-      const progressPath = buildPageProgressPath(route)
+      const routeProgressKey = normalizeRouteKey(route)
+      const currentBrowserNavigationKey = getCurrentRouteNavigationKey()
+      const currentBrowserRouteKey = currentBrowserNavigationKey.split('@')[0] || ''
+      const activeNavigationKey = getActiveRouteNavigationKey()
+      const progressRequestKey = reloadVersion > 0
+        ? `${activeNavigationKey || currentBrowserNavigationKey}:reload:${reloadVersion}`
+        : currentBrowserNavigationKey
       const shouldTrackProgress =
         !schemaProp &&
-        !!route &&
-        !!progressPath &&
-        (!hasLoadedRef.current || loadedProgressPathRef.current !== progressPath)
-      const progressKey = `${loadKey}:${reloadVersion}`
+        !!routeProgressKey &&
+        routeProgressKey === currentBrowserRouteKey &&
+        currentBrowserNavigationKey === activeNavigationKey
+      const progressToken = shouldTrackProgress
+        ? startPageProgress(route || '', progressRequestKey)
+        : ''
       setLoading(isNewPage || !hasLoadedRef.current)
       setError(null)
 
@@ -112,10 +128,9 @@ export function Page({
           raw = schemaProp
         } else if (route) {
           // 从远程加载
-          if (shouldTrackProgress) {
-            startPageProgress(progressKey)
-          }
-          raw = await loadPageSchema(route)
+          raw = await loadPageSchema(route, {
+            skipValueCache: reloadVersion > 0,
+          })
         }
 
         if (cancelled) return
@@ -130,7 +145,6 @@ export function Page({
         const validated = validatePageSchema(raw)
         setPageSchema(validated)
         loadedKeyRef.current = loadKey
-        loadedProgressPathRef.current = progressPath
         setLoadedKey(loadKey)
         hasLoadedRef.current = true
       } catch (err: any) {
@@ -139,8 +153,11 @@ export function Page({
           setError(err.message || '页面加载失败')
         }
       } finally {
-        if (shouldTrackProgress) {
-          finishPageProgress(progressKey)
+        if (progressToken) {
+          finishPageProgress(progressToken)
+        }
+        if (route) {
+          finishPageReload(route)
         }
         if (!cancelled) {
           setLoading(false)
@@ -150,7 +167,12 @@ export function Page({
 
     load()
     return () => { cancelled = true }
-  }, [loadKey, route, schemaProp, reloadVersion])
+  }, [
+    loadKey,
+    reloadVersion,
+    route,
+    schemaProp,
+  ])
 
   const isStalePage = loadedKey !== loadKey
 

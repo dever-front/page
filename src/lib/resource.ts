@@ -40,6 +40,11 @@ export type ResourceUploadRule = {
   categoryId?: string | number
 }
 
+export function normalizeResourceSourceName(value: unknown) {
+  const normalizedValue = String(value || '').trim()
+  return normalizedValue === 'Energon生成' ? 'AI生成' : normalizedValue
+}
+
 export function normalizeResourceCategoryId(value: unknown) {
   const normalizedValue = String(value || '').trim()
   if (
@@ -128,7 +133,7 @@ export async function listResourceSources(input?: { kind?: string }) {
   return result.data
     .map((item) => ({
       id: String(item?.id || '').trim(),
-      value: String(item?.value || item?.id || '').trim(),
+      value: normalizeResourceSourceName(item?.value || item?.id),
     }))
     .filter((item) => item.id && item.value)
 }
@@ -183,13 +188,13 @@ export function buildFilterSourceItems(
   fallbackSourceName?: string
 ) {
   const normalizedFallbackKey = String(fallbackSourceKey || '').trim()
-  const normalizedFallbackName = String(fallbackSourceName || '').trim()
+  const normalizedFallbackName = normalizeResourceSourceName(fallbackSourceName)
   const result: ResourceSourceItem[] = []
   const seen = new Set<string>()
 
   const appendItem = (item?: ResourceSourceItem | null) => {
     const id = String(item?.id || '').trim()
-    const value = String(item?.value || '').trim()
+    const value = normalizeResourceSourceName(item?.value)
     if (!id || !value || seen.has(id)) {
       return
     }
@@ -497,20 +502,39 @@ export function resolveResourceKind(input?: {
 }
 
 export function normalizeResourceUploadRules(value: unknown) {
-  if (!Array.isArray(value)) {
+  const source = resolveResourceUploadRuleSource(value)
+  if (!Array.isArray(source)) {
     return [] as ResourceUploadRule[]
   }
 
-  return value
+  return source
     .map((item) => ({
       ruleId: Number(item?.ruleId || item?.rule_id || 0),
       accept: String(item?.accept || '').trim() || undefined,
       kind: String(item?.kind || '').trim() || undefined,
       bizKey: String(item?.bizKey || item?.biz_key || '').trim() || undefined,
-      bizName: String(item?.bizName || item?.biz_name || '').trim() || undefined,
+      bizName: normalizeResourceSourceName(item?.bizName || item?.biz_name) || undefined,
       categoryId: item?.categoryId ?? item?.category_id,
     }))
     .filter((item) => item.ruleId > 0)
+}
+
+function resolveResourceUploadRuleSource(value: unknown) {
+  if (Array.isArray(value)) {
+    return value
+  }
+
+  const raw = String(value || '').trim()
+  if (!raw || (!raw.startsWith('[') && !raw.startsWith('{'))) {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
 }
 
 export function mergeResourceUploadRules(

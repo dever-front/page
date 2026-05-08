@@ -34,6 +34,7 @@ import { getByPath } from '@/lib/path'
 import { ShowSelect } from './select'
 import { ShowStatus } from './status'
 import { ShowTag } from './tag'
+import { ShowDate } from './date'
 import { ShowRich } from './rich'
 import { InlineTip } from './tooltip'
 import { cn, formatDisplayValue } from '@/lib/utils'
@@ -60,6 +61,7 @@ import {
   EditableFormCell,
   EditableShowCell,
   applyInlineRowPatch,
+  applyInlineRowPatchByIndex,
   buildInlineChangeAction,
   canUseInlineEdit,
 } from './table/inline-edit'
@@ -342,6 +344,7 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
                             column={col}
                             value={col.value ? getByPath(row, col.value) : ''}
                             row={row}
+                            rowIndex={rowIdx}
                             rowKey={rowKey}
                             tableValuePath={String(item.value || '')}
                             treeMeta={
@@ -583,6 +586,7 @@ function CellRenderer({
   column,
   value,
   row,
+  rowIndex,
   rowKey,
   tableValuePath,
   treeMeta,
@@ -596,6 +600,7 @@ function CellRenderer({
   column: Column
   value: any
   row: any
+  rowIndex: number
   rowKey: string
   tableValuePath: string
   treeMeta?: {
@@ -653,7 +658,7 @@ function CellRenderer({
         buttonMeta={buttonMeta}
         store={store}
         record={row}
-        context={{ row }}
+        context={{ row, rowIndex }}
         defaultVariant={type === 'show-button' ? 'default' : 'ghost'}
         defaultSize="sm"
       />
@@ -666,11 +671,18 @@ function CellRenderer({
         return
       }
 
+      if (usesArrayInlineAction(inlineAction, store.getState().action)) {
+        applyInlineRowPatchByIndex(store, tableValuePath, rowIndex, {
+          [column.value]: nextValue,
+        })
+        return
+      }
+
       applyInlineRowPatch(store, tableValuePath, rowKey, row, {
         [column.value]: nextValue,
       })
     },
-    [column.value, row, rowKey, store, tableValuePath]
+    [column.value, inlineAction, row, rowIndex, rowKey, store, tableValuePath]
   )
 
   switch (type) {
@@ -812,6 +824,22 @@ function CellRenderer({
         />
       )
 
+    case 'show-date':
+      return (
+        <ShowDate
+          item={{
+            type,
+            value: column.value,
+            meta: column.meta,
+          }}
+          value={displayValue}
+          setValue={() => {}}
+          runAction={onAction}
+          store={store}
+          layoutId=''
+        />
+      )
+
     case 'show-base':
     case 'show-text':
       if (editorType && canInlineEdit) {
@@ -821,6 +849,7 @@ function CellRenderer({
             value={value}
             displayValue={displayValue}
             row={row}
+            rowIndex={rowIndex}
             rowKey={rowKey}
             store={store}
             onAction={onAction}
@@ -846,6 +875,7 @@ function CellRenderer({
     case 'form-input':
     case 'form-number':
     case 'form-select':
+    case 'form-switch':
       if (!canInlineEdit) {
         return <span className="text-sm">{formatCellText(formattedValue)}</span>
       }
@@ -855,6 +885,7 @@ function CellRenderer({
           column={column}
           value={value}
           row={row}
+          rowIndex={rowIndex}
           rowKey={rowKey}
           store={store}
           onAction={onAction}
@@ -1031,6 +1062,30 @@ function CellRenderer({
     default:
       return <span className="text-sm">{formatCellText(formattedValue)}</span>
   }
+}
+
+function usesArrayInlineAction(
+  action: any,
+  actionMap: Record<string, any>,
+  visited = new Set<string>()
+): boolean {
+  if (Array.isArray(action)) {
+    return action.some((current) => usesArrayInlineAction(current, actionMap, visited))
+  }
+
+  if (typeof action === 'string') {
+    if (visited.has(action)) {
+      return false
+    }
+    visited.add(action)
+    return usesArrayInlineAction(actionMap[action], actionMap, visited)
+  }
+
+  if (!action || typeof action !== 'object') {
+    return false
+  }
+
+  return String(action.type || '').trim().toLowerCase() === 'array'
 }
 
 function TreeCellContent({

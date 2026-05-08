@@ -11,6 +11,7 @@ import {
   collectOptionFilterDependencies,
   sanitizeFilteredValue,
 } from '@/lib/option-filter'
+import { collectOptionParamPaths, resolveOptionParams } from '@/lib/option-params'
 
 const remoteOptionPromiseCache = new Map<string, Promise<OptionItem[] | undefined>>()
 
@@ -23,7 +24,8 @@ export type ResolvedNodeOption = {
 export function useNodeOption(
   store: PageStore,
   optionConfig?: Item['option'],
-  item?: Pick<Item, 'id' | 'type' | 'mode' | 'meta' | 'value'>
+  item?: Pick<Item, 'id' | 'type' | 'mode' | 'meta' | 'value'>,
+  row?: Record<string, any>
 ): ResolvedNodeOption {
   const staticOption = useMemo(() => {
     if (Array.isArray(optionConfig)) {
@@ -81,9 +83,18 @@ export function useNodeOption(
       [reloadPaths]
     )
   )
+  const rowReloadKey = useMemo(
+    () =>
+      JSON.stringify(
+        collectOptionParamPaths(item?.meta?.optionParams)
+          .filter((path) => path.startsWith('row.'))
+          .map((path) => getByPath(row, path.slice(4)))
+      ),
+    [item?.meta?.optionParams, row]
+  )
   const remoteCacheKey = useMemo(
-    () => (remoteUrl ? `${resetVersion}:${remoteUrl}:${reloadKey}:${parentReloadKey}` : ''),
-    [parentReloadKey, reloadKey, remoteUrl, resetVersion]
+    () => (remoteUrl ? `${resetVersion}:${remoteUrl}:${reloadKey}:${parentReloadKey}:${rowReloadKey}` : ''),
+    [parentReloadKey, reloadKey, remoteUrl, resetVersion, rowReloadKey]
   )
   const [remoteOption, setRemoteOption] = useState<OptionItem[] | undefined>(undefined)
   const [optionLoading, setOptionLoading] = useState(false)
@@ -171,7 +182,7 @@ export function useNodeOption(
 
     setOptionLoading(true)
     pendingKeyRef.current = remoteRequestKey
-    const pending = request(buildRemoteOptionURL(remoteUrl, keyword, selectedValue, item))
+    const pending = request(buildRemoteOptionURL(remoteUrl, keyword, selectedValue, item, store, row))
       .then((result) => {
         const nextOption =
           result.code === 0 && Array.isArray(result.data)
@@ -201,7 +212,7 @@ export function useNodeOption(
     pendingRef.current = pending
     remoteOptionPromiseCache.set(remoteRequestKey, pending)
     return pending
-  }, [item, pathOption, remoteCacheKey, remoteOption, remoteUrl, staticOption])
+  }, [item, pathOption, remoteCacheKey, remoteOption, remoteUrl, row, staticOption, store])
 
   useEffect(() => {
     if (!remoteUrl || shouldLazyLoad) {
@@ -331,12 +342,17 @@ function buildRemoteOptionURL(
   remoteUrl: string,
   keyword: string | undefined,
   selectedValue: unknown,
-  item?: Pick<Item, 'meta'>
+  item: Pick<Item, 'meta'> | undefined,
+  store: PageStore,
+  row?: Record<string, any>
 ) {
   const normalizedKeyword = normalizeRemoteOptionKeyword(keyword)
   const normalizedSelected = normalizeRemoteOptionSelectedValue(selectedValue)
 
   const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(resolveOptionParams(item?.meta?.optionParams, { store, row }))) {
+    params.set(key, value)
+  }
   if (normalizedKeyword) {
     const keywordParam = String(item?.meta?.optionKeywordParam || 'keyword').trim() || 'keyword'
     params.set(keywordParam, normalizedKeyword)
@@ -409,14 +425,14 @@ function shouldLazyLoadRemoteOption(item?: Pick<Item, 'type' | 'mode' | 'meta'>)
 
 function resolveOptionReloadPaths(item?: Pick<Item, 'meta'>) {
   const rawValue = item?.meta?.optionReloadPaths
+  const paramPaths = collectOptionParamPaths(item?.meta?.optionParams)
   if (typeof rawValue === 'string') {
     const path = rawValue.trim()
-    return path ? [path] : []
+    return Array.from(new Set([...(path ? [path] : []), ...paramPaths]))
   }
 
-  if (!Array.isArray(rawValue)) {
-    return [] as string[]
-  }
-
-  return rawValue.map((item) => String(item || '').trim()).filter(Boolean)
+  const explicitPaths = Array.isArray(rawValue)
+    ? rawValue.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+  return Array.from(new Set([...explicitPaths, ...paramPaths]))
 }

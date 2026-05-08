@@ -1,38 +1,41 @@
+import { normalizeRouteKey } from './route-key'
+
 export const PAGE_RELOAD_EVENT = 'app:page-reload'
 
 export type PageReloadDetail = {
   route: string
 }
 
+const reloadingRoutes = new Set<string>()
+
 export function emitPageReload(route: string) {
   if (typeof window === 'undefined') {
-    return
+    return false
   }
 
-  const normalizedRoute = normalizePageReloadRoute(route)
-  if (!normalizedRoute) {
-    return
+  const normalizedRoute = normalizeRouteKey(route)
+  if (!normalizedRoute || reloadingRoutes.has(normalizedRoute)) {
+    return false
   }
 
+  reloadingRoutes.add(normalizedRoute)
   window.dispatchEvent(
     new CustomEvent<PageReloadDetail>(PAGE_RELOAD_EVENT, {
       detail: { route: normalizedRoute },
     })
   )
+  return true
+}
+
+export function finishPageReload(route: string) {
+  const normalizedRoute = normalizeRouteKey(route)
+  if (!normalizedRoute) {
+    return
+  }
+
+  reloadingRoutes.delete(normalizedRoute)
 }
 
 export function isSamePageReloadRoute(currentRoute: string, targetRoute: string) {
-  return normalizePageReloadRoute(currentRoute) === normalizePageReloadRoute(targetRoute)
-}
-
-function normalizePageReloadRoute(route: string) {
-  const normalized = String(route || '').trim()
-  if (!normalized) {
-    return ''
-  }
-
-  const [pathname, query = ''] = normalized.split('?')
-  const normalizedPath = pathname.replace(/^\/+/, '/').replace(/\/+$/, '') || '/'
-  const normalizedQuery = new URLSearchParams(query).toString()
-  return normalizedQuery ? `${normalizedPath}?${normalizedQuery}` : normalizedPath
+  return normalizeRouteKey(currentRoute) === normalizeRouteKey(targetRoute)
 }

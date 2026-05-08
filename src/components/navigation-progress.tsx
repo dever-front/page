@@ -1,14 +1,48 @@
-import { useEffect, useRef, type MutableRefObject, type RefObject } from 'react'
-import LoadingBar, { type LoadingBarRef } from 'react-top-loading-bar'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from 'react'
+import { useLocation } from '@tanstack/react-router'
 import { PAGE_PROGRESS_EVENT, type PageProgressDetail } from '@/lib/page-progress'
+import {
+  buildRouteNavigationKey,
+  setActiveRouteNavigationKey,
+} from '@/lib/route-key'
 
-const START_DELAY = 0
+const START_PROGRESS = 12
+const ACTIVE_PROGRESS = 72
+const FINISH_PROGRESS = 100
+const HIDE_DELAY = 260
+
+type ProgressState = {
+  key: string
+  visible: boolean
+  value: number
+  version: number
+}
 
 export function NavigationProgress() {
-  const ref = useRef<LoadingBarRef>(null)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const activeRef = useRef(false)
-  const pageLoadingKeysRef = useRef(new Set<string>())
+  const routeNavigationKey = useLocation({
+    select: (location) => buildRouteNavigationKey(location.href, location.state),
+  })
+  const currentKeyRef = useRef('')
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const frameRef = useRef<number | null>(null)
+  const [progress, setProgress] = useState<ProgressState>({
+    key: '',
+    visible: false,
+    value: 0,
+    version: 0,
+  })
+
+  useLayoutEffect(() => {
+    setActiveRouteNavigationKey(routeNavigationKey)
+  }, [routeNavigationKey])
 
   useEffect(() => {
     const handlePageProgress = (event: Event) => {
@@ -19,74 +53,123 @@ export function NavigationProgress() {
       }
 
       if (detail.type === 'start') {
-        pageLoadingKeysRef.current.add(key)
-      } else {
-        pageLoadingKeysRef.current.delete(key)
+        currentKeyRef.current = key
+        startLoadingBar(key, hideTimerRef, frameRef, setProgress)
+        return
       }
 
-      updateLoadingBar(
-        ref,
-        timerRef,
-        activeRef,
-        pageLoadingKeysRef.current.size > 0
-      )
+      if (key !== currentKeyRef.current) {
+        return
+      }
+
+      currentKeyRef.current = ''
+      finishLoadingBar(key, hideTimerRef, frameRef, setProgress)
     }
 
     window.addEventListener(PAGE_PROGRESS_EVENT, handlePageProgress)
     return () => {
       window.removeEventListener(PAGE_PROGRESS_EVENT, handlePageProgress)
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current)
-        timerRef.current = null
-      }
+      clearProgressTimers(hideTimerRef, frameRef)
     }
   }, [])
 
   return (
-    <LoadingBar
-      color='var(--muted-foreground)'
-      ref={ref}
-      shadow={true}
-      height={2}
-    />
+    <div
+      className='pointer-events-none fixed inset-x-0 top-0 z-[99999999999] h-0.5 bg-transparent'
+      aria-hidden='true'
+    >
+      {progress.visible ? (
+        <div
+          key={progress.version}
+          className='h-full bg-muted-foreground shadow-[0_0_10px_var(--muted-foreground)] transition-[width,opacity] duration-300 ease-out'
+          style={{
+            width: `${progress.value}%`,
+            opacity: progress.value > 0 ? 1 : 0,
+          }}
+        />
+      ) : null}
+    </div>
   )
 }
 
-function updateLoadingBar(
-  ref: RefObject<LoadingBarRef | null>,
-  timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
-  activeRef: MutableRefObject<boolean>,
-  loading: boolean
+function startLoadingBar(
+  key: string,
+  hideTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  frameRef: MutableRefObject<number | null>,
+  setProgress: Dispatch<SetStateAction<ProgressState>>
 ) {
-  if (loading) {
-    if (!timerRef.current && !activeRef.current) {
-      if (START_DELAY <= 0) {
-        activeRef.current = true
-        ref.current?.continuousStart()
-        return
-      }
+  clearProgressTimers(hideTimerRef, frameRef)
 
-      timerRef.current = setTimeout(() => {
-        timerRef.current = null
-        activeRef.current = true
-        ref.current?.continuousStart()
-      }, START_DELAY)
-    }
-    return
+  setProgress((current) => ({
+    key,
+    visible: true,
+    value: START_PROGRESS,
+    version: current.version + 1,
+  }))
+
+  frameRef.current = requestAnimationFrame(() => {
+    frameRef.current = null
+    setProgress((current) =>
+      current.key === key
+        ? {
+            ...current,
+            value: ACTIVE_PROGRESS,
+          }
+        : current
+    )
+  })
+}
+
+function finishLoadingBar(
+  key: string,
+  hideTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  frameRef: MutableRefObject<number | null>,
+  setProgress: Dispatch<SetStateAction<ProgressState>>
+) {
+  if (frameRef.current !== null) {
+    cancelAnimationFrame(frameRef.current)
+    frameRef.current = null
   }
 
-  if (timerRef.current) {
-    clearTimeout(timerRef.current)
-    timerRef.current = null
+  setProgress((current) =>
+    current.key === key
+      ? {
+          ...current,
+          value: FINISH_PROGRESS,
+        }
+      : current
+  )
+
+  if (hideTimerRef.current) {
+    clearTimeout(hideTimerRef.current)
   }
 
-  if (activeRef.current) {
-    activeRef.current = false
-    ref.current?.complete()
+  hideTimerRef.current = setTimeout(() => {
+    hideTimerRef.current = null
+    setProgress((current) =>
+      current.key === key
+        ? {
+            ...current,
+            key: '',
+            visible: false,
+            value: 0,
+          }
+        : current
+    )
+  }, HIDE_DELAY)
+}
+
+function clearProgressTimers(
+  hideTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  frameRef: MutableRefObject<number | null>
+) {
+  if (hideTimerRef.current) {
+    clearTimeout(hideTimerRef.current)
+    hideTimerRef.current = null
+  }
+
+  if (frameRef.current !== null) {
+    cancelAnimationFrame(frameRef.current)
+    frameRef.current = null
   }
 }

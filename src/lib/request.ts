@@ -4,6 +4,7 @@
  */
 import { getRuntimeConfig } from '@/config/app-config'
 import { getCookie } from '@/lib/cookies'
+import { resetPageProgressCache } from '@/lib/page-progress'
 import { ACCESS_TOKEN_KEY, useAuthStore } from '@/stores/auth-store'
 
 export type RequestResult = {
@@ -13,6 +14,7 @@ export type RequestResult = {
 }
 
 export const REQUEST_ERROR_EVENT = 'app:request-error'
+export const FRONT_RUNTIME_REFRESH_EVENT = 'app:front-runtime-refresh'
 
 export type RequestErrorDetail = {
   code?: number
@@ -26,9 +28,20 @@ export type MainInfoResult = {
   authRules: any[]
 }
 
+export type FrontRuntimeRefreshDetail = {
+  reason: 'main-sync' | 'manual'
+}
+
+type BackendResponseError = Error & {
+  backendResponse?: any
+  httpStatus?: number
+}
+
 let mainInfoPromise: Promise<MainInfoResult> | null = null
 let mainInfoCacheToken = ''
 const remoteSchemaPromiseCache = new Map<string, Promise<any>>()
+const remoteSchemaValueCache = new Map<string, { data: any; expiresAt: number }>()
+const REMOTE_SCHEMA_VALUE_CACHE_TTL = 1000
 
 function normalizeRequestMethod(method: string = 'get') {
   return method.toLowerCase()
@@ -40,6 +53,18 @@ function emitRequestError(detail: RequestErrorDetail) {
   }
 
   window.dispatchEvent(new CustomEvent<RequestErrorDetail>(REQUEST_ERROR_EVENT, { detail }))
+}
+
+function emitFrontRuntimeRefresh(detail: FrontRuntimeRefreshDetail) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.dispatchEvent(
+    new CustomEvent<FrontRuntimeRefreshDetail>(FRONT_RUNTIME_REFRESH_EVENT, {
+      detail,
+    })
+  )
 }
 
 function joinFrontApi(path: string) {
@@ -73,6 +98,11 @@ export function resolveRequestUrl(api: string) {
 
   if (api.startsWith('/upload/')) {
     return resolveAssetUrl(api)
+  }
+
+  if (api.startsWith('/')) {
+    const origin = resolveRuntimeOrigin()
+    return origin ? `${origin}${api}` : api
   }
 
   return api
@@ -165,6 +195,55 @@ function normalizeRoute(route: string) {
 }
 
 /**
+ * 发起原始请求，返回后端原始 JSON。
+ * 适合业务自己消费非 CRUD 标准结构，例如 Energon 流式帧。
+ */
+export async function requestRaw(
+  api: string,
+  method: string = 'get',
+  params?: any
+): Promise<any> {
+  const normalizedMethod = normalizeRequestMethod(method)
+  const fetchMethod = normalizedMethod.toUpperCase()
+  const isGetMethod = normalizedMethod === 'get'
+  const isFormData =
+    typeof FormData !== 'undefined' && params instanceof FormData
+  const headers: Record<string, string> = {}
+  if (!isFormData) {
+    headers['Content-Type'] = 'application/json'
+  }
+  applyAccessTokenHeader(headers)
+  applyClientPageHeader(headers)
+  const options: RequestInit = {
+    method: fetchMethod,
+    headers,
+  }
+
+  let url = resolveRequestUrl(api)
+
+  if (isGetMethod && params && !isFormData) {
+    url = appendQueryString(url, params)
+  } else if (params) {
+    options.body = isFormData ? params : JSON.stringify(params)
+  }
+
+  const response = await fetch(url, options)
+  const rawText = await response.text()
+  const result = rawText ? parseResponseBody(rawText) : null
+  if (!response.ok) {
+    if (isBackendResponseEnvelope(result)) {
+      throw createBackendResponseError(result, response.status)
+    }
+    const message =
+      result && typeof result === 'object'
+        ? String(result.msg ?? result.message ?? `请求失败(${response.status})`)
+        : `请求失败(${response.status})`
+    throw new Error(message)
+  }
+  return result
+}
+
+/**
  * 发起请求
  * 统一走真实 HTTP 请求
  */
@@ -175,31 +254,7 @@ export async function request(
 ): Promise<RequestResult> {
   try {
     const normalizedMethod = normalizeRequestMethod(method)
-    const fetchMethod = normalizedMethod.toUpperCase()
-    const isGetMethod = normalizedMethod === 'get'
-    const isFormData =
-      typeof FormData !== 'undefined' && params instanceof FormData
-    const headers: Record<string, string> = {}
-    if (!isFormData) {
-      headers['Content-Type'] = 'application/json'
-    }
-    applyAccessTokenHeader(headers)
-    applyClientPageHeader(headers)
-    const options: RequestInit = {
-      method: fetchMethod,
-      headers,
-    }
-
-    let url = resolveRequestUrl(api)
-
-    if (isGetMethod && params && !isFormData) {
-      url = appendQueryString(url, params)
-    } else if (params) {
-      options.body = isFormData ? params : JSON.stringify(params)
-    }
-
-    const response = await fetch(url, options)
-    const result = await response.json()
+    const result = await requestRaw(api, method, params)
 
     if (
       result &&
@@ -207,9 +262,31 @@ export async function request(
       'status' in result &&
       'data' in result
     ) {
+      const normalized = normalizeBackendResponse(result)
+
+      if (
+        Number(result.status) === 2 &&
+        normalized.message
+      ) {
+        emitRequestError({
+          code: normalized.code,
+          message: normalized.message,
+        })
+      }
+
+      applyRuntimeRequestSideEffects(api, normalizedMethod, normalized)
+      return normalized
+    }
+
+    if (
+      result &&
+      typeof result === 'object' &&
+      'status' in result &&
+      'content' in result
+    ) {
       const normalized: RequestResult = {
         code: result.status === 1 ? 0 : Number(result.code ?? -1),
-        data: result.data,
+        data: result,
         message: String(result.msg ?? result.message ?? ''),
       }
 
@@ -220,13 +297,74 @@ export async function request(
         })
       }
 
+      applyRuntimeRequestSideEffects(api, normalizedMethod, normalized)
       return normalized
     }
 
-    return result as RequestResult
+    const normalized = result as RequestResult
+    applyRuntimeRequestSideEffects(api, normalizedMethod, normalized)
+    return normalized
   } catch (error) {
     console.error('[request] 请求失败:', api, error)
-    return { code: -1, data: null, message: '请求失败' }
+
+    if (isBackendResponseError(error)) {
+      const normalized = normalizeBackendResponse(
+        error.backendResponse,
+        error.httpStatus
+      )
+      if (normalized.message) {
+        emitRequestError({
+          code: normalized.code,
+          message: normalized.message,
+        })
+      }
+      applyRuntimeRequestSideEffects(api, normalizeRequestMethod(method), normalized)
+      return normalized
+    }
+
+    const message = error instanceof Error && error.message ? error.message : '请求失败'
+    emitRequestError({ code: -1, message })
+    return { code: -1, data: null, message }
+  }
+}
+
+function normalizeBackendResponse(result: any, httpStatus?: number): RequestResult {
+  return {
+    code: Number(result?.status) === 1 ? 0 : Number(result?.code ?? httpStatus ?? -1),
+    data: result?.data,
+    message: String(result?.msg ?? result?.message ?? ''),
+  }
+}
+
+function createBackendResponseError(result: any, httpStatus: number) {
+  const message = String(result?.msg ?? result?.message ?? `请求失败(${httpStatus})`)
+  const error = new Error(message) as BackendResponseError
+  error.backendResponse = result
+  error.httpStatus = httpStatus
+  return error
+}
+
+function isBackendResponseError(error: unknown): error is BackendResponseError {
+  return (
+    error instanceof Error &&
+    !!(error as BackendResponseError).backendResponse
+  )
+}
+
+function isBackendResponseEnvelope(value: unknown) {
+  return (
+    value != null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    ('status' in value || 'code' in value || 'msg' in value || 'message' in value)
+  )
+}
+
+function parseResponseBody(rawText: string) {
+  try {
+    return JSON.parse(rawText)
+  } catch {
+    return rawText
   }
 }
 
@@ -277,7 +415,10 @@ export async function requestBlob(
  * 加载页面 Schema JSON
  * 根据 route 路径从后端加载页面 JSON
  */
-export async function loadPageSchema(route: string): Promise<any> {
+export async function loadPageSchema(
+  route: string,
+  options: { skipValueCache?: boolean } = {}
+): Promise<any> {
   try {
     const [routePath, routeQuery = ''] = route.split('?')
     const normalizedRoute = normalizeRoute(routePath)
@@ -286,6 +427,16 @@ export async function loadPageSchema(route: string): Promise<any> {
 
     if (!normalizedRoute) {
       return null
+    }
+
+    if (!options.skipValueCache) {
+      const cachedSchema = remoteSchemaValueCache.get(cacheKey)
+      if (cachedSchema && cachedSchema.expiresAt > Date.now()) {
+        return cachedSchema.data
+      }
+      if (cachedSchema) {
+        remoteSchemaValueCache.delete(cacheKey)
+      }
     }
 
     const pending = remoteSchemaPromiseCache.get(cacheKey)
@@ -320,7 +471,14 @@ export async function loadPageSchema(route: string): Promise<any> {
     remoteSchemaPromiseCache.set(cacheKey, schemaPromise)
 
     try {
-      return await schemaPromise
+      const schema = await schemaPromise
+      if (schema) {
+        remoteSchemaValueCache.set(cacheKey, {
+          data: schema,
+          expiresAt: Date.now() + REMOTE_SCHEMA_VALUE_CACHE_TTL,
+        })
+      }
+      return schema
     } finally {
       remoteSchemaPromiseCache.delete(cacheKey)
     }
@@ -362,10 +520,11 @@ export async function loadMainInfo(): Promise<MainInfoResult> {
   return await mainInfoPromise
 }
 
-export function resetFrontRuntimeCache() {
-  mainInfoPromise = null
-  mainInfoCacheToken = ''
-  remoteSchemaPromiseCache.clear()
+export function resetFrontRuntimeCache(notify = false) {
+  clearFrontRuntimeCache()
+  if (notify) {
+    emitFrontRuntimeRefresh({ reason: 'manual' })
+  }
 }
 
 function getMainInfoCacheToken() {
@@ -375,4 +534,53 @@ function getMainInfoCacheToken() {
 export async function loadSidebarMenu() {
   const result = await loadMainInfo()
   return result.menu
+}
+
+function applyRuntimeRequestSideEffects(
+  api: string,
+  method: string,
+  result: RequestResult
+) {
+  if (Number(result?.code ?? -1) !== 0 || !isMainInfoSyncRequest(api, method)) {
+    return
+  }
+
+  clearFrontRuntimeCache()
+  emitFrontRuntimeRefresh({ reason: 'main-sync' })
+}
+
+function clearFrontRuntimeCache() {
+  mainInfoPromise = null
+  mainInfoCacheToken = ''
+  remoteSchemaPromiseCache.clear()
+  remoteSchemaValueCache.clear()
+  resetPageProgressCache()
+}
+
+function isMainInfoSyncRequest(api: string, method: string) {
+  if (normalizeRequestMethod(method) === 'get') {
+    return false
+  }
+
+  return normalizeApiPath(api) === '/front/main/sync'
+}
+
+function normalizeApiPath(api: string) {
+  const value = String(api || '').trim()
+  if (!value) {
+    return ''
+  }
+
+  try {
+    const base =
+      typeof window === 'undefined' ? 'http://localhost' : window.location.origin
+    return normalizePathname(new URL(value, base).pathname)
+  } catch {
+    return normalizePathname(value.split('?')[0])
+  }
+}
+
+function normalizePathname(pathname: string) {
+  const normalized = pathname.replace(/\/+$/, '')
+  return normalized.startsWith('/') ? normalized : `/${normalized}`
 }

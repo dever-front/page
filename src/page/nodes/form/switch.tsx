@@ -13,6 +13,7 @@ export function FormSwitch({ item, value, setValue }: NodeItemProps) {
     <Switch
       id={item.id}
       checked={checked}
+      disabled={!!item.meta?.disabled}
       onCheckedChange={(checked) => setValue(checked ? trueValue : falseValue)}
     />
   )

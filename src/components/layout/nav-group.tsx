@@ -1,7 +1,8 @@
-import { type ReactNode } from 'react'
+import { type MouseEvent, type ReactNode } from 'react'
 import { Link, useLocation } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
 import { emitPageReload } from '@/lib/page-reload'
+import { normalizeRouteKey } from '@/lib/route-key'
 import {
   Collapsible,
   CollapsibleContent,
@@ -39,12 +40,12 @@ export function NavGroup({ title, items }: NavGroupProps) {
   const href = useLocation({ select: (location) => location.href })
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>{title}</SidebarGroupLabel>
+      {title ? <SidebarGroupLabel>{title}</SidebarGroupLabel> : null}
       <SidebarMenu>
         {items.map((item) => {
-          const key = `${item.title}-${item.url}`
+          const key = getNavItemKey(item)
 
-          if (!item.items)
+          if (!isNavCollapsible(item))
             return <SidebarMenuLink key={key} item={item} href={href} />
 
           if (state === 'collapsed' && !isMobile)
@@ -65,11 +66,9 @@ function NavBadge({ children }: { children: ReactNode }) {
 
 function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
   const { setOpenMobile } = useSidebar()
-  const handleClick = () => {
+  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
     setOpenMobile(false)
-    if (isSameMenuRoute(href, item.url)) {
-      emitPageReload(item.url)
-    }
+    reloadCurrentMenuRoute(event, href, String(item.url))
   }
 
   return (
@@ -97,11 +96,9 @@ function SidebarMenuCollapsible({
   href: string
 }) {
   const { setOpenMobile } = useSidebar()
-  const buildClickHandler = (url: string) => () => {
+  const handleLinkClick = (event: MouseEvent<HTMLAnchorElement>, url: string) => {
     setOpenMobile(false)
-    if (isSameMenuRoute(href, url)) {
-      emitPageReload(url)
-    }
+    reloadCurrentMenuRoute(event, href, url)
   }
 
   return (
@@ -120,24 +117,90 @@ function SidebarMenuCollapsible({
           </SidebarMenuButton>
         </CollapsibleTrigger>
         <CollapsibleContent className='CollapsibleContent'>
-          <SidebarMenuSub>
+          <SidebarMenuSub className='me-0 pe-0'>
             {item.items.map((subItem) => (
-              <SidebarMenuSubItem key={subItem.title}>
-                <SidebarMenuSubButton
-                  asChild
-                  isActive={checkIsActive(href, subItem)}
-                >
-                  <Link to={subItem.url} onClick={buildClickHandler(subItem.url)}>
-                    {subItem.icon && <subItem.icon />}
-                    <span>{subItem.title}</span>
-                    {subItem.badge && <NavBadge>{subItem.badge}</NavBadge>}
-                  </Link>
-                </SidebarMenuSubButton>
-              </SidebarMenuSubItem>
+              <SidebarMenuSubTreeItem
+                key={getNavItemKey(subItem)}
+                item={subItem}
+                href={href}
+                onLinkClick={handleLinkClick}
+                depth={0}
+              />
             ))}
           </SidebarMenuSub>
         </CollapsibleContent>
       </SidebarMenuItem>
+    </Collapsible>
+  )
+}
+
+function SidebarMenuSubTreeItem({
+  item,
+  href,
+  onLinkClick,
+  depth,
+}: {
+  item: NavItem
+  href: string
+  onLinkClick: (event: MouseEvent<HTMLAnchorElement>, url: string) => void
+  depth: number
+}) {
+  if (!isNavCollapsible(item)) {
+    return (
+      <SidebarMenuSubItem className='w-full'>
+        <SidebarMenuSubButton
+          asChild
+          isActive={checkIsActive(href, item)}
+          className={resolveSubTreeButtonClass(depth)}
+        >
+          <Link
+            to={item.url}
+            onClick={(event) => onLinkClick(event, String(item.url))}
+          >
+            {item.icon && <item.icon />}
+            <span className='truncate'>{item.title}</span>
+            {item.badge && <NavBadge>{item.badge}</NavBadge>}
+          </Link>
+        </SidebarMenuSubButton>
+      </SidebarMenuSubItem>
+    )
+  }
+
+  return (
+    <Collapsible
+      asChild
+      defaultOpen={checkIsActive(href, item)}
+      className='group/sub-collapsible'
+    >
+      <SidebarMenuSubItem className='w-full'>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuSubButton
+            asChild
+            isActive={false}
+            className={resolveSubTreeButtonClass(depth)}
+          >
+            <button type='button'>
+              {item.icon && <item.icon />}
+              <span className='truncate'>{item.title}</span>
+              {item.badge && <NavBadge>{item.badge}</NavBadge>}
+              <ChevronRight className='ms-auto transition-transform duration-200 group-data-[state=open]/sub-collapsible:rotate-90 rtl:rotate-180' />
+            </button>
+          </SidebarMenuSubButton>
+        </CollapsibleTrigger>
+        <CollapsibleContent className='CollapsibleContent'>
+          <SidebarMenuSub className='mx-0 ms-0 mt-1 w-full border-0 px-0 py-0'>
+            {item.items.map((child) => (
+              <SidebarMenuSubTreeItem
+                key={getNavItemKey(child)}
+                item={child}
+                href={href}
+                onLinkClick={onLinkClick}
+                depth={depth + 1}
+              />
+            ))}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </SidebarMenuSubItem>
     </Collapsible>
   )
 }
@@ -149,11 +212,10 @@ function SidebarMenuCollapsedDropdown({
   item: NavCollapsible
   href: string
 }) {
-  const buildClickHandler = (url: string) => () => {
-    if (isSameMenuRoute(href, url)) {
-      emitPageReload(url)
-    }
-  }
+  const buildClickHandler = (url: string) => (
+    event: MouseEvent<HTMLAnchorElement>
+  ) => reloadCurrentMenuRoute(event, href, url)
+  const links = getLeafNavLinks(item.items)
 
   return (
     <SidebarMenuItem>
@@ -174,11 +236,11 @@ function SidebarMenuCollapsedDropdown({
             {item.title} {item.badge ? `(${item.badge})` : ''}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          {item.items.map((sub) => (
+          {links.map((sub) => (
             <DropdownMenuItem key={`${sub.title}-${sub.url}`} asChild>
               <Link
                 to={sub.url}
-                onClick={buildClickHandler(sub.url)}
+                onClick={buildClickHandler(String(sub.url))}
                 className={`${checkIsActive(href, sub) ? 'bg-secondary' : ''}`}
               >
                 {sub.icon && <sub.icon />}
@@ -197,31 +259,87 @@ function SidebarMenuCollapsedDropdown({
 
 function checkIsActive(href: string, item: NavItem, mainNav = false) {
   const currentPath = href.split('?')[0]
-  const itemActivePaths = 'activePaths' in item && Array.isArray(item.activePaths) ? item.activePaths : []
+  const itemActivePaths =
+    'activePaths' in item && Array.isArray(item.activePaths)
+      ? item.activePaths
+      : []
+  if (isNavCollapsible(item)) {
+    const firstUrl = resolveFirstNavItemUrl(item)
+    return (
+      itemActivePaths.includes(currentPath) ||
+      item.items.some((child) => checkIsActive(href, child)) ||
+      (mainNav &&
+        !!firstUrl &&
+        currentPath.split('/')[1] !== '' &&
+        currentPath.split('/')[1] === firstUrl.split('/')[1])
+    )
+  }
+
   return (
     href === item.url || // /endpint?search=param
     currentPath === item.url || // endpoint
     itemActivePaths.includes(currentPath) ||
-    !!item?.items?.filter((i) => i.url === href).length || // if child nav is active
-    !!item?.items?.filter((i) => i.url === currentPath || i.activePaths?.includes(currentPath)).length ||
     (mainNav &&
       currentPath.split('/')[1] !== '' &&
       currentPath.split('/')[1] === item?.url?.split('/')[1])
   )
 }
 
-function isSameMenuRoute(currentHref: string, nextHref: string) {
-  return normalizeMenuRoute(currentHref) === normalizeMenuRoute(nextHref)
+function isNavCollapsible(item: NavItem): item is NavCollapsible {
+  return 'items' in item && Array.isArray(item.items) && item.items.length > 0
 }
 
-function normalizeMenuRoute(href: string) {
-  const normalized = String(href || '').trim()
-  if (!normalized) {
-    return ''
+function getNavItemKey(item: NavItem) {
+  if (isNavCollapsible(item)) {
+    return `${item.title}-${resolveFirstNavItemUrl(item) || 'group'}`
+  }
+  return `${item.title}-${item.url}`
+}
+
+function resolveFirstNavItemUrl(item: NavItem): string {
+  if (!isNavCollapsible(item)) {
+    return String(item.url || '')
   }
 
-  const [pathname, query = ''] = normalized.split('?')
-  const normalizedPath = pathname.replace(/\/+$/, '') || '/'
-  const normalizedQuery = new URLSearchParams(query).toString()
-  return normalizedQuery ? `${normalizedPath}?${normalizedQuery}` : normalizedPath
+  for (const child of item.items) {
+    const matched = resolveFirstNavItemUrl(child)
+    if (matched && matched !== '#') {
+      return matched
+    }
+  }
+  return ''
+}
+
+function getLeafNavLinks(items: NavItem[]) {
+  const links: NavLink[] = []
+  for (const item of items) {
+    if (isNavCollapsible(item)) {
+      links.push(...getLeafNavLinks(item.items))
+      continue
+    }
+    links.push(item)
+  }
+  return links
+}
+
+function resolveSubTreeButtonClass(depth: number) {
+  const classes = ['ps-3', 'ps-6', 'ps-9', 'ps-12']
+  return `w-full text-start ${classes[Math.min(Math.max(depth, 0), classes.length - 1)]}`
+}
+
+function isSameMenuRoute(currentHref: string, nextHref: string) {
+  return normalizeRouteKey(currentHref) === normalizeRouteKey(nextHref)
+}
+
+function reloadCurrentMenuRoute(
+  event: MouseEvent<HTMLAnchorElement>,
+  currentHref: string,
+  nextHref: string
+) {
+  if (!isSameMenuRoute(currentHref, nextHref)) {
+    return
+  }
+
+  event.preventDefault()
+  emitPageReload(nextHref)
 }
