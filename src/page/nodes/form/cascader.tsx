@@ -332,8 +332,15 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
     syncSelectedLabels,
   ])
 
+  const allowWrap = item.meta?.wrap !== false
+
   return (
-    <div className="flex w-full flex-wrap items-center gap-2">
+    <div
+      className={cn(
+        'flex w-full items-center gap-2',
+        allowWrap ? 'flex-wrap' : 'flex-nowrap overflow-x-auto'
+      )}
+    >
       {displayLevels.length === 0 ? (
         <div
           className={cn(

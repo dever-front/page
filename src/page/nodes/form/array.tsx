@@ -25,7 +25,13 @@ import { moveArrayItem } from '@/lib/array'
 import { getByPath, setByPath } from '@/lib/path'
 import { applyOptionFilters } from '@/lib/option-filter'
 import { resolveOptionParams } from '@/lib/option-params'
+import {
+  isSameControlValue,
+  normalizeClearOnChangePaths,
+  normalizeFormRowFieldPath,
+} from '@/lib/form-control'
 import { validatePageSchema, type Item, type PageSchemaType } from '@/lib/schema'
+import { useStorePathValue } from '@/lib/store'
 import { useNodeOption } from '@/page/option'
 import { FormInput } from './input'
 import { FormNumber } from './number'
@@ -58,6 +64,15 @@ type ArrayRowSchema = {
   template: Record<string, any>
 }
 
+type FallbackRowsConfig = {
+  source: string
+  path: string
+  targetField: string
+  valueField: string
+  skipFirst: boolean
+  defaultRow: Record<string, any>
+}
+
 export function FormArray({ item, value, setValue, store }: NodeItemProps) {
   const pageRoute = String(item.meta?.pageRoute || '').trim()
   const layoutId = String(item.meta?.layoutId || '').trim()
@@ -68,14 +83,22 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
   const dragEnabled = dragField === 'sort'
   const outputFormat = String(item.meta?.valueFormat || '').trim().toLowerCase()
   const fillConfig = useMemo(() => normalizeFillFromOptionConfig(item.meta?.fillFromOption), [item.meta?.fillFromOption])
+  const fallbackRowsConfig = useMemo(
+    () => normalizeFallbackRowsConfig(item.meta?.fallbackRows),
+    [item.meta?.fallbackRows]
+  )
+  const fallbackRowsSourceValue = useStorePathValue(store, fallbackRowsConfig?.source)
   const sortField = dragEnabled ? dragField : ''
   const inheritedPageRoute = useMemo(
     () => buildInheritedFormPageRoute(pageRoute, store),
     [pageRoute, store]
   )
   const rows = useMemo(
-    () => normalizeArrayRows(normalizeArrayInput(value), sortField),
-    [sortField, value]
+    () => normalizeArrayRows(
+      resolveArrayInputRows(value, fallbackRowsConfig, fallbackRowsSourceValue),
+      sortField
+    ),
+    [fallbackRowsConfig, fallbackRowsSourceValue, sortField, value]
   )
   const [rowSchema, setRowSchema] = useState<ArrayRowSchema | null>(null)
   const [loading, setLoading] = useState(false)
@@ -83,12 +106,21 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
   const [loadError, setLoadError] = useState('')
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [pendingRemoveIndex, setPendingRemoveIndex] = useState<number | null>(null)
+  const clearOnChangePaths = useMemo(
+    () => normalizeClearOnChangePaths(item.meta?.clearOnChange),
+    [item.meta?.clearOnChange]
+  )
   const commitRows = useCallback(
     (nextRows: Record<string, any>[]) => {
       const normalizedRows = normalizeArrayRows(nextRows, sortField)
       setValue(formatArrayOutputValue(normalizedRows, outputFormat))
+      for (const path of clearOnChangePaths) {
+        if (path !== item.value) {
+          store.getState().setValueByPath(path, '')
+        }
+      }
     },
-    [outputFormat, setValue, sortField]
+    [clearOnChangePaths, item.value, outputFormat, setValue, sortField, store]
   )
 
   useEffect(() => {
@@ -447,7 +479,10 @@ function ArrayFormCell({
   const editorType = String(item.type || '').trim()
   const EditorComponent =
     arrayEditorRegistry[editorType as keyof typeof arrayEditorRegistry] || FormInput
-  const fieldPath = normalizeArrayFieldPath(item.value)
+  const fieldPath = normalizeFormRowFieldPath(item.value, {
+    allowDataForm: true,
+    allowScoped: true,
+  })
   const { option, optionLoading, ensureOptionLoaded } = useNodeOption(store, item.option, item, row)
   const rowScopedOption = useMemo(() => {
     const state = store.getState()
@@ -466,9 +501,12 @@ function ArrayFormCell({
       if (!fieldPath) return
       const previousValue = getByPath(row, fieldPath)
       let nextRow = setByPath(row, fieldPath, nextValue)
-      if (!isSameArrayCellValue(previousValue, nextValue)) {
+      if (!isSameControlValue(previousValue, nextValue)) {
         for (const path of normalizeClearOnChangePaths(item.meta?.clearOnChange)) {
-          const rowPath = normalizeArrayFieldPath(path)
+          const rowPath = normalizeFormRowFieldPath(path, {
+            allowDataForm: true,
+            allowScoped: true,
+          })
           nextRow = rowPath ? setByPath(nextRow, rowPath, '') : nextRow
         }
       }
@@ -493,13 +531,14 @@ function ArrayFormCell({
       meta: {
         ...item.meta,
         formLayout: undefined,
+        wrap: item.meta?.wrap ?? (editorType === 'form-cascader' ? false : undefined),
         controlClassName: cn(
-          'h-9 w-full min-w-[11rem] rounded-lg bg-background shadow-none',
+          resolveArrayCellControlClassName(editorType),
           item.meta?.controlClassName
         ),
       },
     }),
-    [item, rowIndex]
+    [editorType, item, rowIndex]
   )
 
   return (
@@ -517,6 +556,14 @@ function ArrayFormCell({
       setRow={onChange}
     />
   )
+}
+
+function resolveArrayCellControlClassName(editorType: string) {
+  const base = 'h-9 rounded-lg bg-background shadow-none'
+  if (editorType === 'form-cascader') {
+    return `${base} w-[12rem] min-w-[10rem]`
+  }
+  return `${base} w-full min-w-[11rem]`
 }
 
 function buildInheritedFormPageRoute(route: string, store: NodeItemProps['store']) {
@@ -620,7 +667,10 @@ function applyChildSchemaOptions(items: Item[], schema: PageSchemaType) {
 function buildArrayTemplate(items: Item[]) {
   let result: Record<string, any> = {}
   for (const item of items) {
-    const fieldPath = normalizeArrayFieldPath(item.value)
+    const fieldPath = normalizeFormRowFieldPath(item.value, {
+      allowDataForm: true,
+      allowScoped: true,
+    })
     if (!fieldPath) {
       continue
     }
@@ -637,23 +687,6 @@ function defaultArrayFieldValue(item: Item) {
     return item.meta?.trueValue ?? true
   }
   return ''
-}
-
-function normalizeArrayFieldPath(path?: string) {
-  const value = String(path || '').trim()
-  if (!value) {
-    return ''
-  }
-  if (value === 'form') {
-    return ''
-  }
-  if (value.startsWith('form.')) {
-    return value.slice(5)
-  }
-  if (value.startsWith('data.form.')) {
-    return value.slice(10)
-  }
-  return value
 }
 
 function isRemoteOptionSource(optionConfig: string) {
@@ -719,6 +752,95 @@ function normalizeFillFromOptionConfig(value: unknown): FillFromOptionConfig | n
   }
 }
 
+function normalizeFallbackRowsConfig(value: unknown): FallbackRowsConfig | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  const raw = value as Record<string, any>
+  const source = String(raw.source || '').trim()
+  const targetField = String(raw.targetField || raw.field || '').trim()
+  if (!source || !targetField) {
+    return null
+  }
+
+  return {
+    source,
+    path: String(raw.path || '').trim(),
+    targetField,
+    valueField: String(raw.valueField || '').trim(),
+    skipFirst: raw.skipFirst === true,
+    defaultRow: raw.defaultRow && typeof raw.defaultRow === 'object' && !Array.isArray(raw.defaultRow)
+      ? raw.defaultRow
+      : {},
+  }
+}
+
+function resolveArrayInputRows(
+  value: unknown,
+  fallbackConfig: FallbackRowsConfig | null,
+  fallbackSourceValue: unknown
+) {
+  const rows = normalizeArrayInput(value)
+  if (rows.length > 0) {
+    return rows
+  }
+  return normalizeFallbackRows(fallbackConfig, fallbackSourceValue)
+}
+
+function normalizeFallbackRows(
+  config: FallbackRowsConfig | null,
+  sourceValue: unknown
+): Record<string, any>[] {
+  if (!config) {
+    return []
+  }
+
+  const source = decodeFallbackSourceValue(sourceValue)
+  const rawItems = config.path ? getByPath(source, config.path) : source
+  const items = Array.isArray(rawItems) ? rawItems : []
+  const selectedItems = config.skipFirst ? items.slice(1) : items
+
+  return selectedItems
+    .map((item) => fallbackRowFromItem(config, item))
+    .filter(isArrayRow)
+}
+
+function fallbackRowFromItem(config: FallbackRowsConfig, item: unknown) {
+  const value = resolveFallbackRowValue(config, item)
+  if (value == null || String(value).trim() === '') {
+    return null
+  }
+
+  return {
+    ...config.defaultRow,
+    [config.targetField]: value,
+  }
+}
+
+function resolveFallbackRowValue(config: FallbackRowsConfig, item: unknown) {
+  if (config.valueField && item && typeof item === 'object' && !Array.isArray(item)) {
+    return getByPath(item, config.valueField)
+  }
+  return item
+}
+
+function decodeFallbackSourceValue(value: unknown) {
+  if (value && typeof value === 'object') {
+    return value
+  }
+
+  const text = String(value ?? '').trim()
+  if (!text || (text[0] !== '{' && text[0] !== '[')) {
+    return value
+  }
+
+  try {
+    return JSON.parse(text)
+  } catch {
+    return value
+  }
+}
+
 async function loadFillOptions(config: FillFromOptionConfig, store: NodeItemProps['store']) {
   if (isRemoteOptionSource(config.source)) {
     const params = resolveOptionParams(config.params, { store })
@@ -735,24 +857,6 @@ async function loadFillOptions(config: FillFromOptionConfig, store: NodeItemProp
 
   const value = store.getState().getValueByPath(config.source)
   return Array.isArray(value) ? value as Record<string, any>[] : []
-}
-
-function normalizeClearOnChangePaths(value: unknown) {
-  const paths = Array.isArray(value) ? value : String(value || '').split(',')
-  return Array.from(
-    new Set(
-      paths
-        .map((path) => String(path || '').trim())
-        .filter(Boolean)
-    )
-  )
-}
-
-function isSameArrayCellValue(left: unknown, right: unknown) {
-  if (left === right) {
-    return true
-  }
-  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
 }
 
 function normalizeArrayInput(value: any): Record<string, any>[] {

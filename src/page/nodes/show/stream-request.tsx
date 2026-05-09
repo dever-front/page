@@ -301,6 +301,7 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
 
       setRequestID(nextRequestID)
       setCancelable(resolveFrameCancelable(startFrame) === true)
+      applyFrame(startFrame as StreamFrame)
       await pollStream(token, nextRequestID)
     } catch (currentError: any) {
       if (runTokenRef.current === token) {

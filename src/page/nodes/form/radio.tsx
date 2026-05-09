@@ -3,6 +3,10 @@
  */
 import { cn } from '@/lib/utils'
 import { setByPath } from '@/lib/path'
+import {
+  normalizeClearOnChangePaths,
+  normalizeFormRowFieldPath,
+} from '@/lib/form-control'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import type { NodeItemProps } from '../../nodes'
@@ -27,11 +31,11 @@ export function FormRadio({
     }
 
     if (row && setRow) {
-      const fieldPath = normalizeRowFieldPath(item.value)
+      const fieldPath = normalizeFormRowFieldPath(item.value)
       let nextRow = fieldPath ? setByPath(row, fieldPath, nextValue) : row
 
       for (const path of clearPaths) {
-        const rowPath = normalizeRowFieldPath(path)
+        const rowPath = normalizeFormRowFieldPath(path)
         if (rowPath) {
           nextRow = setByPath(nextRow, rowPath, '')
           continue
@@ -78,34 +82,4 @@ export function FormRadio({
       ))}
     </RadioGroup>
   )
-}
-
-function normalizeClearOnChangePaths(value: unknown) {
-  const paths = Array.isArray(value) ? value : String(value || '').split(',')
-  return Array.from(
-    new Set(
-      paths
-        .map((path) => String(path || '').trim())
-        .filter(Boolean)
-    )
-  )
-}
-
-function normalizeRowFieldPath(path?: string) {
-  const value = String(path || '').trim()
-  if (
-    !value ||
-    value.startsWith('data.') ||
-    value.startsWith('state.') ||
-    value.startsWith('parent.')
-  ) {
-    return ''
-  }
-  if (value === 'form') {
-    return ''
-  }
-  if (value.startsWith('form.')) {
-    return value.slice(5)
-  }
-  return value
 }

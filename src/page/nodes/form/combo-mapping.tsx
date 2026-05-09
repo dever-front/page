@@ -37,8 +37,8 @@ export function FormComboMapping({ item, value, setValue, store }: NodeItemProps
   const mainParamValue = useStorePathValue(store, mainParamPath)
   const extraParamsValue = useStorePathValue(store, extraParamsPath)
   const paramIDs = useMemo(
-    () => normalizeComboParamIDs(mainParamValue, extraParamsValue),
-    [extraParamsValue, mainParamValue]
+    () => normalizeComboParamIDs(mainParamValue, extraParamsValue, value),
+    [extraParamsValue, mainParamValue, value]
   )
   const rows = useMemo(() => normalizeComboRows(value), [value])
   const [paramLabels, setParamLabels] = useState<ParamLabelMap>({})
@@ -322,10 +322,16 @@ export function FormComboMapping({ item, value, setValue, store }: NodeItemProps
   )
 }
 
-function normalizeComboParamIDs(mainParamValue: unknown, extraParamsValue: unknown) {
+function normalizeComboParamIDs(
+  mainParamValue: unknown,
+  extraParamsValue: unknown,
+  mappingValue: unknown
+) {
   const result: string[] = []
   appendParamID(result, mainParamValue)
-  for (const item of normalizeExtraParamRows(extraParamsValue)) {
+  const extraRows = normalizeExtraParamRows(extraParamsValue)
+  const fallbackParamIDs = extraRows.length > 0 ? [] : normalizeMappingParamIDs(mappingValue)
+  for (const item of extraRows.length > 0 ? extraRows : fallbackParamIDs) {
     if (item && typeof item === 'object') {
       appendParamID(result, (item as Record<string, any>).param_id)
       continue
@@ -333,6 +339,11 @@ function normalizeComboParamIDs(mainParamValue: unknown, extraParamsValue: unkno
     appendParamID(result, item)
   }
   return Array.from(new Set(result))
+}
+
+function normalizeMappingParamIDs(value: unknown): unknown[] {
+  const raw = decodeMappingObject(value)
+  return Array.isArray(raw.params) ? raw.params : []
 }
 
 function normalizeExtraParamRows(value: unknown): unknown[] {

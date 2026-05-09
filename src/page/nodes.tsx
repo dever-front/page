@@ -19,6 +19,10 @@ import {
   isItemCurrentlyHidden,
   isItemCurrentlyRequired,
 } from '@/lib/condition'
+import {
+  isSameControlValue,
+  normalizeClearOnChangePaths,
+} from '@/lib/form-control'
 import { useCanUseItem } from '@/lib/permission-infer'
 import { Label } from '@/components/ui/label'
 import { InlineTip } from '@/page/nodes/show/tooltip'
@@ -258,7 +262,7 @@ function useNodeSetValue(store: PageStore, item: Item) {
       if (!item.value) return
       const previousValue = store.getState().getValueByPath(item.value)
       store.getState().setValueByPath(item.value, newValue)
-      if (!isSameNodeValue(previousValue, newValue)) {
+      if (!isSameControlValue(previousValue, newValue)) {
         clearDependentValues(store, item)
       }
       if (item.validate?.length) {
@@ -276,24 +280,6 @@ function clearDependentValues(store: PageStore, item: Item) {
       store.getState().setValueByPath(path, '')
     }
   }
-}
-
-function normalizeClearOnChangePaths(value: unknown) {
-  const paths = Array.isArray(value) ? value : String(value || '').split(',')
-  return Array.from(
-    new Set(
-      paths
-        .map((path) => String(path || '').trim())
-        .filter(Boolean)
-    )
-  )
-}
-
-function isSameNodeValue(left: unknown, right: unknown) {
-  if (left === right) {
-    return true
-  }
-  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
 }
 
 function useNodeError(store: PageStore, itemId?: string) {

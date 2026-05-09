@@ -381,12 +381,51 @@ function copyValue(target: EnergonOutput, source: Record<string, any>, key: keyo
 }
 
 function copyList(target: EnergonOutput, key: keyof EnergonOutput, ...values: any[]) {
-  const result = values.flatMap(normalizeStringList)
+  const result = values.flatMap((value) => normalizeMediaList(key, value))
   if (result.length === 0) {
     return
   }
   const writable = target as Record<string, any>
   writable[key] = result
+}
+
+function normalizeMediaList(key: keyof EnergonOutput, value: any): string[] {
+  const field = mediaFieldConfig[key]
+  if (!field) {
+    return normalizeStringList(value)
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => normalizeMediaList(key, item))
+  }
+  if (isPlainObject(value)) {
+    const result: string[] = []
+    for (const source of field.sources) {
+      result.push(...normalizeMediaList(key, value[source]))
+    }
+    for (const nested of ['output', 'data', 'content']) {
+      result.push(...normalizeMediaList(key, value[nested]))
+    }
+    return uniqueStrings(result)
+  }
+
+  const text = valueText(value).trim()
+  if (!text) {
+    return []
+  }
+  if (looksLikeJSON(text)) {
+    try {
+      const parsed = JSON.parse(text)
+      const result = normalizeMediaList(key, parsed)
+      if (result.length > 0) {
+        return result
+      }
+      return []
+    } catch {
+      // fall through and treat it as a plain URL/string
+    }
+  }
+  return [text]
 }
 
 function normalizeStringList(value: any) {
@@ -395,6 +434,48 @@ function normalizeStringList(value: any) {
   }
   const text = valueText(value)
   return text ? [text] : []
+}
+
+const mediaFieldConfig: Partial<Record<keyof EnergonOutput, { sources: string[] }>> = {
+  images: {
+    sources: [
+      'images',
+      'image',
+      'url',
+      'image_url',
+      'first_frame_url',
+      'last_frame_url',
+      'cover_url',
+      'thumbnail_url',
+    ],
+  },
+  videos: {
+    sources: ['videos', 'video', 'url', 'video_url'],
+  },
+  audios: {
+    sources: ['audios', 'audio', 'url', 'audio_url'],
+  },
+  files: {
+    sources: ['files', 'file', 'url', 'file_url'],
+  },
+}
+
+function looksLikeJSON(value: string) {
+  return value.startsWith('{') || value.startsWith('[')
+}
+
+function uniqueStrings(values: string[]) {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const value of values) {
+    const text = String(value || '').trim()
+    if (!text || seen.has(text)) {
+      continue
+    }
+    seen.add(text)
+    result.push(text)
+  }
+  return result
 }
 
 function isPlainObject(value: any): value is Record<string, any> {
