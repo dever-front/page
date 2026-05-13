@@ -10,12 +10,12 @@ window.appConfig = {
   appearance: {
     theme: 'light',
     sidebar: 'floating',
-    layout: 'compact',//full、compact、boxed
+    layout: 'compact', //full、compact、boxed
     direction: 'ltr',
   },
   runtime: {
     skin: 'default',
     routerMode: 'hash',
-    host: 'http://127.0.0.1:8085/front/',
+    host: `${window.location.protocol}//${window.location.hostname}:8085/front/`,
   },
 }

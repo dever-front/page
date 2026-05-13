@@ -69,7 +69,7 @@ export function ShowCategoryList({
   const firstCategoryID = categories[0]?.id
 
   const applyCategorySelection = useCallback(
-    async (nextValue: unknown, options?: { replace?: boolean }) => {
+    (nextValue: unknown, options?: { replace?: boolean }) => {
       const normalizedValue = normalizeCategoryValue(nextValue)
       const assignValue = normalizedValue || ''
       setValue(assignValue)
@@ -148,7 +148,7 @@ export function ShowCategoryList({
       <ScrollArea className="max-h-[32rem]">
         <div className="space-y-1 p-2">
           {optionLoading && !hasVisibleRows ? (
-            <div className="px-2 py-6 text-center text-sm text-muted-foreground">分类加载中...</div>
+            <div className="px-2 py-6 text-center text-sm text-muted-foreground">加载中...</div>
           ) : null}
 
           {!optionLoading && !hasVisibleRows ? (

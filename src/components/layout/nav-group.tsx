@@ -96,7 +96,10 @@ function SidebarMenuCollapsible({
   href: string
 }) {
   const { setOpenMobile } = useSidebar()
-  const handleLinkClick = (event: MouseEvent<HTMLAnchorElement>, url: string) => {
+  const handleLinkClick = (
+    event: MouseEvent<HTMLAnchorElement>,
+    url: string
+  ) => {
     setOpenMobile(false)
     reloadCurrentMenuRoute(event, href, url)
   }
@@ -212,9 +215,9 @@ function SidebarMenuCollapsedDropdown({
   item: NavCollapsible
   href: string
 }) {
-  const buildClickHandler = (url: string) => (
-    event: MouseEvent<HTMLAnchorElement>
-  ) => reloadCurrentMenuRoute(event, href, url)
+  const buildClickHandler =
+    (url: string) => (event: MouseEvent<HTMLAnchorElement>) =>
+      reloadCurrentMenuRoute(event, href, url)
   const links = getLeafNavLinks(item.items)
 
   return (

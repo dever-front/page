@@ -12,6 +12,7 @@ import {
   sanitizeFilteredValue,
 } from '@/lib/option-filter'
 import { collectOptionParamPaths, resolveOptionParams } from '@/lib/option-params'
+import { resolveSelectCreateOptionReloadPath } from '@/lib/select-create-option'
 
 const remoteOptionPromiseCache = new Map<string, Promise<OptionItem[] | undefined>>()
 
@@ -426,13 +427,26 @@ function shouldLazyLoadRemoteOption(item?: Pick<Item, 'type' | 'mode' | 'meta'>)
 function resolveOptionReloadPaths(item?: Pick<Item, 'meta'>) {
   const rawValue = item?.meta?.optionReloadPaths
   const paramPaths = collectOptionParamPaths(item?.meta?.optionParams)
+  const createOptionReloadPath = resolveSelectCreateOptionReloadPath(item)
   if (typeof rawValue === 'string') {
     const path = rawValue.trim()
-    return Array.from(new Set([...(path ? [path] : []), ...paramPaths]))
+    return Array.from(
+      new Set([
+        ...(path ? [path] : []),
+        ...(createOptionReloadPath ? [createOptionReloadPath] : []),
+        ...paramPaths,
+      ])
+    )
   }
 
   const explicitPaths = Array.isArray(rawValue)
     ? rawValue.map((item) => String(item || '').trim()).filter(Boolean)
     : []
-  return Array.from(new Set([...explicitPaths, ...paramPaths]))
+  return Array.from(
+    new Set([
+      ...explicitPaths,
+      ...(createOptionReloadPath ? [createOptionReloadPath] : []),
+      ...paramPaths,
+    ])
+  )
 }

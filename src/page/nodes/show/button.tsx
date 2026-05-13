@@ -24,6 +24,7 @@ import {
   parseInternalNavigationHref,
   withBackNavigationSearch,
 } from '@/lib/navigation'
+import { resolveLucideIcon } from '@/lib/icon'
 import { useCanUseItem } from '@/lib/permission-infer'
 import { cn } from '@/lib/utils'
 import type { NodeItemProps } from '../../nodes'
@@ -126,6 +127,11 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
     return null
   }
 
+  const Icon = resolveLucideIcon(item.icon || item.meta?.icon)
+  const buttonLabel = submitting
+    ? item.meta?.loadingText || '处理中...'
+    : item.name || value || ''
+
   const executeAction = async () => {
     if (submitting) {
       return
@@ -174,7 +180,8 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
         onClick={() => void handleClick()}
         disabled={submitting || !!item.meta?.disabled}
       >
-        {submitting ? item.meta?.loadingText || '处理中...' : item.name || value || ''}
+        {Icon && !submitting ? <Icon className="size-4" /> : null}
+        {buttonLabel ? <span>{buttonLabel}</span> : null}
       </Button>
 
       {confirmMeta ? (

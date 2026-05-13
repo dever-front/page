@@ -84,7 +84,7 @@ export const ItemActionSchema = z.record(z.string(), ItemActionValueSchema)
 export const OptionItemSchema = z.object({
   id: z.union([z.string(), z.number()]),
   value: z.string(),
-})
+}).passthrough()
 
 export const ValidateRuleSchema = z.object({
   type: z.string(),

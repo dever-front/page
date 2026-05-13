@@ -4,29 +4,22 @@
  * 按 item.type 查注册表渲染节点组件
  * 统一处理 mode 包裹和 value/option/action 绑定
  */
-import { useCallback } from 'react'
+import { Suspense, useCallback } from 'react'
+import { InlineTip } from '@/page/nodes/show/tooltip'
+import { useNodeOption } from '@/page/option'
 import { useStore } from 'zustand'
-import {
-  usePageStore,
-  type PageStore,
-  useStorePathValue,
-} from '@/lib/store'
-import { nodeRegistry } from '@/lib/registry'
 import { runActions } from '@/lib/action'
-import type { Item, OptionItem } from '@/lib/schema'
-import { cn } from '@/lib/utils'
-import {
-  isItemCurrentlyHidden,
-  isItemCurrentlyRequired,
-} from '@/lib/condition'
+import { isItemCurrentlyHidden, isItemCurrentlyRequired } from '@/lib/condition'
 import {
   isSameControlValue,
   normalizeClearOnChangePaths,
 } from '@/lib/form-control'
 import { useCanUseItem } from '@/lib/permission-infer'
+import { nodeRegistry } from '@/lib/registry'
+import type { Item, OptionItem } from '@/lib/schema'
+import { usePageStore, type PageStore, useStorePathValue } from '@/lib/store'
+import { cn } from '@/lib/utils'
 import { Label } from '@/components/ui/label'
-import { InlineTip } from '@/page/nodes/show/tooltip'
-import { useNodeOption } from '@/page/option'
 
 // ========== 统一节点 Props ==========
 
@@ -36,7 +29,10 @@ export type NodeItemProps = {
   setValue: (value: any) => void
   option?: OptionItem[]
   optionLoading?: boolean
-  ensureOptionLoaded?: (keyword?: string, selectedValue?: unknown) => Promise<OptionItem[] | undefined>
+  ensureOptionLoaded?: (
+    keyword?: string,
+    selectedValue?: unknown
+  ) => Promise<OptionItem[] | undefined>
   runAction: (name: string) => Promise<void>
   store: PageStore
   layoutId: string
@@ -91,11 +87,11 @@ function NodeItem({ item, store, layoutId }: NodeItemComponentProps) {
   const allowed = useCanUseItem(store, item)
 
   // 解析 option
-  const {
-    option,
-    optionLoading,
-    ensureOptionLoaded,
-  } = useNodeOption(store, item.option, item)
+  const { option, optionLoading, ensureOptionLoaded } = useNodeOption(
+    store,
+    item.option,
+    item
+  )
 
   // 绑定 action
   const handleAction = useCallback(
@@ -126,7 +122,9 @@ function NodeItem({ item, store, layoutId }: NodeItemComponentProps) {
   // 统一 mode 包裹
   return (
     <ModeWrapper item={item} error={error} required={required}>
-      <NodeComponent {...props} />
+      <Suspense fallback={null}>
+        <NodeComponent {...props} />
+      </Suspense>
     </ModeWrapper>
   )
 }
@@ -155,11 +153,11 @@ function ModeWrapper({
       return (
         <div
           className={cn(
-            'mb-4 grid gap-x-3 gap-y-0.5 md:grid-cols-[7rem_minmax(0,1fr)] last:mb-0',
+            'mb-4 grid gap-x-3 gap-y-0.5 last:mb-0 md:grid-cols-[7rem_minmax(0,1fr)]',
             item.className
           )}
         >
-          <div className="md:flex md:min-h-10 md:items-center">
+          <div className='md:flex md:min-h-10 md:items-center'>
             {item.name ? (
               <Label
                 htmlFor={item.id}
@@ -168,22 +166,26 @@ function ModeWrapper({
                   error ? 'text-destructive' : 'text-foreground'
                 )}
               >
-                <span className="inline-flex items-center gap-1.5">
+                <span className='inline-flex items-center gap-1.5'>
                   <span>{item.name}</span>
-                  {required ? <span className="text-destructive">*</span> : null}
+                  {required ? (
+                    <span className='text-destructive'>*</span>
+                  ) : null}
                   <InlineTip content={item.tip} />
                 </span>
               </Label>
             ) : null}
           </div>
-          <div className="min-w-0 md:flex md:min-h-10 md:items-center">{children}</div>
+          <div className='min-w-0 md:flex md:min-h-10 md:items-center'>
+            {children}
+          </div>
           {hasHelperText ? (
-            <div className="min-w-0 space-y-0.5 md:col-start-2">
-              {error && (
-                <p className="text-sm text-destructive">{error}</p>
-              )}
+            <div className='min-w-0 space-y-0.5 md:col-start-2'>
+              {error && <p className='text-sm text-destructive'>{error}</p>}
               {item.info && (
-                <p className="text-xs leading-5 text-muted-foreground">{item.info}</p>
+                <p className='text-xs leading-5 text-muted-foreground'>
+                  {item.info}
+                </p>
               )}
             </div>
           ) : null}
@@ -196,21 +198,22 @@ function ModeWrapper({
         {item.name && (
           <Label
             htmlFor={item.id}
-            className={cn('text-sm font-medium', error ? 'text-destructive' : undefined)}
+            className={cn(
+              'text-sm font-medium',
+              error ? 'text-destructive' : undefined
+            )}
           >
-            <span className="inline-flex items-center gap-1.5">
+            <span className='inline-flex items-center gap-1.5'>
               <span>{item.name}</span>
-              {required ? <span className="text-destructive">*</span> : null}
+              {required ? <span className='text-destructive'>*</span> : null}
               <InlineTip content={item.tip} />
             </span>
           </Label>
         )}
         {children}
-        {error && (
-          <p className="text-sm text-destructive">{error}</p>
-        )}
+        {error && <p className='text-sm text-destructive'>{error}</p>}
         {item.info && (
-          <p className="text-xs text-muted-foreground">{item.info}</p>
+          <p className='text-xs text-muted-foreground'>{item.info}</p>
         )}
       </div>
     )
@@ -236,7 +239,9 @@ function resolveSearchItemClassName(item: Item) {
       return 'w-full sm:max-w-[12rem]'
     case 'form-select':
       // JSON 是运行时协议，宽度类放在组件层枚举，避免 Tailwind 漏生成动态类。
-      return item.meta?.searchWidth === 'wide' ? 'min-w-[16rem]' : 'min-w-[12rem]'
+      return item.meta?.searchWidth === 'wide'
+        ? 'min-w-[16rem]'
+        : 'min-w-[12rem]'
     case 'form-date':
       return 'min-w-[10rem]'
     default:

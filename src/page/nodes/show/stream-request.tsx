@@ -43,13 +43,27 @@ import {
   type ParamValueMap,
   type TestParam,
 } from './stream-request-params'
+import {
+  StreamTimingBadge,
+  createStreamTiming,
+  finishStreamTiming,
+  updateStreamTiming,
+  useStreamClock,
+  type StreamTiming,
+} from './shared/stream-timing'
+import {
+  isEmptyRuntimeOutput,
+  isPlainRecord as isPlainObject,
+  normalizeRuntimeFrameOutput,
+  resolveRuntimeFrameCancelable,
+  runtimeErrorMessage,
+} from './shared/runtime-stream'
 
 type StreamFrame = RuntimeStreamFrame<EnergonOutput>
 
 type StreamOutput = {
   text: string
   reasoning: string
-  progress: EnergonOutput[]
   finalOutput: EnergonOutput | null
 }
 
@@ -73,7 +87,6 @@ const SOURCE_RULE_PICK = 2
 const EMPTY_OUTPUT: StreamOutput = {
   text: '',
   reasoning: '',
-  progress: [],
   finalOutput: null,
 }
 
@@ -85,6 +98,7 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
   const [stopping, setStopping] = useState(false)
   const [error, setError] = useState('')
   const [output, setOutput] = useState<StreamOutput>(EMPTY_OUTPUT)
+  const [timing, setTiming] = useState<StreamTiming | undefined>()
   const [paramsLoading, setParamsLoading] = useState(false)
   const [testParams, setTestParams] = useState<TestParam[]>([])
   const [testSources, setTestSources] = useState<TestSource[]>([])
@@ -127,11 +141,13 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
     [rawUploadRules, uploadRuleMetas]
   )
   const mainTestParams = useMemo(
-    () => testParams.filter((param) => isMainParam(param) && !isHiddenParam(param)),
+    () =>
+      testParams.filter((param) => isMainParam(param) && !isHiddenParam(param)),
     [testParams]
   )
   const toolbarTestParams = useMemo(
-    () => testParams.filter((param) => isToolbarParam(param) && !isHiddenParam(param)),
+    () =>
+      testParams.filter((param) => isToolbarParam(param) && !isHiddenParam(param)),
     [testParams]
   )
   const hasConfiguredParams = testParams.length > 0
@@ -139,10 +155,17 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
     () => testSources.map((source) => ({ id: source.id, value: source.name })),
     [testSources]
   )
-  const sourceReady = sourceRule !== SOURCE_RULE_PICK || activeSelectedSourceID.length > 0
+  const sourceReady =
+    sourceRule !== SOURCE_RULE_PICK || activeSelectedSourceID.length > 0
+  const nowMs = useStreamClock(timing?.status === 'running')
 
   const canSend = useMemo(
-    () => hasConfiguredParams && sourceReady && !running && !paramsLoading && powerKey.length > 0,
+    () =>
+      hasConfiguredParams &&
+      sourceReady &&
+      !running &&
+      !paramsLoading &&
+      powerKey.length > 0,
     [hasConfiguredParams, paramsLoading, powerKey, running, sourceReady]
   )
 
@@ -189,7 +212,10 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
       const rows = config.params
       setSourceRule(config.sourceRule)
       setTestSources(config.sources)
-      if (config.selectedSourceID && config.selectedSourceID !== activeSelectedSourceID) {
+      if (
+        config.selectedSourceID &&
+        config.selectedSourceID !== activeSelectedSourceID
+      ) {
         setSelectedSource({ power: powerKey, id: config.selectedSourceID })
       }
       setTestParams(rows)
@@ -233,8 +259,8 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
       assertFrameSuccess(frame)
       runTokenRef.current += 1
       resetStreamState()
-    } catch (currentError: any) {
-      setError(currentError?.message || '停止任务失败。')
+    } catch (currentError: unknown) {
+      setError(runtimeErrorMessage(currentError, '停止任务失败。'))
     } finally {
       setStopping(false)
     }
@@ -246,6 +272,7 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
     setStopping(false)
     setError('')
     setOutput(EMPTY_OUTPUT)
+    setTiming(undefined)
     setRequestID('')
     setRequestIDCopied(false)
     setLastStreamID('0-0')
@@ -271,6 +298,7 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
     setRunning(true)
     setError('')
     setOutput(EMPTY_OUTPUT)
+    setTiming(createStreamTiming('等待生成结果'))
     setRequestID('')
     setRequestIDCopied(false)
     setLastStreamID('0-0')
@@ -300,12 +328,13 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
       }
 
       setRequestID(nextRequestID)
-      setCancelable(resolveFrameCancelable(startFrame) === true)
+      setCancelable(resolveRuntimeFrameCancelable(startFrame) === true)
       applyFrame(startFrame as StreamFrame)
       await pollStream(token, nextRequestID)
-    } catch (currentError: any) {
+    } catch (currentError: unknown) {
       if (runTokenRef.current === token) {
-        setError(currentError?.message || '测试失败。')
+        setError(runtimeErrorMessage(currentError, '测试失败。'))
+        setTiming((current) => finishStreamTiming(current, 'failed'))
       }
     } finally {
       if (runTokenRef.current === token) {
@@ -339,13 +368,39 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
   }
 
   const applyFrame = (frame: StreamFrame) => {
-    const frameOutput = normalizeFrameOutput(frame?.output, frame)
-    if (isEmptyFrameOutput(frameOutput)) {
+    const frameOutput = normalizeRuntimeFrameOutput(frame?.output, frame)
+    if (isEmptyRuntimeOutput(frameOutput)) {
       return
     }
-    const frameCancelable = resolveFrameCancelable(frame)
+    const frameCancelable = resolveRuntimeFrameCancelable(frame)
     if (frameCancelable != null) {
       setCancelable(frameCancelable)
+    }
+    const event = valueText(frameOutput.event).toLowerCase()
+    if (
+      event === 'progress' ||
+      event === 'start' ||
+      event === 'status' ||
+      event === 'warning'
+    ) {
+      setTiming((current) =>
+        updateStreamTiming(
+          current,
+          valueText(frameOutput.text),
+          frameOutput.progress ??
+            frameOutput.meta?.progress ??
+            frameOutput.meta?.percent,
+          frameOutput.meta?.started_at_ms ?? frameOutput.meta?.started_at
+        )
+      )
+    }
+    if (frame.type === 'result') {
+      setTiming((current) =>
+        finishStreamTiming(
+          current,
+          Number(frame.status) === 2 ? 'failed' : 'done'
+        )
+      )
     }
 
     setOutput((current) => {
@@ -362,19 +417,14 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
       const next: StreamOutput = {
         text: current.text,
         reasoning: current.reasoning,
-        progress: [...current.progress],
         finalOutput: current.finalOutput,
       }
 
-      const event = valueText(frameOutput.event).toLowerCase()
       if (event === 'delta' || (!event && frameOutput.text)) {
         next.text += valueText(frameOutput.text)
       }
       if (event === 'reasoning' || frameOutput.reasoning) {
         next.reasoning += valueText(frameOutput.reasoning || frameOutput.text)
-      }
-      if (event === 'progress' || event === 'start') {
-        next.progress.push(frameOutput)
       }
       return next
     })
@@ -566,9 +616,14 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
           style={{ scrollbarGutter: 'stable' }}
           className="min-h-0 flex-1 overflow-y-scroll p-3"
         >
+          {timing ? (
+            <div className="mb-3">
+              <StreamTimingBadge timing={timing} now={nowMs} />
+            </div>
+          ) : null}
           <EnergonContentView
             output={buildContentViewOutput(output)}
-            streaming={running && !output.finalOutput}
+            streaming={running && hasStreamingTextOutput(output)}
             emptyText="AI 返回内容会显示在这里。"
             uploadRules={uploadRules}
           />
@@ -592,10 +647,6 @@ function buildContentViewOutput(output: StreamOutput): EnergonOutput[] | Energon
   }
 
   const items: EnergonOutput[] = []
-  const latestProgress = output.progress[output.progress.length - 1]
-  if (latestProgress) {
-    items.push(latestProgress)
-  }
   if (output.reasoning) {
     items.push({ event: 'reasoning', reasoning: output.reasoning })
   }
@@ -605,38 +656,10 @@ function buildContentViewOutput(output: StreamOutput): EnergonOutput[] | Energon
   return items
 }
 
-function normalizeFrameOutput(value: any, frame?: StreamFrame): EnergonOutput {
-  if (isPlainObject(value) && Object.keys(value).length > 0) {
-    return value
-  }
-
-  if (Number(frame?.status) === 2) {
-    const message = valueText(frame?.msg) || '请求失败。'
-    return {
-      event: 'progress',
-      text: message,
-      progress: 100,
-      error: message,
-    }
-  }
-
-  return isPlainObject(value) ? value : {}
-}
-
-function isEmptyFrameOutput(output: EnergonOutput) {
-  return Object.keys(output).length === 0
-}
-
-function isPlainObject(value: any): value is Record<string, any> {
-  return value != null && typeof value === 'object' && !Array.isArray(value)
-}
-
-function resolveFrameCancelable(frame: any): boolean | null {
-  const meta = frame?.output?.meta
-  if (!isPlainObject(meta) || !('cancelable' in meta)) {
-    return null
-  }
-  return Boolean(meta.cancelable)
+function hasStreamingTextOutput(output: StreamOutput) {
+  return (
+    !output.finalOutput && (Boolean(output.text) || Boolean(output.reasoning))
+  )
 }
 
 function clearRequestIDCopyTimer(timerRef: { current: number | null }) {
@@ -714,7 +737,10 @@ function normalizeTestSources(value: unknown): TestSource[] {
         target_id: id,
         service_name: serviceName,
         provider_name: providerName,
-        name: valueText(row.name) || [providerName, serviceName].filter(Boolean).join(' / ') || `来源 ${id}`,
+        name:
+          valueText(row.name) ||
+          [providerName, serviceName].filter(Boolean).join(' / ') ||
+          `来源 ${id}`,
       }
     })
     .filter((row): row is TestSource => row != null)

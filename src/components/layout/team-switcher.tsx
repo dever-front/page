@@ -2,12 +2,6 @@ import * as React from 'react'
 import { Check, ChevronsUpDown } from 'lucide-react'
 import { resolveLucideIcon } from '@/lib/icon'
 import {
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  useSidebar,
-} from '@/components/ui/sidebar'
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -15,6 +9,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from '@/components/ui/sidebar'
 import {
   getRemoteMenuKey,
   getRemoteMenuTitle,
@@ -53,7 +53,7 @@ export function TeamSwitcher({
   const menuButton = (
     <SidebarMenuButton
       type='button'
-      className='h-12 gap-2 rounded-md p-2 text-sm focus-visible:ring-0 data-[state=open]:ring-0 group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:p-0!'
+      className='h-12 gap-2 rounded-md p-2 text-sm group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:p-0! focus-visible:ring-0 data-[state=open]:ring-0'
     >
       <div className='flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground'>
         <activeTeam.logo className='size-[1.125rem]' />

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Command,
@@ -39,6 +39,11 @@ type SearchableOptionPickerProps = {
   onSearchChange?: (query: string) => void
   onClear?: () => void
   onChange: (nextValue: string | string[]) => void
+  createAction?: {
+    label: string
+    disabled?: boolean
+    onSelect: () => void
+  }
 }
 
 export function SearchableOptionPicker({
@@ -60,6 +65,7 @@ export function SearchableOptionPicker({
   onSearchChange,
   onClear,
   onChange,
+  createAction,
 }: SearchableOptionPickerProps) {
   const [innerOpen, setInnerOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -152,6 +158,22 @@ export function SearchableOptionPicker({
           />
           <CommandList>
             <CommandEmpty>{loading ? '正在加载...' : emptyText || '未找到匹配选项'}</CommandEmpty>
+            {createAction ? (
+              <CommandGroup className="border-b">
+                <CommandItem
+                  value="__create_option__"
+                  disabled={createAction.disabled}
+                  className="gap-2 font-medium text-primary"
+                  onSelect={() => {
+                    handleOpenChange(false)
+                    createAction.onSelect()
+                  }}
+                >
+                  <Plus className="size-4" />
+                  <span className="flex-1 truncate text-left">{createAction.label}</span>
+                </CommandItem>
+              </CommandGroup>
+            ) : null}
             <CommandGroup>
               {filteredOptions.map((opt) => {
                 const optionId = String(opt.id)

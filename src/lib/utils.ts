@@ -61,11 +61,15 @@ export function getPageNumbers(currentPage: number, totalPages: number) {
 }
 
 export function formatDisplayValue(value: unknown, formatType?: string) {
+  const normalizedFormat = String(formatType || '').trim().toLowerCase()
+  if (normalizedFormat === 'duration-ms') {
+    return formatDurationMilliseconds(value)
+  }
+
   if (value == null) {
     return ''
   }
 
-  const normalizedFormat = String(formatType || '').trim().toLowerCase()
   const text = String(value).trim()
   if (!text) {
     return ''
@@ -99,6 +103,26 @@ export function formatDisplayValue(value: unknown, formatType?: string) {
   }
 
   return text
+}
+
+function formatDurationMilliseconds(value: unknown) {
+  if (value == null) {
+    return '-'
+  }
+
+  const text = String(value).trim()
+  if (!text) {
+    return '-'
+  }
+
+  const milliseconds = Number(text)
+  if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
+    return '-'
+  }
+
+  const seconds = milliseconds / 1000
+  const fractionDigits = seconds < 1 ? 2 : seconds < 10 ? 1 : 0
+  return `${Number(seconds.toFixed(fractionDigits)).toLocaleString('zh-CN')}s`
 }
 
 function parseDisplayDateValue(text: string) {

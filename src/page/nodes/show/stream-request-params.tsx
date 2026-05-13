@@ -47,6 +47,7 @@ export type TestParam = {
   usage: number
   value_type: string
   default_value?: string
+  placeholder?: string
   required?: boolean
   upload_rule_id?: string | number
   max_files?: number
@@ -818,6 +819,40 @@ export function paramFilesRequestValue(param: TestParam, files: ParamUploadedFil
   return values[0] || ''
 }
 
+export function summarizeParamDisplayValue(param: TestParam, value: unknown) {
+  if (isFileParam(param)) {
+    const files = normalizeStringArray(value)
+    if (files.length === 0) {
+      return '空'
+    }
+    return files.length === 1 ? files[0] : `${files.length} 个文件`
+  }
+  if (normalizeParamType(param.type) === 'switch') {
+    return isTruthyValue(value) ? '是' : '否'
+  }
+  if (normalizeParamType(param.type) === 'option') {
+    return (
+      optionDisplayLabels(param.options || [], normalizeStringArray(value)).join(
+        ' / '
+      ) || '空'
+    )
+  }
+  if (normalizeParamType(param.type) === 'multi_option') {
+    return (
+      optionDisplayLabels(param.options || [], normalizeStringArray(value)).join(
+        ' / '
+      ) || '空'
+    )
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.join('、') : '空'
+  }
+  if (isPlainObject(value)) {
+    return JSON.stringify(value)
+  }
+  return valueText(value) || '空'
+}
+
 export function inputKeyForParam(param: TestParam) {
   return (
     String(param.key || '').trim() ||
@@ -876,6 +911,7 @@ function normalizeTestParam(row: unknown): TestParam | null {
     usage: normalizeParamUsage(row.usage),
     value_type: normalizeValueType(row.value_type),
     default_value: valueText(row.default_value),
+    placeholder: valueText(row.placeholder),
     required: normalizeRequiredFlag(row.required),
     upload_rule_id: row.upload_rule_id,
     max_files: Number(row.max_files || 0),
@@ -961,7 +997,7 @@ function missingDefaultParamValue(param: TestParam) {
     case 'option':
       return firstOptionRequestValue(param)
     case 'switch':
-      return isMainParam(param) ? false : undefined
+      return false
     default:
       return undefined
   }
@@ -1034,13 +1070,21 @@ function paramSummary(param: TestParam, value: unknown, files: ParamUploadedFile
 }
 
 function optionLabels(options: TestParamOption[], selectedValues: string[]) {
+  return optionDisplayLabels(options, selectedValues, false)
+}
+
+function optionDisplayLabels(
+  options: TestParamOption[],
+  selectedValues: string[],
+  fallbackToRaw = true
+) {
   if (selectedValues.length === 0) {
     return []
   }
   return selectedValues
     .map((value) => {
       const option = options.find((current) => isSelectedOptionValue(current, [value]))
-      return option?.value || ''
+      return option?.value || (fallbackToRaw ? String(value).trim() : '')
     })
     .filter((label) => label !== '')
 }
@@ -1084,6 +1128,9 @@ function paramLabel(param: TestParam) {
 }
 
 function paramInputPlaceholder(param: TestParam) {
+  if (String(param.placeholder || '').trim()) {
+    return String(param.placeholder || '').trim()
+  }
   return `请输入${paramLabel(param)}`
 }
 
@@ -1187,6 +1234,6 @@ function valueText(value: unknown) {
   return typeof value === 'string' ? value : String(value)
 }
 
-function isPlainObject(value: unknown): value is Record<string, any> {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === 'object' && !Array.isArray(value)
 }

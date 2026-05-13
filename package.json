@@ -6,6 +6,10 @@
   "packageManager": "pnpm@10.23.0",
   "scripts": {
     "dev": "vite",
+    "dev:host": "vite --host 0.0.0.0 --port 5173",
+    "build:vite": "vite build",
+    "preview:host": "vite preview --host 0.0.0.0 --port 5173 --strictPort",
+    "serve:host": "pnpm build:vite && pnpm preview:host",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",

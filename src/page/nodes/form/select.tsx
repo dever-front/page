@@ -1,7 +1,7 @@
 /**
  * Form/Select.tsx - 下拉选择
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useStore } from 'zustand'
 import {
@@ -25,10 +25,16 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, Plus } from 'lucide-react'
 import type { NodeItemProps } from '../../nodes'
 import { findFloatingLayerContainer } from '@/lib/floating-layer'
 import { resolveSelectedOptionLabels } from '@/lib/option-labels'
+import {
+  resolveSelectCreateOptionConfig,
+  type SelectCreateOptionConfig,
+} from '@/lib/select-create-option'
+import type { ActionConfig, Item } from '@/lib/schema'
+import { FeedbackModal } from '../feedback/modal'
 
 export function FormSelect({
   item,
@@ -38,6 +44,7 @@ export function FormSelect({
   optionLoading,
   ensureOptionLoaded,
   error,
+  runAction,
   store,
   layoutId,
 }: NodeItemProps) {
@@ -63,6 +70,71 @@ export function FormSelect({
     () => resolveSelectFallbackLabel(store, item, value),
     [item, store, value]
   )
+  const createOptionConfig = useMemo(
+    () => resolveSelectCreateOptionConfig(item),
+    [item]
+  )
+  const createOptionModalItem = useMemo(
+    () => buildSelectCreateOptionModalItem(item, createOptionConfig),
+    [createOptionConfig, item]
+  )
+  const handleCreateOption = useCallback(() => {
+    if (!createOptionConfig) {
+      return
+    }
+
+    setOpen(false)
+    store.getState().setPageState(createOptionConfig.stateKey, true)
+  }, [createOptionConfig, store])
+  const createOptionAction = createOptionConfig
+    ? {
+        label: createOptionConfig.name,
+        disabled: !!item.meta?.disabled,
+        onSelect: handleCreateOption,
+      }
+    : undefined
+  const createOptionButton = createOptionAction ? (
+    <div className="border-b p-1">
+      <Button
+        type="button"
+        variant="ghost"
+        disabled={createOptionAction.disabled}
+        className="h-8 w-full justify-start gap-2 px-2 font-medium text-primary"
+        onPointerDown={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+        }}
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          createOptionAction.onSelect()
+        }}
+      >
+        <Plus className="size-4" />
+        <span className="truncate">{createOptionAction.label}</span>
+      </Button>
+    </div>
+  ) : null
+  const renderWithCreateOptionModal = (control: ReactNode) => {
+    if (!createOptionModalItem) {
+      return control
+    }
+
+    return (
+      <>
+        {control}
+        <FeedbackModal
+          item={createOptionModalItem}
+          value={undefined}
+          setValue={() => {}}
+          option={undefined}
+          runAction={runAction}
+          store={store}
+          layoutId={layoutId}
+        />
+      </>
+    )
+  }
 
   useEffect(
     () => () => {
@@ -137,7 +209,7 @@ export function FormSelect({
     const selectedLabels = resolveSelectedOptionLabels(options, values)
 
     if (searchable) {
-      return (
+      return renderWithCreateOptionModal(
         <SearchableOptionPicker
           value={values}
           options={options}
@@ -155,6 +227,7 @@ export function FormSelect({
           onOpenChange={handleOpenChange}
           onSearchChange={handleOptionSearchChange}
           onClear={clearValue}
+          createAction={createOptionAction}
           onChange={(nextValue) => {
             commitValue(Array.isArray(nextValue) ? nextValue : [String(nextValue)])
           }}
@@ -162,7 +235,7 @@ export function FormSelect({
       )
     }
 
-    return (
+    return renderWithCreateOptionModal(
       <Popover open={open} onOpenChange={handleOpenChange}>
         <SelectTriggerShell
           className={item.meta?.controlClassName}
@@ -199,6 +272,7 @@ export function FormSelect({
           container={portalContainer}
           className="w-[var(--radix-popover-trigger-width)] min-w-[12rem] p-1"
         >
+          {createOptionButton}
           {options.map((opt) => {
             const optionId = String(opt.id)
             const checked = values.includes(optionId)
@@ -232,7 +306,7 @@ export function FormSelect({
   }
 
   if (searchable) {
-    return (
+    return renderWithCreateOptionModal(
       <SearchableOptionPicker
         value={value != null && value !== '' ? String(value) : undefined}
         options={options}
@@ -249,6 +323,7 @@ export function FormSelect({
         onOpenChange={handleOpenChange}
         onSearchChange={handleOptionSearchChange}
         onClear={clearValue}
+        createAction={createOptionAction}
         onChange={(nextValue) => {
           commitValue(Array.isArray(nextValue) ? nextValue[0] ?? '' : nextValue)
         }}
@@ -256,8 +331,9 @@ export function FormSelect({
     )
   }
 
-  return (
+  return renderWithCreateOptionModal(
     <Select
+      open={open}
       value={value != null ? String(value) : ''}
       disabled={!!item.meta?.disabled}
       onOpenChange={handleOpenChange}
@@ -286,6 +362,7 @@ export function FormSelect({
         </SelectTrigger>
       </SelectTriggerShell>
       <SelectContent container={portalContainer}>
+        {createOptionButton}
         {options.map((opt) => (
           <SelectItem key={String(opt.id)} value={String(opt.id)}>
             {opt.value}
@@ -294,6 +371,72 @@ export function FormSelect({
       </SelectContent>
     </Select>
   )
+}
+
+function buildSelectCreateOptionModalItem(
+  sourceItem: Item,
+  config: SelectCreateOptionConfig | null
+): Item | null {
+  if (!config) {
+    return null
+  }
+
+  return {
+    id: `${sourceItem.id || 'select'}-create-option-modal`,
+    type: 'feedback-modal',
+    meta: {
+      stateKey: config.stateKey,
+      pageRoute: config.pageRoute,
+      pageRoutePath: config.pageRoutePath,
+      pageRouteQuery: config.pageRouteQuery,
+      pageDataPatches: config.pageDataPatches,
+      title: config.title || config.name,
+      description: config.description,
+      size: config.size || 'sm',
+      width: config.width,
+      bodyClassName: config.bodyClassName,
+      footer: config.footer || {
+        confirm: true,
+        confirmText: '保存',
+      },
+      refreshParentOnSuccess: false,
+    },
+    action: {
+      success: buildSelectCreateOptionSuccessActions(sourceItem, config),
+    },
+  }
+}
+
+function buildSelectCreateOptionSuccessActions(
+  sourceItem: Item,
+  config: SelectCreateOptionConfig
+) {
+  const actions: Array<string | ActionConfig> = [
+    ...normalizeActionList(config.success),
+    {
+      type: 'increment',
+      key: config.reloadPath,
+    },
+  ]
+
+  if (config.selectCreated && sourceItem.value) {
+    actions.push({
+      type: 'data',
+      key: sourceItem.value,
+      value: `$result.${config.createdValuePath}`,
+    })
+  }
+
+  return actions
+}
+
+function normalizeActionList(
+  action?: string | ActionConfig | Array<string | ActionConfig>
+) {
+  if (!action) {
+    return []
+  }
+  return Array.isArray(action) ? action : [action]
 }
 
 function resolveRemoteSearchQueryValue(value: string | string[]) {

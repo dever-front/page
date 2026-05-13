@@ -22,6 +22,7 @@ import { loadPageSchema } from '@/lib/request'
 import { reloadStorePageSchema } from '@/lib/page-schema-reload'
 import { validatePageSchema, type PageSchemaType } from '@/lib/schema'
 import {
+  type ActionRunResult,
   runActionWithResult as runStoreActionWithResult,
   runActionsWithResult,
 } from '@/lib/action'
@@ -90,7 +91,7 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
   const formId = useMemo(() => `modal-form-${item.id}`, [item.id])
   const footer = item.meta?.footer ?? {}
   const showConfirm = !!footer.confirm
-  const showClose = footer.close !== false
+  const showClose = ![false, 'false', 0, '0'].includes(footer.close)
   const footerButtons = Array.isArray(footer.buttons) ? footer.buttons : []
   const titleFromPath = useStore(store, (s) =>
     readMetaPathValue(s, item.meta?.titlePath)
@@ -214,15 +215,22 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
       return
     }
 
-    const closeOverlayAndRefreshParent = async () => {
+    const closeOverlayAndRefreshParent = async (submitResult?: ActionRunResult) => {
       if (item.action?.success) {
-        const result = await runActionsWithResult(store, item.action.success)
+        const result = await runActionsWithResult(store, item.action.success, {
+          modalStore: pageStore,
+          modalData: pageStore?.getState().data,
+          modalState: pageStore?.getState().state,
+          modalForm: pageStore?.getState().data?.form,
+          result: submitResult?.data,
+          message: submitResult?.message,
+        })
         if (!result.success) {
           return
         }
       }
 
-      refreshParentOnCloseRef.current = true
+      refreshParentOnCloseRef.current = item.meta?.refreshParentOnSuccess !== false
       handleOpenChange(false)
     }
 
@@ -234,7 +242,7 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
         modalForm: pageStore?.getState().data?.form,
       })
       if (result.success) {
-        await closeOverlayAndRefreshParent()
+        await closeOverlayAndRefreshParent(result)
       }
       return
     }
@@ -242,7 +250,7 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
     if (pageStore?.getState().action.submit) {
       const result = await runStoreActionWithResult(pageStore, 'submit')
       if (result.success) {
-        await closeOverlayAndRefreshParent()
+        await closeOverlayAndRefreshParent(result)
       }
       return
     }

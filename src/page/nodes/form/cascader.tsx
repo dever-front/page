@@ -25,7 +25,16 @@ type CascaderOption = {
   leaf?: boolean
 } & Record<string, any>
 
-export function FormCascader({ item, value, setValue, store, error }: NodeItemProps) {
+type RemoteOptionCacheEntry = {
+  options: CascaderOption[]
+  expiresAt: number
+}
+
+const remoteOptionCache = new Map<string, RemoteOptionCacheEntry>()
+const remoteOptionPendingCache = new Map<string, Promise<CascaderOption[]>>()
+const remoteOptionCacheTtl = 10 * 1000
+
+export function FormCascader({ item, value, setValue, store, error, row }: NodeItemProps) {
   const api = String(item.meta?.api || '').trim()
   const leafValueMode = resolveLeafValueMode(item.meta)
   const [leafPathValues, setLeafPathValues] = useState<any[]>([])
@@ -58,7 +67,6 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
   )
   const [levels, setLevels] = useState<CascaderOption[][]>([])
   const [loadingLevel, setLoadingLevel] = useState<number | null>(null)
-  const cacheRef = useRef(new Map<string, CascaderOption[]>())
   const keepParentOnEmptyRef = useRef(false)
   const optionFilterDependencies = useMemo(
     () => collectOptionFilterDependencies(item),
@@ -149,31 +157,39 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
     async (parentId: any, level: number) => {
       const childLevel = level > 0 && String(item.meta?.childUse || '').trim() !== ''
       const params = buildParams(parentId, level)
-      const cacheKey = `${api}?${JSON.stringify(params)}`
-      const cached = cacheRef.current.get(cacheKey)
+      const cacheKey = buildRemoteOptionCacheKey(api, params)
+      const cached = getCachedRemoteOptions(cacheKey)
       if (cached) {
         return cached
       }
 
       setLoadingLevel(level)
-      try {
-        const result = await request(api, 'get', params)
-        if (result.code !== 0 || !Array.isArray(result.data)) {
-          return []
+      const pending = remoteOptionPendingCache.get(cacheKey)
+      if (pending) {
+        try {
+          return await pending
+        } finally {
+          setLoadingLevel((current) => (current === level ? null : current))
         }
+      }
 
-        const nextOptions = result.data.map((current: any) => ({
-          ...current,
-          id: current?.id,
-          value: String(current?.value ?? ''),
-          leaf:
-            childLevel ||
-            current?.leaf === true ||
-            current?.leaf === 1 ||
-            current?.leaf === '1',
-        }))
-        cacheRef.current.set(cacheKey, nextOptions)
-        return nextOptions
+      const nextRequest = request(api, 'get', params)
+        .then((result) => {
+          if (result.code !== 0 || !Array.isArray(result.data)) {
+            return []
+          }
+
+          const nextOptions = normalizeRemoteOptions(result.data, childLevel)
+          setCachedRemoteOptions(cacheKey, nextOptions)
+          return nextOptions
+        })
+        .finally(() => {
+          remoteOptionPendingCache.delete(cacheKey)
+        })
+
+      remoteOptionPendingCache.set(cacheKey, nextRequest)
+      try {
+        return await nextRequest
       } finally {
         setLoadingLevel((current) => (current === level ? null : current))
       }
@@ -201,6 +217,13 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
       }
       if (!api || !childUse || !childParentField) {
         setLeafPathValues([])
+        return
+      }
+      const rowRelation = resolveRowRelation(row, item.value)
+      const rowParentId = rowRelation?.[childParentField]
+      const rowLeafId = rowRelation?.id ?? leafValue
+      if (rowParentId && String(rowLeafId) === leafValue) {
+        setLeafPathValues([rowParentId, rowLeafId])
         return
       }
 
@@ -235,6 +258,7 @@ export function FormCascader({ item, value, setValue, store, error }: NodeItemPr
     item.meta?.type,
     item.meta?.valueField,
     leafValueMode,
+    row,
     value,
   ])
 
@@ -456,6 +480,57 @@ function normalizeCascaderValues(value: any) {
     return []
   }
   return [value]
+}
+
+function buildRemoteOptionCacheKey(api: string, params: Record<string, any>) {
+  return `${api}?${JSON.stringify(params)}`
+}
+
+function getCachedRemoteOptions(cacheKey: string) {
+  const cached = remoteOptionCache.get(cacheKey)
+  if (!cached) {
+    return undefined
+  }
+  if (cached.expiresAt <= Date.now()) {
+    remoteOptionCache.delete(cacheKey)
+    return undefined
+  }
+  return cached.options
+}
+
+function setCachedRemoteOptions(cacheKey: string, options: CascaderOption[]) {
+  remoteOptionCache.set(cacheKey, {
+    options,
+    expiresAt: Date.now() + remoteOptionCacheTtl,
+  })
+}
+
+function normalizeRemoteOptions(rows: any[], childLevel: boolean): CascaderOption[] {
+  return rows.map((current: any) => ({
+    ...current,
+    id: current?.id,
+    value: String(current?.value ?? ''),
+    leaf:
+      childLevel ||
+      current?.leaf === true ||
+      current?.leaf === 1 ||
+      current?.leaf === '1',
+  }))
+}
+
+function resolveRowRelation(row: Record<string, any> | undefined, valuePath?: string) {
+  if (!row) {
+    return undefined
+  }
+
+  const relationPath = inferRelationPath(valuePath)
+  if (!relationPath) {
+    return undefined
+  }
+
+  const normalizedPath = relationPath.replace(/^form\./, '')
+  const relation = getByPath(row, normalizedPath)
+  return relation && typeof relation === 'object' ? relation : undefined
 }
 
 function resolveLeafValueMode(meta: Record<string, any> | undefined) {
