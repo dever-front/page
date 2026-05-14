@@ -41,10 +41,8 @@ import { cn, formatDisplayValue } from '@/lib/utils'
 import { resolveLucideIcon } from '@/lib/icon'
 import { withBackNavigationSearch } from '@/lib/navigation'
 import { runActions } from '@/lib/action'
-import { canUseItem } from '@/lib/permission-infer'
 import { ActionButton } from './shared/action-button'
 import { getStoreValueByPath, useStorePathValue } from '@/lib/store'
-import { useAuthStore, type AuthRule } from '@/stores/auth-store'
 import { MediaAudio } from '../media/audio'
 import { MediaImage } from '../media/image'
 import { MediaVideo } from '../media/video'
@@ -71,15 +69,9 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
   const columns: Column[] = item.meta?.columns || []
   const data: any[] = Array.isArray(value) ? value : []
   const rowKey = item.meta?.rowKey || 'id'
-  const authList = useAuthStore((state) => state.auth.authList)
-  const authRules = useAuthStore((state) => state.auth.authRules)
-  const visibleColumns = useMemo(
-    () => filterVisibleColumns(columns, data, rowKey, store, authList, authRules),
-    [authList, authRules, columns, data, rowKey, store]
-  )
   const fixedColumnLayouts = useMemo(
-    () => resolveFixedColumnLayouts(visibleColumns),
-    [visibleColumns]
+    () => resolveFixedColumnLayouts(columns),
+    [columns]
   )
   const isRemote = item.meta?.remote === true
   const searchKeyword = useTableStoreValue(store, item.meta?.searchPath)
@@ -94,9 +86,10 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
   const bulkActions = Array.isArray(item.meta?.bulkActions) ? item.meta.bulkActions : []
   const [selectedRowKeys, setSelectedRowKeys] = useState<Array<string>>([])
   const [collapsedRowKeys, setCollapsedRowKeys] = useState<Array<string>>([])
+  const selectedRowKeySet = useMemo(() => new Set(selectedRowKeys), [selectedRowKeys])
   const selectedRows = useMemo(
-    () => data.filter((row) => selectedRowKeys.includes(String(row[rowKey]))),
-    [data, rowKey, selectedRowKeys]
+    () => data.filter((row) => selectedRowKeySet.has(String(row[rowKey]))),
+    [data, rowKey, selectedRowKeySet]
   )
 
   const handleAction = useCallback(
@@ -113,7 +106,7 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
 
     const keyword = String(searchKeyword ?? '').trim().toLowerCase()
 
-    const searchableColumns = visibleColumns.filter((col) => col.value)
+    const searchableColumns = columns.filter((col) => col.value)
     return data.filter((row) => {
       const matchesKeyword =
         !keyword ||
@@ -128,7 +121,7 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
 
       return matchesKeyword && matchesFilters
     })
-  }, [data, extraFilters, isRemote, searchKeyword, visibleColumns])
+  }, [columns, data, extraFilters, isRemote, searchKeyword])
 
   const total = isRemote ? totalValue : filteredData.length
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
@@ -154,9 +147,10 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
     () => pagedData.map((row) => String(row[rowKey])),
     [pagedData, rowKey]
   )
+  const pageRowKeySet = useMemo(() => new Set(pageRowKeys), [pageRowKeys])
   const allPageSelected =
     pageRowKeys.length > 0 &&
-    pageRowKeys.every((key) => selectedRowKeys.includes(key))
+    pageRowKeys.every((key) => selectedRowKeySet.has(key))
 
   const setPage = useCallback(
     (nextPage: number) => {
@@ -175,10 +169,10 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
         if (checked) {
           return Array.from(new Set([...prev, ...pageRowKeys]))
         }
-        return prev.filter((key) => !pageRowKeys.includes(key))
+        return prev.filter((key) => !pageRowKeySet.has(key))
       })
     },
-    [pageRowKeys]
+    [pageRowKeys, pageRowKeySet]
   )
 
   const toggleRow = useCallback((key: string, checked: boolean) => {
@@ -241,7 +235,7 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
     return buildVisibleTreeRows(pagedData, rowKey, treeParentKey, collapsedRowKeys)
   }, [collapsedRowKeys, pagedData, rowKey, treeMode, treeParentKey])
 
-  if (visibleColumns.length === 0) {
+  if (columns.length === 0) {
     return <div className="p-4 text-sm text-muted-foreground">No columns configured.</div>
   }
 
@@ -260,7 +254,7 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
                   />
                 </TableHead>
               )}
-              {visibleColumns.map((col, idx) => {
+              {columns.map((col, idx) => {
                 const align = resolveColumnAlign(col)
                 const fixedColumnProps = resolveFixedColumnProps(fixedColumnLayouts[idx], 'head')
 
@@ -293,7 +287,7 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
             {visibleRows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={visibleColumns.length + (selectable ? 1 : 0)}
+                  colSpan={columns.length + (selectable ? 1 : 0)}
                   className="h-24 text-center text-muted-foreground"
                 >
                   暂无数据
@@ -303,13 +297,13 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
               visibleRows.map(({ row, depth, hasChildren, expanded }, rowIdx) => (
                 <TableRow
                   key={String(row[rowKey] ?? rowIdx)}
-                  data-state={selectedRowKeys.includes(String(row[rowKey])) ? 'selected' : undefined}
+                  data-state={selectedRowKeySet.has(String(row[rowKey])) ? 'selected' : undefined}
                   className="group/row h-12"
                 >
                   {selectable && (
                     <TableCell className="h-12 px-4">
                       <Checkbox
-                        checked={selectedRowKeys.includes(String(row[rowKey]))}
+                        checked={selectedRowKeySet.has(String(row[rowKey]))}
                         onCheckedChange={(checked) =>
                           toggleRow(String(row[rowKey]), checked === true)
                         }
@@ -317,7 +311,7 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
                       />
                     </TableCell>
                   )}
-                  {visibleColumns.map((col, colIdx) => {
+                  {columns.map((col, colIdx) => {
                     const align = resolveColumnAlign(col)
                     const fixedColumnProps = resolveFixedColumnProps(
                       fixedColumnLayouts[colIdx],
@@ -367,8 +361,6 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
                                 search: withBackNavigationSearch(search, options?.withBack),
                               })
                             }
-                            authList={authList}
-                            authRules={authRules}
                           />
                         </div>
                       </TableCell>
@@ -486,76 +478,6 @@ function useTableStoreValue(store: NodeItemProps['store'], path?: string) {
   return useStorePathValue(store, path)
 }
 
-function filterVisibleColumns(
-  columns: Column[],
-  rows: any[],
-  rowKey: string,
-  store: NodeItemProps['store'],
-  authList: string[],
-  authRules: AuthRule[]
-) {
-  const state = store.getState()
-
-  return columns.filter((column) => {
-    if (!isActionColumn(column)) {
-      return true
-    }
-    if (!canUseItem(state, { auth: column.auth }, {}, authList, authRules)) {
-      return false
-    }
-
-    const buttons = Array.isArray(column.meta?.buttons) ? column.meta.buttons : []
-    if (buttons.length > 0) {
-      return buttons.some((button) =>
-        canUseTableAction(state, button, rows, rowKey, authList, authRules)
-      )
-    }
-
-    if (Array.isArray(column.meta?.menuItems) && column.meta.menuItems.length > 0) {
-      return true
-    }
-
-    return canUseTableAction(
-      state,
-      {
-        id: column.value || column.name,
-        name: column.name,
-        auth: column.auth,
-        type: column.type,
-        ...column.meta,
-        action: column.action,
-        to: column.meta?.to,
-      },
-      rows,
-      rowKey,
-      authList,
-      authRules
-    )
-  })
-}
-
-function isActionColumn(column: Column) {
-  return column.type === 'show-button' || column.type === 'show-link'
-}
-
-function canUseTableAction(
-  state: ReturnType<NodeItemProps['store']['getState']>,
-  item: Record<string, any>,
-  rows: any[],
-  rowKey: string,
-  authList: string[],
-  authRules: AuthRule[]
-) {
-  const sampleRows =
-    rows.length > 0
-      ? rows
-      : [{ id: '__permission_probe__', [rowKey]: '__permission_probe__' }]
-
-  return sampleRows.some((row) =>
-    canUseItem(state, item, { row }, authList, authRules)
-  )
-}
-
 function useTableFilters(
   store: NodeItemProps['store'],
   config?: Array<{ path: string; field: string }>
@@ -594,8 +516,6 @@ function CellRenderer({
   onAction,
   store,
   onNavigate,
-  authList,
-  authRules,
 }: {
   column: Column
   value: any
@@ -617,8 +537,6 @@ function CellRenderer({
     search?: Record<string, string>,
     options?: { withBack?: unknown }
   ) => void
-  authList: string[]
-  authRules: AuthRule[]
 }) {
   const type = column.type || 'show-base'
   const buttonGroup = Array.isArray(column.meta?.buttons) ? column.meta.buttons : null
@@ -639,16 +557,8 @@ function CellRenderer({
     [column, rowKey, store, tableMeta]
   )
   const canInlineEdit = useMemo(
-    () =>
-      canUseInlineEdit(
-        store.getState(),
-        row,
-        rowKey,
-        inlineAction,
-        authList,
-        authRules
-      ),
-    [authList, authRules, inlineAction, row, rowKey, store]
+    () => canUseInlineEdit(store.getState(), row, rowKey, inlineAction),
+    [inlineAction, row, rowKey, store]
   )
 
   const renderActionButton = (buttonMeta: any, key: string | number) => {

@@ -1,9 +1,8 @@
-import { canAccessRoute } from '@/lib/permission'
 import { parseInternalNavigationHref, type NavigationTarget } from '@/lib/navigation'
-import type { AuthRule } from '@/stores/auth-store'
 
 type RedirectMenuItem = {
   path?: string
+  active_paths?: string[]
   children?: RedirectMenuItem[]
 }
 
@@ -11,8 +10,6 @@ type AuthRedirectInput = {
   redirectTo?: string
   entry?: string
   menu?: RedirectMenuItem[]
-  auth?: string[]
-  authRules?: AuthRule[]
 }
 
 const BLOCKED_REDIRECT_PREFIXES = [
@@ -28,21 +25,20 @@ const BLOCKED_REDIRECT_PREFIXES = [
 ]
 
 export function resolvePostLoginTarget(input: AuthRedirectInput): NavigationTarget {
-  const auth = input.auth ?? []
-  const authRules = input.authRules ?? []
-  const redirectTarget = parseAllowedRedirect(input.redirectTo, auth, authRules)
+  const menuPaths = collectMenuPaths(input.menu ?? [])
+  const redirectTarget = parseAllowedRedirect(input.redirectTo, menuPaths)
 
   if (redirectTarget) {
     return redirectTarget
   }
 
-  const entryTarget = parseAllowedRedirect(toAppPath(input.entry), auth, authRules)
+  const entryTarget = parseAllowedRedirect(toAppPath(input.entry), menuPaths)
   if (entryTarget) {
     return entryTarget
   }
 
   const firstMenuUrl = resolveFirstMenuUrl(input.menu ?? [])
-  const firstMenuTarget = parseAllowedRedirect(firstMenuUrl, auth, authRules)
+  const firstMenuTarget = parseAllowedRedirect(firstMenuUrl, menuPaths)
   if (firstMenuTarget) {
     return firstMenuTarget
   }
@@ -50,17 +46,13 @@ export function resolvePostLoginTarget(input: AuthRedirectInput): NavigationTarg
   return { to: '/' }
 }
 
-function parseAllowedRedirect(
-  redirectTo: unknown,
-  auth: string[],
-  authRules: AuthRule[]
-) {
+function parseAllowedRedirect(redirectTo: unknown, menuPaths: Set<string>) {
   const target = parseInternalNavigationHref(redirectTo)
   if (!target || isBlockedRedirectPath(target.to)) {
     return null
   }
 
-  if (!canAccessRoute(target.to, target.search, auth, authRules)) {
+  if (!menuPaths.has(normalizeMenuPath(target.to))) {
     return null
   }
 
@@ -95,6 +87,39 @@ function resolveFirstMenuItemUrl(item?: RedirectMenuItem): string {
   }
 
   return toAppPath(item.path)
+}
+
+function collectMenuPaths(menu: RedirectMenuItem[]) {
+  const paths = new Set<string>()
+  for (const item of menu) {
+    collectMenuItemPaths(item, paths)
+  }
+  return paths
+}
+
+function collectMenuItemPaths(item: RedirectMenuItem | undefined, paths: Set<string>) {
+  if (!item) {
+    return
+  }
+
+  addMenuPath(paths, item.path)
+  for (const path of item.active_paths ?? []) {
+    addMenuPath(paths, path)
+  }
+  for (const child of item.children ?? []) {
+    collectMenuItemPaths(child, paths)
+  }
+}
+
+function addMenuPath(paths: Set<string>, path: unknown) {
+  const normalized = normalizeMenuPath(path)
+  if (normalized) {
+    paths.add(normalized)
+  }
+}
+
+function normalizeMenuPath(path: unknown) {
+  return String(path || '').replace(/[?#].*$/, '').replace(/^\/+|\/+$/g, '')
 }
 
 function isBlockedRedirectPath(path: string) {

@@ -4,7 +4,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { runActions } from '@/lib/action'
 import { resolveLucideIcon } from '@/lib/icon'
 import { withBackNavigationSearch } from '@/lib/navigation'
-import { useCanUseItem } from '@/lib/permission-infer'
 import { getByPath } from '@/lib/path'
 import { cn } from '@/lib/utils'
 import type { PageStore } from '@/lib/store'
@@ -28,7 +27,6 @@ export function ActionButton({
 }: ActionButtonProps) {
   const navigate = useNavigate()
   const actionContext = context ?? (record ? { row: record } : undefined)
-  const allowed = useCanUseItem(store, buttonMeta, actionContext)
   const Icon = resolveLucideIcon(buttonMeta?.icon)
   const hasIcon = !!Icon
   const buttonLabel = buttonMeta?.label || buttonMeta?.name
@@ -68,10 +66,6 @@ export function ActionButton({
     if (buttonMeta?.action?.click) {
       await runActions(store, buttonMeta.action.click, actionContext)
     }
-  }
-
-  if (!allowed) {
-    return null
   }
 
   const button = (

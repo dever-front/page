@@ -25,7 +25,6 @@ import {
   withBackNavigationSearch,
 } from '@/lib/navigation'
 import { resolveLucideIcon } from '@/lib/icon'
-import { useCanUseItem } from '@/lib/permission-infer'
 import { cn } from '@/lib/utils'
 import type { NodeItemProps } from '../../nodes'
 
@@ -39,7 +38,6 @@ type ButtonConfirmMeta = {
 
 export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
   const navigate = useNavigate()
-  const allowed = useCanUseItem(store, item)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const fallbackBackTarget = parseInternalNavigationHref(item.meta?.fallback ?? item.meta?.to)
@@ -123,7 +121,7 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
     return true
   }
 
-  if (!allowed || (item.meta?.back === true && !backTarget && !fallbackBackTarget)) {
+  if (item.meta?.back === true && !backTarget && !fallbackBackTarget) {
     return null
   }
 

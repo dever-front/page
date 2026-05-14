@@ -1,13 +1,20 @@
-import { lazy, Suspense, type ComponentProps, type ComponentType } from 'react'
+import {
+  lazy,
+  Suspense,
+  type ComponentProps,
+  type ComponentType,
+  type ReactNode,
+} from 'react'
 
 export function lazyRouteComponent<T extends ComponentType<any>>(
-  loader: () => Promise<{ default: T }>
+  loader: () => Promise<{ default: T }>,
+  fallback: ReactNode = null
 ) {
   const LazyComponent = lazy(loader)
 
   return function LazyRouteComponent(props: ComponentProps<T>) {
     return (
-      <Suspense fallback={null}>
+      <Suspense fallback={fallback}>
         <LazyComponent {...props} />
       </Suspense>
     )

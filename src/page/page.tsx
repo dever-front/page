@@ -17,6 +17,11 @@ import {
 import { loadPageSchema } from '@/lib/request'
 import { getSiteConfig } from '@/config/app-config'
 import {
+  activateAssistantPage,
+  registerAssistantPage,
+  type AssistantPageScope,
+} from '@/lib/assistant/registry'
+import {
   finishPageProgress,
   startPageProgress,
 } from '@/lib/page-progress'
@@ -32,6 +37,7 @@ type PageProps = {
   schema?: any
   parentStore?: PageStore | null
   onStoreReady?: (store: PageStore | null) => void
+  assistantScope?: AssistantPageScope
   updateDocumentTitle?: boolean
 }
 
@@ -67,6 +73,7 @@ export function Page({
   schema: schemaProp,
   parentStore,
   onStoreReady,
+  assistantScope,
   updateDocumentTitle = true,
 }: PageProps) {
   const [pageSchema, setPageSchema] = useState<PageSchemaType | null>(null)
@@ -206,6 +213,7 @@ export function Page({
       route={route}
       parentStore={parentStore}
       onStoreReady={onStoreReady}
+      assistantScope={assistantScope}
       updateDocumentTitle={updateDocumentTitle}
     />
   )
@@ -309,12 +317,14 @@ function PageInner({
   route,
   parentStore,
   onStoreReady,
+  assistantScope,
   updateDocumentTitle,
 }: {
   schema: PageSchemaType
   route?: string
   parentStore?: PageStore | null
   onStoreReady?: (store: PageStore | null) => void
+  assistantScope?: AssistantPageScope
   updateDocumentTitle: boolean
 }) {
   // 创建独立 store
@@ -344,6 +354,21 @@ function PageInner({
     }
   }, [onStoreReady, store])
 
+  const assistantRegistrationIdRef = useRef('')
+  if (!assistantRegistrationIdRef.current) {
+    assistantRegistrationIdRef.current = createAssistantRegistrationID(pagePath, schema)
+  }
+  const assistantRegistrationId = assistantRegistrationIdRef.current
+
+  useEffect(() => {
+    return registerAssistantPage({
+      id: assistantRegistrationId,
+      store,
+      route: pagePath,
+      scope: assistantScope || (parentStore ? 'nested' : 'page'),
+    })
+  }, [assistantRegistrationId, assistantScope, pagePath, parentStore, store])
+
   // 设置页面标题
   useEffect(() => {
     if (!updateDocumentTitle) {
@@ -355,7 +380,18 @@ function PageInner({
 
   return (
     <PageStoreContext.Provider value={store}>
-      <LayoutRenderer config={schema.layout} />
+      <div
+        className="contents"
+        onFocusCapture={() => activateAssistantPage(assistantRegistrationId)}
+        onPointerDownCapture={() => activateAssistantPage(assistantRegistrationId)}
+      >
+        <LayoutRenderer config={schema.layout} />
+      </div>
     </PageStoreContext.Provider>
   )
+}
+
+function createAssistantRegistrationID(pagePath: string, schema: PageSchemaType) {
+  const pageName = pagePath || schema.page.name || schema.page.title || 'page'
+  return `assistant:${pageName}:${Math.random().toString(16).slice(2)}`
 }

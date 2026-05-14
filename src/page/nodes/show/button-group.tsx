@@ -20,29 +20,13 @@ import { runActionsWithResult, type ImportActionPayload } from '@/lib/action'
 import type { ExportTaskInfo } from '@/lib/export-task'
 import { downloadExportTask, getExportTaskInfo } from '@/lib/export-task'
 import { resolveLucideIcon } from '@/lib/icon'
-import { hasAuth } from '@/lib/permission'
-import { canUseItem } from '@/lib/permission-infer'
 import { cn } from '@/lib/utils'
-import { useAuthStore } from '@/stores/auth-store'
 import type { NodeItemProps } from '../../nodes'
 
 export function ShowButtonGroup({ item, store }: NodeItemProps) {
-  const authList = useAuthStore((state) => state.auth.authList)
-  const authRules = useAuthStore((state) => state.auth.authRules)
-  const groupAllowed = hasAuth(item.auth, authList)
   const menuItems = useMemo(
-    () =>
-      normalizeButtonGroupItems(item.items).filter((menuItem, index) => {
-        const itemKey = resolveButtonGroupItemKey(item, menuItem, index)
-        return canUseItem(
-          store.getState(),
-          menuItem,
-          { item: menuItem, itemKey, group: item },
-          authList,
-          authRules
-        )
-      }),
-    [authList, authRules, item, store]
+    () => normalizeButtonGroupItems(item.items),
+    [item.items]
   )
   const TriggerIcon = resolveLucideIcon(String(item.meta?.icon || item.icon || '').trim())
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
@@ -105,7 +89,7 @@ export function ShowButtonGroup({ item, store }: NodeItemProps) {
     }
   }, [exportDialogOpen, task])
 
-  if (!groupAllowed || menuItems.length === 0) {
+  if (menuItems.length === 0) {
     return null
   }
 

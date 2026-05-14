@@ -24,6 +24,13 @@ import {
   normalizeResourceUploadRules,
 } from '@/lib/resource'
 import { getStoreValueByPath } from '@/lib/store'
+import {
+  isEmptyRuntimeOutput,
+  isPlainRecord as isPlainObject,
+  normalizeRuntimeFrameOutput,
+  resolveRuntimeFrameCancelable,
+  runtimeErrorMessage,
+} from '@/lib/runtime-stream-output'
 import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
 import type { NodeItemProps } from '../../nodes'
 import {
@@ -51,13 +58,6 @@ import {
   useStreamClock,
   type StreamTiming,
 } from './shared/stream-timing'
-import {
-  isEmptyRuntimeOutput,
-  isPlainRecord as isPlainObject,
-  normalizeRuntimeFrameOutput,
-  resolveRuntimeFrameCancelable,
-  runtimeErrorMessage,
-} from './shared/runtime-stream'
 
 type StreamFrame = RuntimeStreamFrame<EnergonOutput>
 

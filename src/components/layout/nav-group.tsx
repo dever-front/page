@@ -107,7 +107,7 @@ function SidebarMenuCollapsible({
   return (
     <Collapsible
       asChild
-      defaultOpen={checkIsActive(href, item, true)}
+      defaultOpen={checkIsActive(href, item)}
       className='group/collapsible'
     >
       <SidebarMenuItem>
@@ -260,31 +260,23 @@ function SidebarMenuCollapsedDropdown({
   )
 }
 
-function checkIsActive(href: string, item: NavItem, mainNav = false) {
+function checkIsActive(href: string, item: NavItem) {
   const currentPath = href.split('?')[0]
   const itemActivePaths =
     'activePaths' in item && Array.isArray(item.activePaths)
       ? item.activePaths
       : []
   if (isNavCollapsible(item)) {
-    const firstUrl = resolveFirstNavItemUrl(item)
     return (
       itemActivePaths.includes(currentPath) ||
-      item.items.some((child) => checkIsActive(href, child)) ||
-      (mainNav &&
-        !!firstUrl &&
-        currentPath.split('/')[1] !== '' &&
-        currentPath.split('/')[1] === firstUrl.split('/')[1])
+      item.items.some((child) => checkIsActive(href, child))
     )
   }
 
   return (
     href === item.url || // /endpint?search=param
     currentPath === item.url || // endpoint
-    itemActivePaths.includes(currentPath) ||
-    (mainNav &&
-      currentPath.split('/')[1] !== '' &&
-      currentPath.split('/')[1] === item?.url?.split('/')[1])
+    itemActivePaths.includes(currentPath)
   )
 }
 

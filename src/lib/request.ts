@@ -24,8 +24,6 @@ export type RequestErrorDetail = {
 export type MainInfoResult = {
   menu: any[]
   entry: string
-  auth: string[]
-  authRules: any[]
 }
 
 export type FrontRuntimeRefreshDetail = {
@@ -495,29 +493,18 @@ export async function loadMainInfo(): Promise<MainInfoResult> {
     mainInfoPromise = (async () => {
       const menuApi = joinFrontApi('main/info')
       if (!menuApi) {
-        return { menu: [], entry: '', auth: [], authRules: [] }
+        return { menu: [], entry: '' }
       }
 
       const result = await request(menuApi)
-      const auth = Array.isArray(result.data?.auth)
-        ? result.data.auth.map((item: unknown) => String(item ?? '').trim()).filter(Boolean)
-        : []
-      const authRules = Array.isArray(result.data?.authRules) ? result.data.authRules : []
-      if (getMainInfoCacheToken() === cacheToken) {
-        useAuthStore.getState().auth.setAuthList(auth)
-        useAuthStore.getState().auth.setAuthRules(authRules)
-      }
-
       return {
         menu: Array.isArray(result.data?.menu) ? result.data.menu : [],
         entry: typeof result.data?.entry === 'string' ? result.data.entry : '',
-        auth,
-        authRules,
       }
     })()
   }
 
-  return await mainInfoPromise
+  return mainInfoPromise
 }
 
 export function resetFrontRuntimeCache(notify = false) {

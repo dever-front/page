@@ -21,6 +21,7 @@ import { getByPath, resolvePath } from '@/lib/path'
 import { loadPageSchema } from '@/lib/request'
 import { reloadStorePageSchema } from '@/lib/page-schema-reload'
 import { validatePageSchema, type PageSchemaType } from '@/lib/schema'
+import { useAssistantOverlayRegistration } from '@/lib/assistant/use-overlay-registration'
 import {
   type ActionRunResult,
   runActionWithResult as runStoreActionWithResult,
@@ -112,6 +113,13 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
     : baseTitle
   const description = descriptionFromPath || item.meta?.description || item.info
   const [hotVersion, setHotVersion] = useState(0)
+  const activateAssistantOverlay = useAssistantOverlayRegistration({
+    open,
+    store,
+    scope: 'modal',
+    route: String(pageRoute || ''),
+    name: String(item.id || item.name || 'modal'),
+  })
   const widthStyle = item.meta?.width
     ? {
         width: `min(calc(100vw - 2rem), ${String(item.meta.width)})`,
@@ -268,6 +276,7 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
           schema={pageSchema}
           parentStore={store}
           onStoreReady={setPageStore}
+          assistantScope="modal"
           updateDocumentTitle={false}
         />
       ) : null
@@ -290,6 +299,8 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
         key={hotVersion}
         showCloseButton={false}
         style={widthStyle}
+        onFocusCapture={activateAssistantOverlay}
+        onPointerDownCapture={activateAssistantOverlay}
         className={cn(
           'flex max-h-[85vh] flex-col gap-0 p-0',
           resolveDialogOverflowClass(item.meta),

@@ -14,7 +14,6 @@ import {
   isSameControlValue,
   normalizeClearOnChangePaths,
 } from '@/lib/form-control'
-import { useCanUseItem } from '@/lib/permission-infer'
 import { nodeRegistry } from '@/lib/registry'
 import type { Item, OptionItem } from '@/lib/schema'
 import { usePageStore, type PageStore, useStorePathValue } from '@/lib/store'
@@ -84,7 +83,6 @@ function NodeItem({ item, store, layoutId }: NodeItemComponentProps) {
   const error = useNodeError(store, item.id)
   const required = useNodeRequired(store, item)
   const hidden = useNodeHidden(store, item)
-  const allowed = useCanUseItem(store, item)
 
   // 解析 option
   const { option, optionLoading, ensureOptionLoaded } = useNodeOption(
@@ -115,7 +113,7 @@ function NodeItem({ item, store, layoutId }: NodeItemComponentProps) {
     error,
   }
 
-  if (hidden || !allowed) {
+  if (hidden) {
     return null
   }
 

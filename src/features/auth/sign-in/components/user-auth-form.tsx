@@ -71,8 +71,6 @@ export function UserAuthForm({
         redirectTo,
         entry: mainInfo.entry,
         menu: mainInfo.menu,
-        auth: mainInfo.auth,
-        authRules: mainInfo.authRules,
       })
       navigate({ to: target.to, search: target.search, replace: true })
       toast.success(`欢迎回来，${result.data.user?.name || data.account}`)

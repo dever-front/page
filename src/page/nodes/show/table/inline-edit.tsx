@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import type { Column } from '@/lib/schema'
 import type { PageStore, PageStoreState } from '@/lib/store'
-import type { AuthRule } from '@/stores/auth-store'
 import { getByPath, setByPath } from '@/lib/path'
-import { canAccessRoute } from '@/lib/permission'
 import { runActionsWithResult } from '@/lib/action'
 import { toastActionResult } from '@/lib/action-toast'
 import { cn } from '@/lib/utils'
@@ -350,8 +348,16 @@ export function buildInlineChangeAction(
   column: Column,
   rowKey: string
 ) {
+  if (column.meta?.inlineEditable === false) {
+    return null
+  }
+
   if (column.action?.change) {
     return column.action.change
+  }
+
+  if (tableMeta?.inlineEditable === false) {
+    return null
   }
 
   if (!column.value) {
@@ -382,9 +388,7 @@ export function canUseInlineEdit(
   state: PageStoreState,
   row: Record<string, any>,
   rowKey: string,
-  inlineAction: any,
-  authList: string[],
-  authRules: AuthRule[]
+  inlineAction: any
 ) {
   if (!inlineAction) {
     return false
@@ -400,7 +404,7 @@ export function canUseInlineEdit(
     return false
   }
 
-  return canAccessRoute(path, buildInlineEditQuery(rowKey, rowID), authList, authRules)
+  return true
 }
 
 export function applyInlineRowPatch(
@@ -539,15 +543,6 @@ function normalizeInlineSavePath(path: unknown) {
 function resolveInlineRowID(row: Record<string, any>, rowKey: string) {
   const keyValue = rowKey ? getByPath(row, rowKey) : undefined
   return keyValue ?? row?.id
-}
-
-function buildInlineEditQuery(rowKey: string, rowID: unknown) {
-  const query: Record<string, unknown> = { id: rowID }
-  const key = String(rowKey || '').trim()
-  if (key && key !== 'id') {
-    query[key] = rowID
-  }
-  return query
 }
 
 function isEmptyInlineRowID(value: unknown) {

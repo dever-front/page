@@ -21,6 +21,7 @@ import { loadPageSchema } from '@/lib/request'
 import { reloadStorePageSchema } from '@/lib/page-schema-reload'
 import { validatePageSchema, type PageSchemaType } from '@/lib/schema'
 import { runActionWithResult as runStoreActionWithResult, runActionsWithResult } from '@/lib/action'
+import { useAssistantOverlayRegistration } from '@/lib/assistant/use-overlay-registration'
 import type { PageStore } from '@/lib/store'
 import { applyPageSchemaPatches, buildPageRouteWithQuery } from './shared/page-patch'
 import { Page } from '../../page'
@@ -60,6 +61,13 @@ export function FeedbackDrawer({ item, store }: NodeItemProps) {
     titleFromPath || item.meta?.title || item.name || pageSchema?.page?.title || '详情'
   const description = descriptionFromPath || item.meta?.description || item.info
   const side = item.meta?.side || 'right'
+  const activateAssistantOverlay = useAssistantOverlayRegistration({
+    open,
+    store,
+    scope: 'drawer',
+    route: String(pageRoute || ''),
+    name: String(item.id || item.name || 'drawer'),
+  })
   const widthStyle =
     item.meta?.width && (side === 'left' || side === 'right')
       ? {
@@ -196,6 +204,7 @@ export function FeedbackDrawer({ item, store }: NodeItemProps) {
           schema={pageSchema}
           parentStore={store}
           onStoreReady={setPageStore}
+          assistantScope="drawer"
           updateDocumentTitle={false}
         />
       ) : null
@@ -219,6 +228,8 @@ export function FeedbackDrawer({ item, store }: NodeItemProps) {
         side={side}
         showCloseButton={false}
         style={widthStyle}
+        onFocusCapture={activateAssistantOverlay}
+        onPointerDownCapture={activateAssistantOverlay}
         className={cn(
           'flex h-full flex-col gap-0 overflow-visible p-0',
           side === 'left' || side === 'right' ? 'w-full sm:max-w-xl' : 'max-h-[85vh]',

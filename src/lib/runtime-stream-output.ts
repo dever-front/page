@@ -1,11 +1,12 @@
-import type { EnergonOutput } from '@/components/energon/content-view'
 import {
   streamValueText as valueText,
   type RuntimeStreamFrame,
 } from '@/lib/stream'
 
+type RuntimeFrameOutput = Record<string, any>
+
 export function normalizeRuntimeFrameOutput<
-  TOutput extends EnergonOutput = EnergonOutput,
+  TOutput extends RuntimeFrameOutput = RuntimeFrameOutput,
 >(value: unknown, frame?: RuntimeStreamFrame<TOutput>): TOutput {
   if (isPlainRecord(value) && Object.keys(value).length > 0) {
     return value as TOutput

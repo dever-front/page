@@ -23,6 +23,13 @@ import {
   streamValueText as valueText,
   type RuntimeStreamFrame,
 } from '@/lib/stream'
+import {
+  isEmptyRuntimeOutput,
+  isPlainRecord as isPlainObject,
+  normalizeRuntimeFrameOutput,
+  resolveRuntimeFrameCancelable,
+  runtimeErrorMessage,
+} from '@/lib/runtime-stream-output'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -51,13 +58,6 @@ import {
   useStreamClock,
   type StreamTiming,
 } from './shared/stream-timing'
-import {
-  isEmptyRuntimeOutput,
-  isPlainRecord as isPlainObject,
-  normalizeRuntimeFrameOutput,
-  resolveRuntimeFrameCancelable,
-  runtimeErrorMessage,
-} from './shared/runtime-stream'
 
 type AgentRole = 'user' | 'assistant'
 

@@ -354,6 +354,12 @@ function buildRemoteOptionURL(
   for (const [key, value] of Object.entries(resolveOptionParams(item?.meta?.optionParams, { store, row }))) {
     params.set(key, value)
   }
+  if (isFrontRouteOptionURL(remoteUrl) && !params.has('path')) {
+    const pagePath = String(store.getState().pagePath || store.getState().schema.page?.route || '').trim()
+    if (pagePath) {
+      params.set('path', pagePath)
+    }
+  }
   if (normalizedKeyword) {
     const keywordParam = String(item?.meta?.optionKeywordParam || 'keyword').trim() || 'keyword'
     params.set(keywordParam, normalizedKeyword)
@@ -369,6 +375,15 @@ function buildRemoteOptionURL(
   }
 
   return `${remoteUrl}${remoteUrl.includes('?') ? '&' : '?'}${query}`
+}
+
+function isFrontRouteOptionURL(remoteUrl: string) {
+  try {
+    const parsed = new URL(remoteUrl, window.location.origin)
+    return parsed.pathname.endsWith('/front/route/option')
+  } catch {
+    return remoteUrl.split('?')[0].endsWith('/front/route/option')
+  }
 }
 
 function normalizeRemoteOptionKeyword(keyword?: string) {
