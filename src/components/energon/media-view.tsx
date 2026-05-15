@@ -8,7 +8,7 @@ import {
   UploadCloud,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ResourcePreviewDialog } from '@/components/resource/resource-preview-dialog'
+import { ResourcePreviewDialogLazy } from '@/components/resource/lazy-dialogs'
 import { EnergonProgressBlock } from '@/components/energon/progress'
 import {
   normalizeUploadItem,
@@ -151,7 +151,7 @@ export function EnergonMediaView({
 
       <UploadProgressList uploadState={uploadState} />
 
-      <ResourcePreviewDialog
+      <ResourcePreviewDialogLazy
         open={previewOpen}
         title="生成资源预览"
         description="可预览当前生成的图片、视频、音频或文件，也可以保存到资源库。"

@@ -19,6 +19,7 @@ import type { Item, OptionItem } from '@/lib/schema'
 import { usePageStore, type PageStore, useStorePathValue } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ========== 统一节点 Props ==========
 
@@ -38,6 +39,7 @@ export type NodeItemProps = {
   error?: string
   row?: Record<string, any>
   setRow?: (nextRow: Record<string, any>) => void
+  assistantAdornment?: React.ReactNode
 }
 
 // ========== NodeList: 渲染某个 layout 下的所有 nodes ==========
@@ -120,11 +122,82 @@ function NodeItem({ item, store, layoutId }: NodeItemComponentProps) {
   // 统一 mode 包裹
   return (
     <ModeWrapper item={item} error={error} required={required}>
-      <Suspense fallback={null}>
+      <Suspense fallback={<NodeFallback item={item} />}>
         <NodeComponent {...props} />
       </Suspense>
     </ModeWrapper>
   )
+}
+
+function NodeFallback({ item }: { item: Item }) {
+  if (String(item.type || '').startsWith('feedback-')) {
+    return null
+  }
+
+  if (item.mode === 'search') {
+    return <Skeleton className="h-10 w-full" />
+  }
+
+  if (item.type === 'form-textarea') {
+    return <Skeleton className="min-h-28 w-full rounded-xl" />
+  }
+
+  if (item.type === 'form-editor') {
+    return (
+      <div className="w-full overflow-hidden rounded-xl border border-border/70 bg-background">
+        <div className="flex h-11 items-center gap-2 border-b border-border/70 bg-muted/30 px-3">
+          {Array.from({ length: 8 }).map((_, index) => (
+            <Skeleton key={index} className="h-6 w-7" />
+          ))}
+        </div>
+        <Skeleton className="m-4 h-48 rounded-lg" />
+      </div>
+    )
+  }
+
+  if (item.type === 'form-upload') {
+    const uploadType = String(item.meta?.uploadType || '').trim()
+    if (uploadType === 'pic' || uploadType === 'video' || uploadType === 'audio') {
+      return (
+        <div className="flex flex-wrap gap-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Skeleton key={index} className="size-36 rounded-2xl" />
+          ))}
+        </div>
+      )
+    }
+    return <Skeleton className="h-28 w-full rounded-xl" />
+  }
+
+  if (item.type === 'show-table') {
+    return (
+      <div className="w-full rounded-xl border border-border/70 bg-background p-3">
+        <Skeleton className="mb-3 h-8 w-full" />
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Skeleton key={index} className="mb-2 h-9 w-full last:mb-0" />
+        ))}
+      </div>
+    )
+  }
+
+  if (item.type === 'show-chart' || item.type === 'show-agent') {
+    return <Skeleton className="h-64 w-full rounded-xl" />
+  }
+
+  if (item.type === 'type-editor') {
+    return (
+      <div className="grid min-h-[22rem] gap-5 lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <Skeleton className="h-80 rounded-md" />
+        <Skeleton className="h-80 rounded-md" />
+      </div>
+    )
+  }
+
+  if (item.mode === 'form') {
+    return <Skeleton className="h-10 w-full" />
+  }
+
+  return <Skeleton className="h-10 w-full" />
 }
 
 // ========== Mode 包裹 ==========

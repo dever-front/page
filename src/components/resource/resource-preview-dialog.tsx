@@ -23,14 +23,18 @@ import {
   resolveResourcePreviewKind,
 } from '@/lib/resource'
 
-type ResourcePreviewDialogProps = {
+export type ResourcePreviewDialogProps = {
   open: boolean
   title?: string
   description?: string
   items?: UploadFileItem[]
   initialItemId?: string | number
   onOpenChange: (open: boolean) => void
+  assistantLayer?: boolean
+  footerExtra?: ReactNode
   renderActions?: (item?: UploadFileItem) => ReactNode
+  showDownload?: boolean
+  layerClassName?: string
 }
 
 export function ResourcePreviewDialog({
@@ -40,7 +44,11 @@ export function ResourcePreviewDialog({
   items = [],
   initialItemId,
   onOpenChange,
+  assistantLayer = false,
+  footerExtra,
   renderActions,
+  showDownload = true,
+  layerClassName = 'z-[80]',
 }: ResourcePreviewDialogProps) {
   const previewItems = useMemo(() => items.filter(Boolean), [items])
   const [activeIndex, setActiveIndex] = useState(0)
@@ -89,7 +97,8 @@ export function ResourcePreviewDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        layerClassName="z-[80]"
+        data-assistant-layer={assistantLayer ? 'true' : undefined}
+        layerClassName={layerClassName}
         className="flex h-[88vh] max-h-[88vh] max-w-5xl flex-col gap-0 overflow-hidden p-0"
       >
         <DialogHeader className="border-b px-6 py-4">
@@ -143,6 +152,7 @@ export function ResourcePreviewDialog({
                   <span>当前资源暂不支持预览。</span>
                 )}
               </div>
+              {footerExtra ? <div className="pt-1">{footerExtra}</div> : null}
             </div>
 
             <div className="flex shrink-0 flex-nowrap items-center gap-2 sm:justify-end">
@@ -159,7 +169,7 @@ export function ResourcePreviewDialog({
                   </Button>
                 </>
               ) : null}
-              {currentItem ? (
+              {showDownload && currentItem ? (
                 <Button type="button" onClick={() => void downloadUploadFile(currentItem)}>
                   <Download className="size-4" />
                   下载

@@ -120,9 +120,13 @@ function formatDurationMilliseconds(value: unknown) {
     return '-'
   }
 
+  if (milliseconds < 1000) {
+    return `${Math.round(milliseconds).toLocaleString('zh-CN')}毫秒`
+  }
+
   const seconds = milliseconds / 1000
   const fractionDigits = seconds < 1 ? 2 : seconds < 10 ? 1 : 0
-  return `${Number(seconds.toFixed(fractionDigits)).toLocaleString('zh-CN')}s`
+  return `${Number(seconds.toFixed(fractionDigits)).toLocaleString('zh-CN')}秒`
 }
 
 function parseDisplayDateValue(text: string) {

@@ -13,6 +13,7 @@ import { reloadStorePageSchema } from '@/lib/page-schema-reload'
 import { toastActionResult } from '@/lib/action-toast'
 import { cn } from '@/lib/utils'
 import type { NodeItemProps } from '../../nodes'
+import { matchesOptionValue } from './option-text'
 
 export type SelectOption = {
   id?: string | number
@@ -44,28 +45,36 @@ export function ShowSelect({
   store,
   onValueChangeSuccess,
 }: ShowSelectProps) {
-  const currentValue = normalizeSelectValue(value)
-  const displayText = currentValue.label || currentValue.value || ''
   const [savingValue, setSavingValue] = useState<string>('')
 
-  const editableOptions = useMemo(() => {
+  const normalizedOptions = useMemo(() => {
     const items = Array.isArray(selectOptions)
       ? selectOptions
       : Array.isArray(option)
         ? (option as SelectOption[])
         : []
+    return items
+  }, [option, selectOptions])
+
+  const currentValue = useMemo(
+    () => normalizeSelectValue(value, normalizedOptions),
+    [normalizedOptions, value]
+  )
+  const displayText = currentValue.label || currentValue.value || ''
+
+  const editableOptions = useMemo(() => {
     const allowValues = Array.isArray(item.meta?.editableValues)
       ? item.meta.editableValues.map((current: unknown) => String(current))
       : []
 
     if (allowValues.length === 0) {
-      return items
+      return normalizedOptions
     }
 
-    return items.filter((current) =>
+    return normalizedOptions.filter((current) =>
       allowValues.includes(String(current?.id ?? current?.value ?? ''))
     )
-  }, [item.meta?.editableValues, option, selectOptions])
+  }, [item.meta?.editableValues, normalizedOptions])
 
   const displayMode =
     String(item.meta?.display || '').trim() || (currentValue.color ? 'badge' : 'select')
@@ -221,12 +230,23 @@ function renderTrigger({
   )
 }
 
-function normalizeSelectValue(value: unknown): SelectOption {
+function normalizeSelectValue(
+  value: unknown,
+  options: SelectOption[]
+): SelectOption {
   if (typeof value !== 'object' || value == null) {
+    const matched = findSelectOption(value, options)
+    if (matched) {
+      return matched
+    }
     return { value: String(value ?? '') }
   }
 
   return value as SelectOption
+}
+
+function findSelectOption(value: unknown, options: SelectOption[]) {
+  return options.find((current) => matchesOptionValue(current, value))
 }
 
 function buildDefaultConfirmStateKey(field: string) {

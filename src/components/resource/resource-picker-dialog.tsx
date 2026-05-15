@@ -12,7 +12,7 @@ import { ResourceBrowser } from '@/components/resource/resource-browser'
 import type { ResourceScope, ResourceUploadRule } from '@/lib/resource'
 import type { UploadFileItem } from '@/lib/upload'
 
-type ResourcePickerDialogProps = {
+export type ResourcePickerDialogProps = {
   open: boolean
   title?: string
   description?: string
@@ -25,9 +25,13 @@ type ResourcePickerDialogProps = {
   maxSelection?: number
   emptyText?: string
   uploadRules?: ResourceUploadRule[]
+  allowUpload?: boolean
+  assistantLayer?: boolean
   onOpenChange: (open: boolean) => void
   onConfirm: (items: UploadFileItem[]) => void
 }
+
+const EMPTY_RESOURCE_PICKER_VALUE: UploadFileItem[] = []
 
 export function ResourcePickerDialog({
   open,
@@ -37,11 +41,13 @@ export function ResourcePickerDialog({
   initialScope,
   defaultKind,
   fixedKind,
-  value = [],
+  value = EMPTY_RESOURCE_PICKER_VALUE,
   multiple = false,
   maxSelection = 1,
   emptyText,
   uploadRules = [],
+  allowUpload = true,
+  assistantLayer = false,
   onOpenChange,
   onConfirm,
 }: ResourcePickerDialogProps) {
@@ -55,7 +61,11 @@ export function ResourcePickerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl">
+      <DialogContent
+        data-assistant-layer={assistantLayer ? 'true' : undefined}
+        layerClassName={assistantLayer ? 'z-[95]' : undefined}
+        className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
+      >
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>{title}</DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : null}
@@ -69,6 +79,7 @@ export function ResourcePickerDialog({
             fixedKind={fixedKind}
             cardDensity="compact"
             uploadRules={uploadRules}
+            allowUpload={allowUpload}
             selectionMode={multiple ? 'multiple' : 'single'}
             selectedItems={selectedItems}
             maxSelection={multiple ? maxSelection : 1}

@@ -12,10 +12,12 @@ import {
 } from '@/components/energon/content-view'
 import { Button } from '@/components/ui/button'
 import { SearchableOptionPicker } from '@/components/searchable-option-picker'
-import { request, requestRaw } from '@/lib/request'
+import { request } from '@/lib/request'
 import {
-  assertRuntimeStreamFrameSuccess,
-  readRuntimeStreamFrame,
+  runRuntimeStream,
+  stopRuntimeStream,
+} from '@/lib/runtime-stream-runner'
+import {
   streamValueText as valueText,
   type RuntimeStreamFrame,
 } from '@/lib/stream'
@@ -26,7 +28,6 @@ import {
 import { getStoreValueByPath } from '@/lib/store'
 import {
   isEmptyRuntimeOutput,
-  isPlainRecord as isPlainObject,
   normalizeRuntimeFrameOutput,
   resolveRuntimeFrameCancelable,
   runtimeErrorMessage,
@@ -42,19 +43,23 @@ import {
   isHiddenParam,
   isMainParam,
   isToolbarParam,
-  normalizeTestParams,
+  normalizePowerParamConfig,
   paramFilesRequestValue,
   validateMainParams,
   type ParamFileMap,
   type ParamUploadedFile,
   type ParamValueMap,
+  type PowerParamSource,
   type TestParam,
 } from './stream-request-params'
 import {
   StreamTimingBadge,
+  cancelStreamTiming,
   createStreamTiming,
   finishStreamTiming,
-  updateStreamTiming,
+  isStreamTimingStatusOutput,
+  markStreamTimingStopping,
+  updateStreamTimingFromOutput,
   useStreamClock,
   type StreamTiming,
 } from './shared/stream-timing'
@@ -65,21 +70,6 @@ type StreamOutput = {
   text: string
   reasoning: string
   finalOutput: EnergonOutput | null
-}
-
-type TestSource = {
-  id: string
-  target_id?: string
-  name: string
-  service_name?: string
-  provider_name?: string
-}
-
-type TestParamConfig = {
-  sourceRule: number
-  selectedSourceID: string
-  sources: TestSource[]
-  params: TestParam[]
 }
 
 const SOURCE_RULE_PICK = 2
@@ -101,13 +91,14 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
   const [timing, setTiming] = useState<StreamTiming | undefined>()
   const [paramsLoading, setParamsLoading] = useState(false)
   const [testParams, setTestParams] = useState<TestParam[]>([])
-  const [testSources, setTestSources] = useState<TestSource[]>([])
+  const [testSources, setTestSources] = useState<PowerParamSource[]>([])
   const [sourceRule, setSourceRule] = useState(1)
   const [selectedSource, setSelectedSource] = useState({ power: '', id: '' })
   const [paramValues, setParamValues] = useState<ParamValueMap>({})
   const [paramFiles, setParamFiles] = useState<ParamFileMap>({})
   const [requestIDCopied, setRequestIDCopied] = useState(false)
   const runTokenRef = useRef(0)
+  const abortRef = useRef<AbortController | null>(null)
   const requestIDCopyTimerRef = useRef<number | null>(null)
   const outputScrollRef = useRef<HTMLDivElement | null>(null)
   const autoScrollRef = useRef(true)
@@ -172,6 +163,7 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
   useEffect(() => {
     return () => {
       runTokenRef.current += 1
+      abortRef.current?.abort()
       clearRequestIDCopyTimer(requestIDCopyTimerRef)
     }
   }, [])
@@ -208,7 +200,7 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
         return
       }
 
-      const config = normalizeTestParamConfig(result.data)
+      const config = normalizePowerParamConfig(result.data)
       const rows = config.params
       setSourceRule(config.sourceRule)
       setTestSources(config.sources)
@@ -254,31 +246,19 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
       return
     }
     setStopping(true)
+    setError('')
+    setTiming((current) => markStreamTimingStopping(current))
+    abortRef.current?.abort()
     try {
-      const frame = await requestRaw(stopApi, 'post', { request_id: requestID })
-      assertFrameSuccess(frame)
+      await stopRuntimeStream(requestID, stopApi)
       runTokenRef.current += 1
-      resetStreamState()
+      setRunning(false)
+      setCancelable(false)
+      setTiming((current) => cancelStreamTiming(current))
     } catch (currentError: unknown) {
       setError(runtimeErrorMessage(currentError, '停止任务失败。'))
     } finally {
       setStopping(false)
-    }
-  }
-
-  const resetStreamState = () => {
-    setRunning(false)
-    setCancelable(false)
-    setStopping(false)
-    setError('')
-    setOutput(EMPTY_OUTPUT)
-    setTiming(undefined)
-    setRequestID('')
-    setRequestIDCopied(false)
-    setLastStreamID('0-0')
-    autoScrollRef.current = true
-    if (outputScrollRef.current) {
-      outputScrollRef.current.scrollTop = 0
     }
   }
 
@@ -305,6 +285,8 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
     setCancelable(false)
     setStopping(false)
     autoScrollRef.current = true
+    const controller = new AbortController()
+    abortRef.current = controller
 
     try {
       const body: Record<string, unknown> = {
@@ -319,18 +301,26 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
         body.source_target_id = activeSelectedSourceID
       }
 
-      const startFrame = await requestRaw(requestApi, 'post', body)
-
-      assertFrameSuccess(startFrame)
-      const nextRequestID = valueText(startFrame?.request_id)
-      if (!nextRequestID) {
-        throw new Error('流式请求缺少 request_id。')
-      }
-
-      setRequestID(nextRequestID)
-      setCancelable(resolveRuntimeFrameCancelable(startFrame) === true)
-      applyFrame(startFrame as StreamFrame)
-      await pollStream(token, nextRequestID)
+      await runRuntimeStream<EnergonOutput>({
+        requestApi,
+        streamApi,
+        stopApi,
+        stopOnAbort: false,
+        body,
+        blockMs,
+        signal: controller.signal,
+        onRequestID: setRequestID,
+        onFrame: (frame) => {
+          if (runTokenRef.current !== token || controller.signal.aborted) {
+            return
+          }
+          const streamID = valueText(frame?.stream_id)
+          if (streamID) {
+            setLastStreamID(streamID)
+          }
+          applyFrame(frame)
+        },
+      })
     } catch (currentError: unknown) {
       if (runTokenRef.current === token) {
         setError(runtimeErrorMessage(currentError, '测试失败。'))
@@ -340,29 +330,8 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
       if (runTokenRef.current === token) {
         setRunning(false)
       }
-    }
-  }
-
-  const pollStream = async (token: number, currentRequestID: string) => {
-    let currentLastID = '0-0'
-    while (runTokenRef.current === token) {
-      const frame = await readRuntimeStreamFrame<EnergonOutput>(
-        streamApi,
-        currentRequestID,
-        currentLastID,
-        blockMs
-      )
-
-      const streamID = valueText(frame?.stream_id)
-      if (streamID) {
-        currentLastID = streamID
-        setLastStreamID(streamID)
-      }
-
-      applyFrame(frame)
-      assertFrameSuccess(frame)
-      if (frame?.type === 'result') {
-        return
+      if (abortRef.current === controller) {
+        abortRef.current = null
       }
     }
   }
@@ -377,22 +346,8 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
       setCancelable(frameCancelable)
     }
     const event = valueText(frameOutput.event).toLowerCase()
-    if (
-      event === 'progress' ||
-      event === 'start' ||
-      event === 'status' ||
-      event === 'warning'
-    ) {
-      setTiming((current) =>
-        updateStreamTiming(
-          current,
-          valueText(frameOutput.text),
-          frameOutput.progress ??
-            frameOutput.meta?.progress ??
-            frameOutput.meta?.percent,
-          frameOutput.meta?.started_at_ms ?? frameOutput.meta?.started_at
-        )
-      )
+    if (isStreamTimingStatusOutput(frameOutput)) {
+      setTiming((current) => updateStreamTimingFromOutput(current, frameOutput))
     }
     if (frame.type === 'result') {
       setTiming((current) =>
@@ -689,61 +644,3 @@ async function copyTextToClipboard(value: string) {
     throw new Error('copy failed')
   }
 }
-
-function normalizeTestParamConfig(value: unknown): TestParamConfig {
-  if (Array.isArray(value)) {
-    return {
-      sourceRule: 1,
-      selectedSourceID: '',
-      sources: [],
-      params: normalizeTestParams(value),
-    }
-  }
-
-  if (!isPlainObject(value)) {
-    return {
-      sourceRule: 1,
-      selectedSourceID: '',
-      sources: [],
-      params: [],
-    }
-  }
-
-  return {
-    sourceRule: Number(value.source_rule || 1),
-    selectedSourceID: valueText(value.selected_target_id),
-    sources: normalizeTestSources(value.sources),
-    params: normalizeTestParams(value.params),
-  }
-}
-
-function normalizeTestSources(value: unknown): TestSource[] {
-  if (!Array.isArray(value)) {
-    return []
-  }
-  return value
-    .map((row) => {
-      if (!isPlainObject(row)) {
-        return null
-      }
-      const id = valueText(row.target_id || row.id)
-      if (!id) {
-        return null
-      }
-      const serviceName = valueText(row.service_name)
-      const providerName = valueText(row.provider_name)
-      return {
-        id,
-        target_id: id,
-        service_name: serviceName,
-        provider_name: providerName,
-        name:
-          valueText(row.name) ||
-          [providerName, serviceName].filter(Boolean).join(' / ') ||
-          `来源 ${id}`,
-      }
-    })
-    .filter((row): row is TestSource => row != null)
-}
-
-const assertFrameSuccess = assertRuntimeStreamFrameSuccess

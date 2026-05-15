@@ -62,6 +62,35 @@ export function updateStreamTiming(
   }
 }
 
+export function updateStreamTimingFromOutput(
+  timing: StreamTiming | undefined,
+  output: unknown,
+  fallbackLabel?: string
+) {
+  const row = normalizeStreamTimingRecord(output)
+  const meta = normalizeStreamTimingRecord(row.meta)
+  return updateStreamTiming(
+    timing,
+    streamTimingText(row.text) || fallbackLabel,
+    row.progress ?? row.percent ?? meta.progress ?? meta.percent,
+    meta.started_at_ms ?? meta.started_at
+  )
+}
+
+export function isStreamTimingStatusOutput(output: unknown) {
+  const row = normalizeStreamTimingRecord(output)
+  const meta = normalizeStreamTimingRecord(row.meta)
+  const event = streamTimingText(row.event).toLowerCase()
+  if (event === 'progress' || event === 'start' || event === 'status' || event === 'warning') {
+    return true
+  }
+  const action = streamTimingText(meta.action).toLowerCase()
+  if (action === 'call_power') {
+    return true
+  }
+  return streamTimingText(row.text).startsWith('正在调用能力')
+}
+
 export function finishStreamTiming(
   timing: StreamTiming | undefined,
   status: Exclude<StreamTimingStatus, 'running'>
@@ -74,6 +103,20 @@ export function finishStreamTiming(
     status,
     finishedAt: Date.now(),
   }
+}
+
+export function markStreamTimingStopping(
+  timing: StreamTiming | undefined,
+  label = '正在停止'
+) {
+  return updateStreamTiming(timing, label)
+}
+
+export function cancelStreamTiming(
+  timing: StreamTiming | undefined,
+  label = '已停止生成'
+) {
+  return finishStreamTiming(updateStreamTiming(timing, label), 'canceled')
 }
 
 export function StreamTimingBadge({
@@ -98,7 +141,7 @@ export function StreamTimingBadge({
   return (
     <div
       className={cn(
-        'inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1 text-xs',
+        'inline-flex max-w-full items-center gap-2 whitespace-nowrap rounded-full border px-3 py-1 text-xs',
         isRunning
           ? 'border-primary/20 bg-primary/5 text-foreground'
           : timing.status === 'failed'
@@ -118,13 +161,13 @@ export function StreamTimingBadge({
               : 'bg-muted-foreground'
         )}
       />
-      <span className="font-medium">{label}</span>
-      <span className="tabular-nums">{formatStreamDuration(duration)}</span>
+      <span className="shrink-0 font-medium">{label}</span>
+      <span className="shrink-0 tabular-nums">{formatStreamDuration(duration)}</span>
       {isRunning && percent != null ? (
-        <span className="text-muted-foreground tabular-nums">{percent}%</span>
+        <span className="shrink-0 text-muted-foreground tabular-nums">{percent}%</span>
       ) : null}
       {timing.label ? (
-        <span className="max-w-56 truncate text-muted-foreground">
+        <span className="min-w-0 max-w-56 truncate text-muted-foreground">
           {timing.label}
         </span>
       ) : null}
@@ -192,4 +235,23 @@ function normalizeStreamTimestamp(value: unknown) {
     }
   }
   return null
+}
+
+function normalizeStreamTimingRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+}
+
+function streamTimingText(value: unknown) {
+  if (value == null) {
+    return ''
+  }
+  if (typeof value === 'string') {
+    return value.trim()
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+  return ''
 }

@@ -1,11 +1,28 @@
 import type { Item, OptionItem, PageSchemaType, ValidateRule } from '@/lib/schema'
-import type { PageStore } from '@/lib/store'
 import type { AssistantPageRegistration } from './registry'
 
 const MAX_FIELDS = 80
 const MAX_OPTIONS = 30
 const MAX_VALUE_LENGTH = 2000
 const SENSITIVE_PATTERN = /(password|passwd|token|secret|apikey|api_key|access_key|private_key|credential|验证码|密码|密钥|令牌)/i
+const FILLABLE_NODE_TYPES = new Set([
+  'form-array',
+  'form-cascader',
+  'form-checkbox',
+  'form-combo-mapping',
+  'form-date',
+  'form-editor',
+  'form-icon',
+  'form-input',
+  'form-number',
+  'form-radio',
+  'form-select',
+  'form-switch',
+  'form-textarea',
+  'form-tree',
+  'form-upload',
+  'type-editor',
+])
 
 export type AssistantFieldContext = {
   path: string
@@ -36,6 +53,10 @@ export function buildAssistantPageContext(
   if (!registration) {
     return null
   }
+  const customContext = registration.getContext?.()
+  if (customContext) {
+    return customContext
+  }
 
   const state = registration.store.getState()
   const schema = state.schema
@@ -62,6 +83,17 @@ export function assistantContextSummary(context: AssistantPageContext | null) {
   return fieldCount > 0 ? `${pageName}，${fieldCount} 个可填字段` : pageName
 }
 
+export function buildAssistantFieldContext(item: Item): AssistantFieldContext | null {
+  return normalizeAssistantFormField(item)
+}
+
+export function normalizeAssistantFormPath(path: string) {
+  return String(path || '')
+    .trim()
+    .replace(/^data\.form\./, 'form.')
+    .replace(/^data\./, '')
+}
+
 function collectAssistantFormFields(schema: PageSchemaType): AssistantFieldContext[] {
   const result: AssistantFieldContext[] = []
 
@@ -79,14 +111,14 @@ function collectAssistantFormFields(schema: PageSchemaType): AssistantFieldConte
 }
 
 function normalizeAssistantFormField(item: Item): AssistantFieldContext | null {
-  if (item.mode !== 'form' || !item.value) {
+  if (!isAssistantFillableNode(item) || item.mode !== 'form' || !item.value) {
     return null
   }
   if (isSensitiveField(item) || isHiddenField(item)) {
     return null
   }
 
-  const path = normalizeFormPath(item.value)
+  const path = normalizeAssistantFormPath(item.value)
   if (!path || !path.startsWith('form.')) {
     return null
   }
@@ -114,6 +146,16 @@ function normalizeAssistantFormField(item: Item): AssistantFieldContext | null {
   return field
 }
 
+function isAssistantFillableNode(item: Item) {
+  if (!FILLABLE_NODE_TYPES.has(String(item.type || ''))) {
+    return false
+  }
+  if (item.meta?.assistant === false || item.meta?.disabled) {
+    return false
+  }
+  return item.meta?.readonly !== true && item.meta?.readOnly !== true
+}
+
 function collectAssistantFormValues(
   fields: AssistantFieldContext[],
   form: unknown
@@ -131,13 +173,6 @@ function collectAssistantFormValues(
   }
 
   return values
-}
-
-function normalizeFormPath(path: string) {
-  return String(path || '')
-    .trim()
-    .replace(/^data\.form\./, 'form.')
-    .replace(/^data\./, '')
 }
 
 function isSensitiveField(item: Item) {

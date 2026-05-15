@@ -15,6 +15,7 @@ import { Main } from '@/page/layout/main'
 import { Row } from '@/page/layout/row'
 import type { LayoutComponentProps } from '@/page/layout/types'
 import type { NodeItemProps } from '@/page/nodes'
+import type { PageSchemaType } from '@/lib/schema'
 
 export const layoutRegistry: Record<
   string,
@@ -31,12 +32,25 @@ export const layoutRegistry: Record<
 
 // ========== Node 组件注册 ==========
 
-type LazyNodeComponent = LazyExoticComponent<ComponentType<NodeItemProps>>
+type LazyNodeLoader = () => Promise<{ default: ComponentType<NodeItemProps> }>
+type LazyNodeComponent = LazyExoticComponent<ComponentType<NodeItemProps>> & {
+  preload: () => Promise<unknown>
+}
 
-function lazyNode(
-  loader: () => Promise<{ default: ComponentType<NodeItemProps> }>
-): LazyNodeComponent {
-  return lazy(loader)
+function lazyNode(loader: LazyNodeLoader): LazyNodeComponent {
+  let preloadPromise: ReturnType<LazyNodeLoader> | null = null
+  const load = () => {
+    if (!preloadPromise) {
+      preloadPromise = loader().catch((error) => {
+        preloadPromise = null
+        throw error
+      })
+    }
+    return preloadPromise
+  }
+  const component = lazy(load) as LazyNodeComponent
+  component.preload = load
+  return component
 }
 
 export const nodeRegistry: Record<string, LazyNodeComponent> = {
@@ -263,4 +277,23 @@ export const nodeRegistry: Record<string, LazyNodeComponent> = {
       default: mod.FeedbackDrawer,
     }))
   ),
+}
+
+export function preloadNodeComponents(schema: PageSchemaType) {
+  const nodeTypes = collectSchemaNodeTypes(schema)
+  return Promise.allSettled(
+    nodeTypes.map((type) => nodeRegistry[type]?.preload?.())
+  )
+}
+
+function collectSchemaNodeTypes(schema: PageSchemaType) {
+  const types = new Set<string>()
+  for (const items of Object.values(schema.nodes ?? {})) {
+    for (const item of items ?? []) {
+      if (item?.type && nodeRegistry[item.type]) {
+        types.add(item.type)
+      }
+    }
+  }
+  return Array.from(types)
 }

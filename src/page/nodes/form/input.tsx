@@ -10,9 +10,18 @@ import {
 } from '@/lib/remote-search'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { AssistantFieldGenerateButton } from '@/components/assistant/form-actions'
 import type { NodeItemProps } from '../../nodes'
 
-export function FormInput({ item, value, setValue, error, store, layoutId }: NodeItemProps) {
+export function FormInput({
+  item,
+  value,
+  setValue,
+  error,
+  store,
+  layoutId,
+  assistantAdornment,
+}: NodeItemProps) {
   const navigate = useNavigate()
   const isRemoteSearch = item.mode === 'search' && item.meta?.remote === true
   const searchKey = item.value?.split('.').pop()
@@ -32,7 +41,7 @@ export function FormInput({ item, value, setValue, error, store, layoutId }: Nod
     []
   )
 
-  return (
+  const input = (
     <Input
       id={item.id}
       name={item.id}
@@ -68,9 +77,34 @@ export function FormInput({ item, value, setValue, error, store, layoutId }: Nod
       aria-invalid={!!error}
       className={cn(
         'w-full',
+        item.mode === 'form' && 'pr-10',
         error && 'border-destructive ring-destructive/20 focus-visible:ring-destructive/30',
         item.meta?.controlClassName
       )}
     />
+  )
+
+  const assistantButton =
+    item.mode !== 'form'
+      ? null
+      : assistantAdornment !== undefined
+        ? assistantAdornment
+        : (
+            <AssistantFieldGenerateButton
+              item={item}
+              store={store}
+              className="absolute right-1 top-1/2 -translate-y-1/2"
+            />
+          )
+
+  if (!assistantButton) {
+    return input
+  }
+
+  return (
+    <div className="relative w-full">
+      {input}
+      {assistantButton}
+    </div>
   )
 }

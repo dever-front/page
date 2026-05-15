@@ -276,21 +276,15 @@ const richTextClassName = cn(
 
 function renderMarkdown(markdown: string) {
   const codeBlocks: string[] = []
-  const inlineCodes: string[] = []
   let source = markdown.replace(/\r\n/g, '\n')
 
   source = source.replace(/```([\s\S]*?)```/g, (_, code) => {
     const index = codeBlocks.length
     codeBlocks.push(`<pre><code>${escapeHtml(String(code).replace(/^\n|\n$/g, ''))}</code></pre>`)
-    return `\n\n@@CODE_BLOCK_${index}@@\n\n`
+    return `\n\n@@CODEBLOCK${index}@@\n\n`
   })
 
   source = escapeHtml(source)
-  source = source.replace(/`([^`\n]+)`/g, (_, code) => {
-    const index = inlineCodes.length
-    inlineCodes.push(`<code>${code}</code>`)
-    return `@@INLINE_CODE_${index}@@`
-  })
 
   const blocks = source
     .split(/\n{2,}/)
@@ -299,14 +293,11 @@ function renderMarkdown(markdown: string) {
     .map((block) => renderMarkdownBlock(block))
     .join('\n')
 
-  return restorePlaceholders(blocks, codeBlocks, 'CODE_BLOCK').replace(
-    /@@INLINE_CODE_(\d+)@@/g,
-    (_, index) => inlineCodes[Number(index)] || ''
-  )
+  return restorePlaceholders(blocks, codeBlocks, 'CODEBLOCK')
 }
 
 function renderMarkdownBlock(block: string) {
-  const codeBlock = block.match(/^@@CODE_BLOCK_(\d+)@@$/)
+  const codeBlock = block.match(/^@@CODEBLOCK(\d+)@@$/)
   if (codeBlock) {
     return block
   }
@@ -339,6 +330,7 @@ function renderMarkdownBlock(block: string) {
 
 function renderInlineMarkdown(value: string) {
   return value
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/__([^_]+)__/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
@@ -350,7 +342,7 @@ function renderInlineMarkdown(value: string) {
 }
 
 function restorePlaceholders(value: string, replacements: string[], key: string) {
-  return value.replace(new RegExp(`@@${key}_(\\d+)@@`, 'g'), (_, index) => {
+  return value.replace(new RegExp(`@@${key}(\\d+)@@`, 'g'), (_, index) => {
     return replacements[Number(index)] || ''
   })
 }

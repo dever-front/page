@@ -4,9 +4,17 @@
 import { useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { Textarea } from '@/components/ui/textarea'
+import { AssistantFieldGenerateButton } from '@/components/assistant/form-actions'
 import type { NodeItemProps } from '../../nodes'
 
-export function FormTextarea({ item, value, setValue, error }: NodeItemProps) {
+export function FormTextarea({
+  item,
+  value,
+  setValue,
+  error,
+  store,
+  assistantAdornment,
+}: NodeItemProps) {
   const textValue = String(value ?? '')
   const maxLength = Number(item.meta?.maxLength || 0)
   const showCount = item.meta?.showCount === true || maxLength > 0
@@ -14,22 +22,35 @@ export function FormTextarea({ item, value, setValue, error }: NodeItemProps) {
 
   return (
     <div className="min-w-0 w-full space-y-2">
-      <Textarea
-        id={item.id}
-        name={item.id}
-        placeholder={item.placeholder}
-        value={textValue}
-        disabled={!!item.meta?.disabled}
-        rows={item.meta?.rows || 4}
-        maxLength={maxLength > 0 ? maxLength : undefined}
-        onChange={(e) => setValue(e.target.value)}
-        aria-invalid={!!error}
-        className={cn(
-          'min-h-28 w-full min-w-0 resize-y rounded-xl border-border/70 bg-background/80 px-3.5 py-3 text-sm leading-6 shadow-xs',
-          'placeholder:text-muted-foreground/80 focus-visible:ring-4',
-          error && 'border-destructive ring-destructive/20 focus-visible:ring-destructive/25'
-        )}
-      />
+      <div className="relative">
+        <Textarea
+          id={item.id}
+          name={item.id}
+          placeholder={item.placeholder}
+          value={textValue}
+          disabled={!!item.meta?.disabled}
+          rows={item.meta?.rows || 4}
+          maxLength={maxLength > 0 ? maxLength : undefined}
+          onChange={(e) => setValue(e.target.value)}
+          aria-invalid={!!error}
+          className={cn(
+            'min-h-28 w-full min-w-0 resize-y rounded-xl border-border/70 bg-background/80 px-3.5 py-3 pr-11 text-sm leading-6 shadow-xs',
+            'placeholder:text-muted-foreground/80 focus-visible:ring-4',
+            error && 'border-destructive ring-destructive/20 focus-visible:ring-destructive/25'
+          )}
+        />
+        {item.mode === 'form' ? (
+          assistantAdornment !== undefined ? (
+            assistantAdornment
+          ) : (
+            <AssistantFieldGenerateButton
+              item={item}
+              store={store}
+              className="absolute right-2 top-2 bg-background/80"
+            />
+          )
+        ) : null}
+      </div>
       {showCount ? (
         <div className="flex justify-end text-[11px] text-muted-foreground">
           {maxLength > 0 ? `${currentLength}/${maxLength}` : `${currentLength} 字`}

@@ -1,4 +1,5 @@
 import type { PageStore } from '@/lib/store'
+import type { AssistantPageContext } from './context'
 
 export type AssistantPageScope = 'page' | 'modal' | 'drawer' | 'nested'
 
@@ -7,6 +8,8 @@ export type AssistantPageRegistration = {
   store: PageStore
   scope: AssistantPageScope
   route: string
+  getContext?: () => AssistantPageContext | null
+  applyFormValues?: (values: Record<string, unknown>) => void | Promise<void>
 }
 
 type RegistryListener = () => void
@@ -14,6 +17,7 @@ type RegistryListener = () => void
 const registrations = new Map<string, AssistantPageRegistration>()
 const activeIds: string[] = []
 const listeners = new Set<RegistryListener>()
+let registryVersion = 0
 
 export function registerAssistantPage(
   registration: Omit<AssistantPageRegistration, 'id'> & { id?: string }
@@ -24,6 +28,8 @@ export function registerAssistantPage(
     store: registration.store,
     scope: registration.scope,
     route: registration.route,
+    getContext: registration.getContext,
+    applyFormValues: registration.applyFormValues,
   })
   activateAssistantPage(id)
 
@@ -53,6 +59,24 @@ export function getActiveAssistantPage() {
   return null
 }
 
+export function findAssistantPage(
+  match: (registration: AssistantPageRegistration) => boolean
+) {
+  for (let index = activeIds.length - 1; index >= 0; index--) {
+    const registration = registrations.get(activeIds[index])
+    if (registration && match(registration)) {
+      return registration
+    }
+  }
+
+  for (const registration of registrations.values()) {
+    if (match(registration)) {
+      return registration
+    }
+  }
+  return null
+}
+
 export function subscribeAssistantRegistry(listener: RegistryListener) {
   listeners.add(listener)
   return () => {
@@ -60,9 +84,16 @@ export function subscribeAssistantRegistry(listener: RegistryListener) {
   }
 }
 
+export function notifyAssistantPageChanged(id?: string) {
+  if (id && !registrations.has(id)) {
+    return
+  }
+  notifyRegistryListeners()
+}
+
 export function getAssistantRegistryVersion() {
   const active = getActiveAssistantPage()
-  return `${active?.id || ''}:${registrations.size}`
+  return `${registryVersion}:${active?.id || ''}:${registrations.size}`
 }
 
 function removeActiveID(id: string) {
@@ -74,6 +105,7 @@ function removeActiveID(id: string) {
 }
 
 function notifyRegistryListeners() {
+  registryVersion += 1
   listeners.forEach((listener) => listener())
 }
 

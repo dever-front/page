@@ -1,7 +1,6 @@
-import { request, requestBlob, requestRaw } from './request'
+import { request, requestBlob } from './request'
+import { runRuntimeStream } from './runtime-stream-runner'
 import {
-  assertRuntimeStreamFrameSuccess,
-  readRuntimeStreamFrame,
   streamValueText,
   type RuntimeStreamFrame,
 } from './stream'
@@ -71,6 +70,9 @@ type UploadInitPayload = {
 }
 
 const uploadRuleMetaCache = new Map<number, UploadRuleMeta>()
+const uploadRuleMetaPending = new Map<number, Promise<void>>()
+const uploadRuleMetaBatchIDs = new Set<number>()
+let uploadRuleMetaBatchPromise: Promise<void> | null = null
 
 export async function uploadFileByRule(
   ruleId: number,
@@ -107,7 +109,11 @@ export async function importRemoteFileByRule(
   options?: ImportRemoteFileOptions
 ) {
   options?.onProgress?.(0, 0)
-  const result = await request('/front/upload/import_url', 'post', buildImportRemotePayload(ruleId, url, options))
+  const result = await request(
+    '/front/upload/import_url',
+    'post',
+    buildImportRemotePayload(ruleId, url, options)
+  )
   if (result.code !== 0 || !result.data) {
     throw new Error(result.message || '保存资源失败')
   }
@@ -120,38 +126,27 @@ export async function importRemoteFileByRuleStream(
   url: string,
   options?: ImportRemoteFileStreamOptions
 ) {
-  const startFrame = (await requestRaw(
-    '/front/upload/import_url_stream',
-    'post',
-    buildImportRemotePayload(ruleId, url, options)
-  )) as RuntimeStreamFrame
-
-  assertRuntimeStreamFrameSuccess(startFrame)
-  applyImportStreamStatus(startFrame, options?.onStatus)
-
-  const requestID = streamValueText(startFrame?.request_id)
-  if (!requestID) {
-    throw new Error('保存资源任务缺少 request_id。')
-  }
-
-  let lastID = streamValueText(startFrame?.stream_id) || '0-0'
-  const blockMs = Number(options?.blockMs || 1000)
-  while (true) {
-    const frame = await readRuntimeStreamFrame('/front/upload/stream', requestID, lastID, blockMs)
-    assertRuntimeStreamFrameSuccess(frame)
-    if (frame.stream_id) {
-      lastID = String(frame.stream_id)
-    }
-    applyImportStreamStatus(frame, options?.onStatus)
-
-    if (frame.type === 'result') {
-      const uploaded = normalizeImportStreamResult(frame)
-      if (!uploaded) {
-        throw new Error(streamValueText(frame.msg) || '保存资源失败')
+  let resultFrame: RuntimeStreamFrame | null = null
+  await runRuntimeStream({
+    requestApi: '/front/upload/import_url_stream',
+    streamApi: '/front/upload/stream',
+    body: buildImportRemotePayload(ruleId, url, options),
+    blockMs: Number(options?.blockMs || 1000),
+    useStartFrameStreamID: true,
+    missingRequestIDMessage: '保存资源任务缺少 request_id。',
+    onFrame: (frame) => {
+      applyImportStreamStatus(frame, options?.onStatus)
+      if (frame.type === 'result') {
+        resultFrame = frame
       }
-      return uploaded
-    }
+    },
+  })
+
+  const uploaded = resultFrame ? normalizeImportStreamResult(resultFrame) : null
+  if (!uploaded) {
+    throw new Error(streamValueText(resultFrame?.msg) || '保存资源失败')
   }
+  return uploaded
 }
 
 function buildUploadInitPayload(
@@ -218,20 +213,52 @@ export async function listUploadRuleMetas(ruleIds: number[]) {
   )
 
   const missingIDs = ids.filter((id) => !uploadRuleMetaCache.has(id))
-  if (missingIDs.length > 0) {
+  const pendingRequests = missingIDs
+    .map((id) => uploadRuleMetaPending.get(id))
+    .filter((item): item is Promise<void> => !!item)
+  const requestIDs = missingIDs.filter((id) => !uploadRuleMetaPending.has(id))
+
+  if (requestIDs.length > 0) {
+    const requestPromise = queueUploadRuleMetaFetch(requestIDs)
+    requestIDs.forEach((id) => uploadRuleMetaPending.set(id, requestPromise))
+    pendingRequests.push(requestPromise)
+  }
+
+  if (pendingRequests.length > 0) {
+    await Promise.all(pendingRequests)
+  }
+
+  return getCachedUploadRuleMetas(ids)
+}
+
+export function getCachedUploadRuleMetas(ruleIds: number[]) {
+  const result = new Map<number, UploadRuleMeta>()
+  for (const id of ruleIds) {
+    const item = uploadRuleMetaCache.get(id)
+    if (item) {
+      result.set(id, item)
+    }
+  }
+  return result
+}
+
+async function fetchUploadRuleMetas(ruleIds: number[]) {
+  try {
     const result = await request('/front/upload/rule', 'get', {
-      ids: missingIDs.join(','),
+      ids: ruleIds.join(','),
     })
     if (result.code !== 0) {
       throw new Error(result.message || '加载上传规则失败')
     }
 
+    const loadedIDs = new Set<number>()
     const rows = Array.isArray(result.data) ? result.data : []
     for (const row of rows) {
       const id = Number(row?.id || 0)
       if (!Number.isFinite(id) || id <= 0) {
         continue
       }
+      loadedIDs.add(id)
       uploadRuleMetaCache.set(id, {
         id,
         name: String(row?.name || '').trim() || undefined,
@@ -239,16 +266,28 @@ export async function listUploadRuleMetas(ruleIds: number[]) {
         transport: String(row?.transport || '').trim() || undefined,
       })
     }
-  }
 
-  const result = new Map<number, UploadRuleMeta>()
-  for (const id of ids) {
-    const item = uploadRuleMetaCache.get(id)
-    if (item) {
-      result.set(id, item)
+    for (const id of ruleIds) {
+      if (!loadedIDs.has(id)) {
+        uploadRuleMetaCache.set(id, { id })
+      }
     }
+  } finally {
+    ruleIds.forEach((id) => uploadRuleMetaPending.delete(id))
   }
-  return result
+}
+
+function queueUploadRuleMetaFetch(ruleIds: number[]) {
+  ruleIds.forEach((id) => uploadRuleMetaBatchIDs.add(id))
+  if (!uploadRuleMetaBatchPromise) {
+    uploadRuleMetaBatchPromise = Promise.resolve().then(async () => {
+      const ids = Array.from(uploadRuleMetaBatchIDs)
+      uploadRuleMetaBatchIDs.clear()
+      uploadRuleMetaBatchPromise = null
+      await fetchUploadRuleMetas(ids)
+    })
+  }
+  return uploadRuleMetaBatchPromise
 }
 
 export async function downloadUploadFile(item: UploadFileItem) {
@@ -353,10 +392,49 @@ function normalizeImportStreamResult(frame: RuntimeStreamFrame) {
 
 async function digestUploadFile(file: File) {
   const buffer = await file.arrayBuffer()
-  const digest = await crypto.subtle.digest('SHA-256', buffer)
-  const bytes = Array.from(new Uint8Array(digest))
-  return bytes
+  const subtle = globalThis.crypto?.subtle
+  if (subtle?.digest) {
+    try {
+      const digest = await subtle.digest('SHA-256', buffer)
+      return hexDigest(new Uint8Array(digest))
+    } catch {
+      // Fall back below for non-standard or restricted browser contexts.
+    }
+  }
+  return fallbackUploadDigest(file, new Uint8Array(buffer))
+}
+
+function hexDigest(bytes: Uint8Array) {
+  return Array.from(bytes)
     .map((value) => value.toString(16).padStart(2, '0'))
     .join('')
     .slice(0, 32)
+}
+
+function fallbackUploadDigest(file: File, bytes: Uint8Array) {
+  const seed = new TextEncoder().encode(
+    `${file.name}\u0000${file.type}\u0000${file.size}\u0000${file.lastModified}`
+  )
+  const hashes = [
+    0x811c9dc5,
+    0x811c9dc5 ^ 0x9e3779b9,
+    0x811c9dc5 ^ 0x85ebca6b,
+    0x811c9dc5 ^ 0xc2b2ae35,
+  ]
+  updateFallbackHashes(hashes, seed)
+  updateFallbackHashes(hashes, bytes)
+  return hashes
+    .map((value) => (value >>> 0).toString(16).padStart(8, '0'))
+    .join('')
+    .slice(0, 32)
+}
+
+function updateFallbackHashes(hashes: number[], bytes: Uint8Array) {
+  for (let index = 0; index < bytes.length; index += 1) {
+    const value = bytes[index]
+    hashes[0] = Math.imul(hashes[0] ^ value, 0x01000193)
+    hashes[1] = Math.imul(hashes[1] ^ (value + index), 0x01000193)
+    hashes[2] = Math.imul(hashes[2] + value + index, 0x85ebca6b)
+    hashes[3] = Math.imul(hashes[3] ^ ((value << (index % 8)) >>> 0), 0xc2b2ae35)
+  }
 }

@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from 'react'
 import Placeholder from '@tiptap/extension-placeholder'
 import Underline from '@tiptap/extension-underline'
 import { EditorContent, useEditor } from '@tiptap/react'
@@ -20,7 +27,8 @@ import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
 import { mergeResourceUploadRules, normalizeResourceUploadRules } from '@/lib/resource'
 import type { UploadFileItem } from '@/lib/upload'
 import { uploadFileByRule } from '@/lib/upload'
-import { ResourcePickerDialog } from '@/components/resource/resource-picker-dialog'
+import { ResourcePickerDialogLazy } from '@/components/resource/lazy-dialogs'
+import { AssistantMediaGenerateLazyButton } from '@/components/assistant/lazy-media-generate'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -46,7 +54,17 @@ type ToolbarItem = {
   run: (editor: NonNullable<ReturnType<typeof useEditor>>) => void
 }
 
-export function FormEditor({ item, value, setValue, error }: NodeItemProps) {
+const EDITOR_MEDIA_CONTROLS: Array<{
+  kind: EditorMediaKind
+  icon: typeof FileImage
+  label: string
+}> = [
+  { kind: 'image', icon: FileImage, label: '图片' },
+  { kind: 'video', icon: Video, label: '视频' },
+  { kind: 'audio', icon: Music4, label: '音频' },
+]
+
+export function FormEditor({ item, value, setValue, error, store }: NodeItemProps) {
   const placeholder = String(item.placeholder || '请输入内容')
   const disabled = !!item.meta?.disabled
   const minHeight = Number(item.meta?.minHeight || 220)
@@ -311,33 +329,34 @@ export function FormEditor({ item, value, setValue, error }: NodeItemProps) {
           </Button>
         ))}
         {uploadKinds.length > 0 ? <div className="mx-1 h-4 w-px bg-border/70" /> : null}
-        {uploadKinds.includes('image') ? (
-          <EditorMediaMenuButton
-            icon={FileImage}
-            label="图片"
-            disabled={disabled || !editor || !!uploadingKind}
-            onUpload={() => openUploadPicker('image')}
-            onSelectResource={() => openResourcePicker('image')}
-          />
-        ) : null}
-        {uploadKinds.includes('video') ? (
-          <EditorMediaMenuButton
-            icon={Video}
-            label="视频"
-            disabled={disabled || !editor || !!uploadingKind}
-            onUpload={() => openUploadPicker('video')}
-            onSelectResource={() => openResourcePicker('video')}
-          />
-        ) : null}
-        {uploadKinds.includes('audio') ? (
-          <EditorMediaMenuButton
-            icon={Music4}
-            label="音频"
-            disabled={disabled || !editor || !!uploadingKind}
-            onUpload={() => openUploadPicker('audio')}
-            onSelectResource={() => openResourcePicker('audio')}
-          />
-        ) : null}
+        {EDITOR_MEDIA_CONTROLS.map(({ kind, icon, label }) =>
+          uploadKinds.includes(kind) ? (
+            <EditorMediaMenuButton
+              key={kind}
+              icon={icon}
+              label={label}
+              disabled={disabled || !editor || !!uploadingKind}
+              onUpload={() => openUploadPicker(kind)}
+              onSelectResource={() => openResourcePicker(kind)}
+              aiGenerate={
+                <AssistantMediaGenerateLazyButton
+                  store={store}
+                  item={item}
+                  kind={kind}
+                  surface="editor"
+                  uploadRules={uploadRules}
+                  maxResults={4}
+                  variant="ghost"
+                  size="sm"
+                  hideTriggerIcon
+                  className="h-auto w-full justify-start rounded-sm px-2 py-1.5 text-sm font-normal text-foreground shadow-none hover:bg-accent hover:text-accent-foreground"
+                  disabled={disabled || !editor || !!uploadingKind}
+                  onGenerated={(items) => insertMediaItems(kind, items)}
+                />
+              }
+            />
+          ) : null
+        )}
         {(uploadKinds.length > 0 || toolbarItems.length > 0) ? (
           <div className="mx-1 h-4 w-px bg-border/70" />
         ) : null}
@@ -384,39 +403,38 @@ export function FormEditor({ item, value, setValue, error }: NodeItemProps) {
           style={{ minHeight }}
         />
       </div>
-      <ResourcePickerDialog
-        open={!!activePickerKind}
-        title={activePickerKind ? `${resolveEditorMediaLabel(activePickerKind)}资源库` : '资源库'}
-        description={
-          activePickerKind
-            ? `可上传并选择${resolveEditorMediaLabel(activePickerKind)}资源后插入正文。`
-            : undefined
-        }
-        bizKey={activePickerKind ? uploadRuleMap.get(activePickerKind)?.bizKey : undefined}
-        initialScope={activePickerKind && uploadRuleMap.get(activePickerKind)?.bizKey ? 'current' : 'all'}
-        defaultKind={activePickerKind || undefined}
-        fixedKind={true}
-        value={[]}
-        multiple={true}
-        maxSelection={20}
-        uploadRules={
-          activePickerKind && uploadRuleMap.get(activePickerKind)
-            ? [uploadRuleMap.get(activePickerKind)!]
-            : []
-        }
-        onOpenChange={(open) => {
-          if (!open) {
+      {activePickerKind ? (
+        <ResourcePickerDialogLazy
+          open={!!activePickerKind}
+          title={`${resolveEditorMediaLabel(activePickerKind)}资源库`}
+          description={`可上传并选择${resolveEditorMediaLabel(activePickerKind)}资源后插入正文。`}
+          bizKey={uploadRuleMap.get(activePickerKind)?.bizKey}
+          initialScope={uploadRuleMap.get(activePickerKind)?.bizKey ? 'current' : 'all'}
+          defaultKind={activePickerKind}
+          fixedKind={true}
+          value={[]}
+          multiple={true}
+          maxSelection={20}
+          uploadRules={
+            uploadRuleMap.get(activePickerKind)
+              ? [uploadRuleMap.get(activePickerKind)!]
+              : []
+          }
+          onOpenChange={(open) => {
+            if (!open) {
+              setActivePickerKind('')
+            }
+          }}
+          onConfirm={(items) => {
+            const pickerKind = activePickerKind
+            if (!pickerKind) {
+              return
+            }
+            insertMediaItems(pickerKind, items)
             setActivePickerKind('')
-          }
-        }}
-        onConfirm={(items) => {
-          if (!activePickerKind) {
-            return
-          }
-          insertMediaItems(activePickerKind, items)
-          setActivePickerKind('')
-        }}
-      />
+          }}
+        />
+      ) : null}
     </div>
   )
 }
@@ -427,15 +445,17 @@ function EditorMediaMenuButton({
   disabled,
   onUpload,
   onSelectResource,
+  aiGenerate,
 }: {
   icon: typeof FileImage
   label: string
   disabled?: boolean
   onUpload: () => void
   onSelectResource: () => void
+  aiGenerate?: ReactNode
 }) {
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
@@ -457,6 +477,7 @@ function EditorMediaMenuButton({
         <DropdownMenuItem onSelect={onSelectResource}>
           从资源库选择{label}
         </DropdownMenuItem>
+        {aiGenerate ? <div className="px-1 py-0.5">{aiGenerate}</div> : null}
       </DropdownMenuContent>
     </DropdownMenu>
   )

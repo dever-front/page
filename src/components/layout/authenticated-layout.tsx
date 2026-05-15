@@ -10,7 +10,7 @@ import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppTopbar } from '@/components/layout/app-topbar'
 import { FrontBootScreen } from '@/components/layout/front-boot-screen'
 import { SkipToMain } from '@/components/skip-to-main'
-import { GlobalAssistant } from '@/components/assistant/global-assistant'
+import { GlobalAssistant } from '@/components/assistant/global'
 import {
   FRONT_RUNTIME_REFRESH_EVENT,
   loadMainInfo,

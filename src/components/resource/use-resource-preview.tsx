@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ResourcePreviewDialog } from '@/components/resource/resource-preview-dialog'
+import { ResourcePreviewDialogLazy } from '@/components/resource/lazy-dialogs'
 import type { UploadFileItem } from '@/lib/upload'
 
 type UseResourcePreviewDialogOptions = {
@@ -27,7 +27,7 @@ export function useResourcePreviewDialog(
   }
 
   const previewDialog = (
-    <ResourcePreviewDialog
+    <ResourcePreviewDialogLazy
       open={open}
       title={options?.title}
       description={options?.description}

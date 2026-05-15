@@ -22,6 +22,7 @@ import { reloadStorePageSchema } from '@/lib/page-schema-reload'
 import { validatePageSchema, type PageSchemaType } from '@/lib/schema'
 import { runActionWithResult as runStoreActionWithResult, runActionsWithResult } from '@/lib/action'
 import { useAssistantOverlayRegistration } from '@/lib/assistant/use-overlay-registration'
+import { AssistantFormFillButton } from '@/components/assistant/form-actions'
 import type { PageStore } from '@/lib/store'
 import { applyPageSchemaPatches, buildPageRouteWithQuery } from './shared/page-patch'
 import { Page } from '../../page'
@@ -60,6 +61,7 @@ export function FeedbackDrawer({ item, store }: NodeItemProps) {
   const title =
     titleFromPath || item.meta?.title || item.name || pageSchema?.page?.title || '详情'
   const description = descriptionFromPath || item.meta?.description || item.info
+  const assistantFormStore = pageStore ?? (item.meta?.formSection ? store : null)
   const side = item.meta?.side || 'right'
   const activateAssistantOverlay = useAssistantOverlayRegistration({
     open,
@@ -247,28 +249,39 @@ export function FeedbackDrawer({ item, store }: NodeItemProps) {
               <SheetTitle>{title}</SheetTitle>
               {description && <SheetDescription>{description}</SheetDescription>}
             </div>
-            <SheetClose asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="-mr-3 -mt-2 size-8 shrink-0 self-start"
-              >
-                <span className="sr-only">关闭</span>
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="size-4"
+            <div className="flex shrink-0 items-start gap-2">
+              {assistantFormStore ? (
+                <AssistantFormFillButton
+                  store={assistantFormStore}
+                  scope="drawer"
+                  route={String(pageRoute || '')}
+                  className="mt-[-0.125rem]"
+                  overwrite
+                />
+              ) : null}
+              <SheetClose asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="-mr-3 -mt-2 size-8 shrink-0 self-start"
                 >
-                  <path d="M18 6 6 18" />
-                  <path d="m6 6 12 12" />
-                </svg>
-              </Button>
-            </SheetClose>
+                  <span className="sr-only">关闭</span>
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="size-4"
+                  >
+                    <path d="M18 6 6 18" />
+                    <path d="m6 6 12 12" />
+                  </svg>
+                </Button>
+              </SheetClose>
+            </div>
           </div>
         </SheetHeader>
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { FolderOpen, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ResourceCard } from '@/components/resource/resource-card'
-import { ResourcePreviewDialog } from '@/components/resource/resource-preview-dialog'
+import { ResourcePreviewDialogLazy } from '@/components/resource/lazy-dialogs'
 import {
   ResourceFilters,
   type ResourceFilterDraft,
@@ -500,7 +500,7 @@ export function ResourceBrowser({
         </div>
       </div>
 
-      <ResourcePreviewDialog
+      <ResourcePreviewDialogLazy
         open={previewOpen}
         title="资源预览"
         description="可查看当前筛选结果中的图片、视频和音频资源。"

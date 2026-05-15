@@ -3,6 +3,10 @@
 import * as React from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
+import {
+  isAssistantLayerProp,
+  preventCloseFromExternalAssistantLayer,
+} from '@/lib/floating-layer'
 import { cn } from '@/lib/utils'
 
 function Dialog({
@@ -50,20 +54,38 @@ function DialogContent({
   layerClassName,
   children,
   showCloseButton = true,
+  onFocusOutside,
+  onInteractOutside,
+  onPointerDownOutside,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   layerClassName?: string
   showCloseButton?: boolean
 }) {
+  const assistantLayer = isAssistantLayerProp(props as Record<string, unknown>)
+
   return (
     <DialogPortal data-slot='dialog-portal'>
       <div
         data-slot='dialog-layer'
+        data-assistant-layer={assistantLayer ? 'true' : undefined}
         className={cn('pointer-events-none fixed inset-0 z-50', layerClassName)}
       >
         <DialogOverlay className='pointer-events-auto z-0' />
         <DialogPrimitive.Content
           data-slot='dialog-content'
+          onFocusOutside={(event) => {
+            preventCloseFromExternalAssistantLayer(event, assistantLayer)
+            onFocusOutside?.(event)
+          }}
+          onInteractOutside={(event) => {
+            preventCloseFromExternalAssistantLayer(event, assistantLayer)
+            onInteractOutside?.(event)
+          }}
+          onPointerDownOutside={(event) => {
+            preventCloseFromExternalAssistantLayer(event, assistantLayer)
+            onPointerDownOutside?.(event)
+          }}
           className={cn(
             'pointer-events-auto fixed top-[50%] left-[50%] z-10 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg',
             className

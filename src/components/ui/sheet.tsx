@@ -1,6 +1,10 @@
 import * as React from 'react'
 import * as SheetPrimitive from '@radix-ui/react-dialog'
 import { XIcon } from 'lucide-react'
+import {
+  isAssistantLayerProp,
+  preventCloseFromExternalAssistantLayer,
+} from '@/lib/floating-layer'
 import { cn } from '@/lib/utils'
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
@@ -43,23 +47,43 @@ function SheetOverlay({
 
 function SheetContent({
   className,
+  layerClassName,
   children,
   side = 'right',
   showCloseButton = true,
+  onFocusOutside,
+  onInteractOutside,
+  onPointerDownOutside,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
+  layerClassName?: string
   side?: 'top' | 'right' | 'bottom' | 'left'
   showCloseButton?: boolean
 }) {
+  const assistantLayer = isAssistantLayerProp(props as Record<string, unknown>)
+
   return (
     <SheetPortal>
       <div
         data-slot='sheet-layer'
-        className='pointer-events-none fixed inset-0 z-50'
+        data-assistant-layer={assistantLayer ? 'true' : undefined}
+        className={cn('pointer-events-none fixed inset-0 z-50', layerClassName)}
       >
         <SheetOverlay className='pointer-events-auto z-0' />
         <SheetPrimitive.Content
           data-slot='sheet-content'
+          onFocusOutside={(event) => {
+            preventCloseFromExternalAssistantLayer(event, assistantLayer)
+            onFocusOutside?.(event)
+          }}
+          onInteractOutside={(event) => {
+            preventCloseFromExternalAssistantLayer(event, assistantLayer)
+            onInteractOutside?.(event)
+          }}
+          onPointerDownOutside={(event) => {
+            preventCloseFromExternalAssistantLayer(event, assistantLayer)
+            onPointerDownOutside?.(event)
+          }}
           className={cn(
             'pointer-events-auto fixed z-10 flex flex-col gap-4 bg-background shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500',
             side === 'right' &&

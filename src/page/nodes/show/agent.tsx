@@ -15,11 +15,8 @@ import {
   Square,
 } from 'lucide-react'
 import { useStore } from 'zustand'
-import { requestRaw } from '@/lib/request'
 import { getStoreValueByPath } from '@/lib/store'
 import {
-  assertRuntimeStreamFrameSuccess,
-  readRuntimeStreamFrame,
   streamValueText as valueText,
   type RuntimeStreamFrame,
 } from '@/lib/stream'
@@ -30,6 +27,7 @@ import {
   resolveRuntimeFrameCancelable,
   runtimeErrorMessage,
 } from '@/lib/runtime-stream-output'
+import { runAgentStream, stopAgentStream } from '@/lib/agent/runner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -51,10 +49,13 @@ import {
   type AgentInteractionSubmitResult,
 } from './agent-interaction-panel'
 import {
+  cancelStreamTiming,
   StreamTimingBadge,
   createStreamTiming,
   finishStreamTiming,
-  updateStreamTiming,
+  isStreamTimingStatusOutput,
+  markStreamTimingStopping,
+  updateStreamTimingFromOutput,
   useStreamClock,
   type StreamTiming,
 } from './shared/stream-timing'
@@ -297,9 +298,10 @@ export function ShowAgent({ item, store }: NodeItemProps) {
   }
 
   const submitInteraction = async (result: AgentInteractionSubmitResult) => {
+    const sourceMessage = interactionDialogMessage
     if (
-      !interactionDialogMessage?.interaction ||
-      interactionDialogMessage.interactionAnswered ||
+      !sourceMessage?.interaction ||
+      sourceMessage.interactionAnswered ||
       running
     ) {
       return
@@ -310,8 +312,9 @@ export function ShowAgent({ item, store }: NodeItemProps) {
     await runAgent(
       {
         type: 'interaction_result',
-        interaction_id: interactionDialogMessage.interaction.id || '',
-        interaction_type: interactionDialogMessage.interaction.type || '',
+        interaction_id: sourceMessage.interaction.id || '',
+        interaction_type: sourceMessage.interaction.type || '',
+        interaction: sourceMessage.interaction,
         data: result.data,
         text: result.text,
       },
@@ -322,7 +325,7 @@ export function ShowAgent({ item, store }: NodeItemProps) {
         data: result.data,
       },
       messages,
-      interactionDialogMessage.id,
+      sourceMessage.id,
       result.data
     )
   }
@@ -384,22 +387,26 @@ export function ShowAgent({ item, store }: NodeItemProps) {
     setLastStreamID('0-0')
 
     try {
-      const startFrame = await requestRaw(requestApi, 'post', {
+      await runAgentStream<AgentOutput>({
         agent: agentKey,
         input: requestInput,
         history,
-        options: { stream: true },
+        requestApi,
+        streamApi,
+        stopApi,
+        blockMs,
+        onRequestID: setRequestID,
+        onFrame: (frame) => {
+          if (runTokenRef.current !== token) {
+            return
+          }
+          const streamID = valueText(frame?.stream_id)
+          if (streamID) {
+            setLastStreamID(streamID)
+          }
+          applyFrameToMessage(assistantID, frame)
+        },
       })
-      assertFrameSuccess(startFrame)
-      const nextRequestID = valueText(startFrame?.request_id)
-      if (!nextRequestID) {
-        throw new Error('智能体运行缺少 request_id。')
-      }
-
-      setRequestID(nextRequestID)
-      setCancelable(resolveRuntimeFrameCancelable(startFrame) !== false)
-      applyFrameToMessage(assistantID, startFrame as AgentFrame)
-      await pollStream(token, assistantID, nextRequestID)
     } catch (currentError: unknown) {
       if (runTokenRef.current === token) {
         const message = runtimeErrorMessage(currentError, '智能体测试失败。')
@@ -416,45 +423,18 @@ export function ShowAgent({ item, store }: NodeItemProps) {
     }
   }
 
-  const pollStream = async (
-    token: number,
-    assistantID: string,
-    currentRequestID: string
-  ) => {
-    let currentLastID = '0-0'
-    while (runTokenRef.current === token) {
-      const frame = await readRuntimeStreamFrame<EnergonOutput>(
-        streamApi,
-        currentRequestID,
-        currentLastID,
-        blockMs
-      )
-
-      const streamID = valueText(frame?.stream_id)
-      if (streamID) {
-        currentLastID = streamID
-        setLastStreamID(streamID)
-      }
-
-      applyFrameToMessage(assistantID, frame)
-      assertFrameSuccess(frame)
-      if (frame?.type === 'result') {
-        return
-      }
-    }
-  }
-
   const stop = async () => {
     if (!requestID || !cancelable || stopping) {
       return
     }
     setStopping(true)
+    markRunningAssistantStopping()
     try {
-      const frame = await requestRaw(stopApi, 'post', { request_id: requestID })
-      assertFrameSuccess(frame)
+      await stopAgentStream(requestID, stopApi)
       runTokenRef.current += 1
       setRunning(false)
       setCancelable(false)
+      markRunningAssistantCanceled()
     } catch (currentError: unknown) {
       setError(runtimeErrorMessage(currentError, '停止智能体失败。'))
     } finally {
@@ -469,13 +449,19 @@ export function ShowAgent({ item, store }: NodeItemProps) {
     }
   }
 
-  const applyFrameToMessage = (messageID: string, frame: AgentFrame) => {
+  const applyFrameToMessage = (
+    messageID: string,
+    frame: AgentFrame,
+    options?: {
+      updateCancelable?: boolean
+    }
+  ) => {
     const frameOutput = normalizeRuntimeFrameOutput(frame?.output, frame)
     if (isEmptyRuntimeOutput(frameOutput)) {
       return
     }
     const frameCancelable = resolveRuntimeFrameCancelable(frame)
-    if (frameCancelable != null) {
+    if (options?.updateCancelable !== false && frameCancelable != null) {
       setCancelable(frameCancelable)
     }
 
@@ -491,15 +477,8 @@ export function ShowAgent({ item, store }: NodeItemProps) {
         frameOutput.interaction
       )
       let actionTiming = message.actionTiming
-      if (isTimingStatusEvent(frameOutput)) {
-        actionTiming = updateStreamTiming(
-          actionTiming,
-          valueText(frameOutput.text),
-          frameOutput.progress ??
-            frameOutput.meta?.progress ??
-            frameOutput.meta?.percent,
-          frameOutput.meta?.started_at_ms ?? frameOutput.meta?.started_at
-        )
+      if (isStreamTimingStatusOutput(frameOutput)) {
+        actionTiming = updateStreamTimingFromOutput(actionTiming, frameOutput)
       }
       if (frame?.type === 'result') {
         nextOutput.finalOutput = frameOutput
@@ -555,6 +534,33 @@ export function ShowAgent({ item, store }: NodeItemProps) {
           : message
       )
     )
+  }
+
+  const updateRunningAssistant = (
+    updater: (message: AgentMessage) => AgentMessage
+  ) => {
+    setMessages((current) =>
+      current.map((message) =>
+        message.role === 'assistant' && message.running
+          ? updater(message)
+          : message
+      )
+    )
+  }
+
+  const markRunningAssistantStopping = () => {
+    updateRunningAssistant((current) => ({
+      ...current,
+      actionTiming: markStreamTimingStopping(current.actionTiming),
+    }))
+  }
+
+  const markRunningAssistantCanceled = () => {
+    updateRunningAssistant((current) => ({
+      ...current,
+      running: false,
+      actionTiming: cancelStreamTiming(current.actionTiming),
+    }))
   }
 
   const markAssistantError = (messageID: string, message: string) => {
@@ -1228,6 +1234,7 @@ function AgentInteractionDialog({
             disabled={disabled}
             layout='dialog'
             hideHeader
+            autoSubmitWhenReady={!readonly}
             onSubmit={readonly ? undefined : onSubmit}
           />
         </div>
@@ -1249,23 +1256,6 @@ function hasContentViewOutput(value: unknown): boolean {
   return true
 }
 
-function isTimingStatusEvent(output: AgentOutput) {
-  const event = valueText(output.event).toLowerCase()
-  if (
-    event === 'progress' ||
-    event === 'start' ||
-    event === 'status' ||
-    event === 'warning'
-  ) {
-    return true
-  }
-  const action = valueText(output.meta?.action).toLowerCase()
-  if (action === 'call_power') {
-    return true
-  }
-  return valueText(output.text).startsWith('正在调用能力')
-}
-
 function normalizeFrameInteraction(
   value: unknown
 ): AgentInteraction | undefined {
@@ -1278,5 +1268,3 @@ function normalizeFrameInteraction(
   }
   return value as AgentInteraction
 }
-
-const assertFrameSuccess = assertRuntimeStreamFrameSuccess

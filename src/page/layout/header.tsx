@@ -3,9 +3,15 @@
  * 页面级标题条，位于全局顶栏下方
  */
 import { cn } from '@/lib/utils'
+import { AssistantFormFillButton } from '@/components/assistant/form-actions'
+import { usePageStore } from '@/lib/store'
+import { useStore } from 'zustand'
 import type { LayoutComponentProps } from './types'
 
 export function Header({ config, children }: LayoutComponentProps) {
+  const store = usePageStore()
+  const isNestedPage = useStore(store, (state) => !!state.parentStore)
+
   return (
     <section
       className={cn(
@@ -13,7 +19,12 @@ export function Header({ config, children }: LayoutComponentProps) {
         config.className
       )}
     >
-      <div className='flex min-h-12 min-w-0 items-center gap-3'>{children}</div>
+      <div className='flex min-h-12 min-w-0 items-center gap-3'>
+        {children}
+        {!isNestedPage ? (
+          <AssistantFormFillButton store={store} scope="page" />
+        ) : null}
+      </div>
     </section>
   )
 }

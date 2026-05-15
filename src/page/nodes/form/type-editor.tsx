@@ -4,6 +4,10 @@ import { Loader2, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import {
+  AssistantContextFieldGenerateButton,
+  AssistantContextFormFillButton,
+} from '@/components/assistant/form-actions'
 import { isItemCurrentlyHidden } from '@/lib/condition'
 import { getByPath, isScopedStorePath, setByPath } from '@/lib/path'
 import { CONTROL_HIDDEN_WHEN_KEY } from '@/lib/page-control'
@@ -12,6 +16,11 @@ import { getStoreValueByPath, useStorePathValue } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { useNodeOption } from '@/page/option'
 import type { Item, OptionItem } from '@/lib/schema'
+import type {
+  AssistantFieldContext,
+  AssistantPageContext,
+} from '@/lib/assistant/context'
+import { useAssistantContextRegistration } from '@/lib/assistant/use-context-registration'
 import { FormInput } from './input'
 import { FormRadio } from './radio'
 import { FormSelect } from './select'
@@ -106,6 +115,27 @@ export function TypeEditor({ item, value, setValue, option, store, layoutId }: N
       ),
     [controlledFields, draft]
   )
+  const assistantContext = useMemo(
+    () =>
+      buildTypeEditorAssistantContext({
+        store,
+        item,
+        fields: visibleFields,
+        draft,
+        selectedType,
+        selectedTypeName: selectedTypeOption?.value,
+        selectedTypeDescription,
+      }),
+    [
+      draft,
+      item,
+      selectedType,
+      selectedTypeDescription,
+      selectedTypeOption?.value,
+      store,
+      visibleFields,
+    ]
+  )
 
   const commitType = useCallback(
     (nextType: string) => {
@@ -180,6 +210,36 @@ export function TypeEditor({ item, value, setValue, option, store, layoutId }: N
     })
   }, [])
 
+  const applyAssistantValues = useCallback(
+    (values: Record<string, unknown>) => {
+      setDraft((current) => {
+        let nextDraft = current
+        for (const [path, nextValue] of Object.entries(values || {})) {
+          nextDraft = setByPath(nextDraft, normalizeFieldPath(path), nextValue)
+        }
+        return nextDraft
+      })
+      setErrors((current) => clearAssistantAppliedErrors(current, values))
+    },
+    []
+  )
+
+  const applyAssistantFieldValue = useCallback(
+    (path: string, nextValue: unknown) => {
+      setDraftValue(normalizeFieldPath(path), nextValue)
+    },
+    [setDraftValue]
+  )
+  const activateAssistantContext = useAssistantContextRegistration({
+    context: assistantContext,
+    store,
+    enabled: !!selectedType && contextReady,
+    scope: 'page',
+    route: assistantContext.route,
+    name: String(item.id || item.name || 'type-editor'),
+    applyFormValues: applyAssistantValues,
+  })
+
   const saveRecord = async () => {
     if (!selectedType) {
       toast.error('请先选择类型。')
@@ -241,7 +301,11 @@ export function TypeEditor({ item, value, setValue, option, store, layoutId }: N
   }
 
   return (
-    <div className="grid min-h-[calc(100vh-13rem)] gap-5 lg:grid-cols-[18rem_minmax(0,1fr)]">
+    <div
+      className="grid min-h-[calc(100vh-13rem)] gap-5 lg:grid-cols-[18rem_minmax(0,1fr)]"
+      onFocusCapture={activateAssistantContext}
+      onPointerDownCapture={activateAssistantContext}
+    >
       <div className="min-w-0 rounded-md border bg-background">
         <div className="border-b px-4 py-3">
           <div className="text-sm font-semibold">
@@ -313,6 +377,13 @@ export function TypeEditor({ item, value, setValue, option, store, layoutId }: N
                   : '当前类型暂无内容，保存后会新增。')}
             </div>
           </div>
+          <AssistantContextFormFillButton
+            context={assistantContext}
+            variant="outline"
+            size="sm"
+            disabled={saving || loading || !selectedType || !contextReady}
+            onApplyValues={applyAssistantValues}
+          />
           <Button
             type="button"
             size="sm"
@@ -345,6 +416,9 @@ export function TypeEditor({ item, value, setValue, option, store, layoutId }: N
                 error={errors[fieldPath]}
                 store={store}
                 layoutId={layoutId}
+                assistantContext={assistantContext}
+                assistantDisabled={saving || loading || !selectedType || !contextReady}
+                onAssistantApplyValue={applyAssistantFieldValue}
                 onChange={(nextValue) => setDraftValue(fieldPath, nextValue)}
               />
             )
@@ -361,6 +435,9 @@ function TypeEditorField({
   error,
   store,
   layoutId,
+  assistantContext,
+  assistantDisabled,
+  onAssistantApplyValue,
   onChange,
 }: {
   field: TypeEditorFieldItem
@@ -368,6 +445,9 @@ function TypeEditorField({
   error?: string
   store: NodeItemProps['store']
   layoutId: string
+  assistantContext: AssistantPageContext
+  assistantDisabled: boolean
+  onAssistantApplyValue: (path: string, value: unknown) => void
   onChange: (value: unknown) => void
 }) {
   const fieldType = field.type as keyof typeof typeEditorFieldRegistry
@@ -375,6 +455,16 @@ function TypeEditorField({
   const { option, optionLoading, ensureOptionLoaded } = useNodeOption(store, field.option, field)
   const required = field.validate?.some((rule) => rule.type === 'required')
   const fieldPath = normalizeFieldPath(field.value)
+  const assistantField = buildTypeEditorAssistantField(field)
+  const assistantAdornment = isTypeEditorFieldGeneratable(field) ? (
+    <AssistantContextFieldGenerateButton
+      context={assistantContext}
+      field={assistantField}
+      className={resolveTypeEditorAssistantButtonClass(field)}
+      disabled={assistantDisabled || !!field.meta?.disabled}
+      onApplyValue={onAssistantApplyValue}
+    />
+  ) : null
 
   return (
     <div className="grid gap-x-4 gap-y-1 md:grid-cols-[8rem_minmax(0,1fr)]">
@@ -391,7 +481,7 @@ function TypeEditorField({
           item={{
             ...field,
             id: field.id || `type-editor-${fieldPath}`,
-            mode: undefined,
+            mode: 'form',
             value: `form.${fieldPath}`,
             meta: {
               ...field.meta,
@@ -407,6 +497,7 @@ function TypeEditorField({
           store={store}
           layoutId={layoutId}
           runAction={async () => {}}
+          assistantAdornment={assistantAdornment}
         />
         {error ? <p className="mt-1 text-sm text-destructive">{error}</p> : null}
         {field.info ? (
@@ -415,6 +506,102 @@ function TypeEditorField({
       </div>
     </div>
   )
+}
+
+function isTypeEditorFieldGeneratable(field: TypeEditorFieldItem) {
+  if (field.meta?.assistant === false || field.meta?.aiGenerate === false) {
+    return false
+  }
+  return field.type === 'form-input' || field.type === 'form-textarea'
+}
+
+function resolveTypeEditorAssistantButtonClass(field: TypeEditorFieldItem) {
+  if (field.type === 'form-textarea') {
+    return 'absolute right-2 top-2 bg-background/80'
+  }
+  return 'absolute right-1 top-1/2 -translate-y-1/2'
+}
+
+function buildTypeEditorAssistantContext({
+  store,
+  item,
+  fields,
+  draft,
+  selectedType,
+  selectedTypeName,
+  selectedTypeDescription,
+}: {
+  store: NodeItemProps['store']
+  item: NodeItemProps['item']
+  fields: TypeEditorFieldItem[]
+  draft: TypeRecord
+  selectedType: string
+  selectedTypeName?: string
+  selectedTypeDescription?: string
+}): AssistantPageContext {
+  const state = store.getState()
+  const assistantFields = fields.map(buildTypeEditorAssistantField)
+  return {
+    scope: 'page',
+    route: state.pagePath || state.schema.page.route || '',
+    page: {
+      name: `${state.schema.page.name || state.schema.page.title || item.name || '当前页面'} - ${
+        selectedTypeName || selectedType || '当前类型'
+      }`,
+      title: selectedTypeDescription || state.schema.page.title || item.name,
+    },
+    form: {
+      fields: assistantFields,
+      values: collectTypeEditorAssistantValues(assistantFields, draft),
+    },
+  }
+}
+
+function buildTypeEditorAssistantField(field: TypeEditorFieldItem): AssistantFieldContext {
+  const assistantField: AssistantFieldContext = {
+    path: `form.${normalizeFieldPath(field.value)}`,
+    name: String(field.name || field.placeholder || field.value || '').trim(),
+    type: String(field.type || 'form-input').trim(),
+  }
+  if (field.placeholder) {
+    assistantField.placeholder = field.placeholder
+  }
+  if (field.info) {
+    assistantField.info = field.info
+  }
+  if (field.validate?.some((rule) => rule.type === 'required')) {
+    assistantField.required = true
+  }
+  if (Array.isArray(field.option)) {
+    assistantField.options = field.option
+  }
+  return assistantField
+}
+
+function collectTypeEditorAssistantValues(
+  fields: AssistantFieldContext[],
+  draft: TypeRecord
+) {
+  const values: Record<string, unknown> = {}
+  for (const field of fields) {
+    const value = getByPath(draft, normalizeFieldPath(field.path))
+    if (!hasMeaningfulValue(value)) {
+      continue
+    }
+    values[field.path] = value
+  }
+  return values
+}
+
+function clearAssistantAppliedErrors(
+  errors: Record<string, string>,
+  values: Record<string, unknown>
+) {
+  const nextErrors = { ...errors }
+  for (const path of Object.keys(values || {})) {
+    delete nextErrors[normalizeFieldPath(path)]
+  }
+  return nextErrors
 }
 
 function useResolvedConfigSignature(store: NodeItemProps['store'], config: unknown) {

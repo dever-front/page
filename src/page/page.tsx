@@ -30,6 +30,7 @@ import {
   getCurrentRouteNavigationKey,
   normalizeRouteKey,
 } from '@/lib/route-key'
+import { preloadNodeComponents } from '@/lib/registry'
 import { LayoutRenderer } from './layout'
 
 type PageProps = {
@@ -150,16 +151,16 @@ export function Page({
           return
         }
 
-        // Zod 校验
         const validated = validatePageSchema(raw)
-        if (!schemaProp) {
-          await preloadLinkedPageSchemas(validated, route)
-        }
+        void preloadNodeComponents(validated)
         if (cancelled) return
         setPageSchema(validated)
         loadedKeyRef.current = loadKey
         setLoadedKey(loadKey)
         hasLoadedRef.current = true
+        if (!schemaProp) {
+          scheduleLinkedPageSchemaPreload(validated, route)
+        }
       } catch (err: any) {
         if (!cancelled) {
           console.error('[Page] Schema 校验失败:', err)
@@ -252,19 +253,37 @@ async function preloadLinkedPageSchemas(
       }
       visited.add(key)
 
-      const linkedSchema = await loadPageSchema(path)
-      if (!linkedSchema) {
-        return
-      }
-
       try {
+        const linkedSchema = await loadPageSchema(path)
+        if (!linkedSchema) {
+          return
+        }
         const validated = validatePageSchema(linkedSchema)
+        void preloadNodeComponents(validated)
         await preloadLinkedPageSchemas(validated, path, visited, depth + 1)
       } catch (error) {
         console.warn('[Page] 子页面预加载校验失败:', path, error)
       }
     })
   )
+}
+
+function scheduleLinkedPageSchemaPreload(schema: PageSchemaType, currentRoute?: string) {
+  const run = () => {
+    void preloadLinkedPageSchemas(schema, currentRoute)
+  }
+  if (typeof window === 'undefined') {
+    run()
+    return
+  }
+  const idleWindow = window as Window & {
+    requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
+  }
+  if (idleWindow.requestIdleCallback) {
+    idleWindow.requestIdleCallback(run, { timeout: 1200 })
+    return
+  }
+  window.setTimeout(run, 0)
 }
 
 function collectStaticLinkedPagePaths(layout: unknown): string[] {

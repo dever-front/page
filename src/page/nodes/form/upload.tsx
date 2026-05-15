@@ -19,7 +19,11 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { LongText } from '@/components/long-text'
-import { ResourcePreviewDialog } from '@/components/resource/resource-preview-dialog'
+import {
+  ResourcePickerDialogLazy,
+  ResourcePreviewDialogLazy,
+} from '@/components/resource/lazy-dialogs'
+import { AssistantMediaGenerateLazyButton } from '@/components/assistant/lazy-media-generate'
 import {
   Table,
   TableBody,
@@ -28,7 +32,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ResourcePickerDialog } from '@/components/resource/resource-picker-dialog'
 import { inferRelationPath } from '@/lib/relation-field'
 import {
   formatUploadSize,
@@ -48,6 +51,7 @@ import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
 import { moveArrayItem } from '@/lib/array'
 import { cn } from '@/lib/utils'
 import type { NodeItemProps } from '../../nodes'
+import type { AssistantMediaKind } from '@/lib/assistant/media'
 import {
   buildUploadRules,
   resolveUploadEmptyText,
@@ -98,6 +102,10 @@ export function FormUpload({ item, value, setValue, error, store }: NodeItemProp
     () => resolveUploadActionLabel(uploadRules, resourceKind),
     [resourceKind, uploadRules]
   )
+  const assistantMediaKind = resolveUploadAssistantMediaKind(resourceKind)
+  const assistantMaxResults = multiple ? Math.max(maxCount - files.length, 0) : 1
+  const assistantGenerateDisabled =
+    disabled || assistantMaxResults <= 0 || (saveMode !== 'url' && uploadRules.length === 0)
 
   const syncFiles = (nextFiles: UploadFileItem[]) => {
     if (!item.value) {
@@ -190,6 +198,14 @@ export function FormUpload({ item, value, setValue, error, store }: NodeItemProp
     syncFiles(moveArrayItem(files, fromIndex, toIndex))
   }
 
+  const handleGeneratedFiles = (items: UploadFileItem[]) => {
+    const nextItems = multiple
+      ? [...files, ...items].slice(0, maxCount)
+      : items.slice(0, 1)
+    syncFiles(nextItems)
+    setUploadMessage('')
+  }
+
   const pickerTitle = item.name ? `${item.name}资源库` : '资源库'
   const pickerDescription = item.info || '可直接上传新资源，也可以从已有资源中选择替换。'
   const previewTitle = item.name ? `${item.name}详情` : '资源详情'
@@ -228,6 +244,20 @@ export function FormUpload({ item, value, setValue, error, store }: NodeItemProp
         sortable,
         onSelect: () => inputRef.current?.click(),
         onOpenPicker: () => setPickerOpen(true),
+        aiGenerateAction: (
+          <AssistantMediaGenerateLazyButton
+            store={store}
+            item={item}
+            kind={assistantMediaKind}
+            surface="upload"
+            uploadRules={uploadRules}
+            maxResults={assistantMaxResults}
+            disabled={assistantGenerateDisabled}
+            className={resolveUploadAIGenerateClassName(uploadType)}
+            size={isMediaUploadType(uploadType) ? 'default' : 'sm'}
+            onGenerated={handleGeneratedFiles}
+          />
+        ),
         onRemove: handleRemove,
         onPreview: openPreview,
         onDragStart: (index) => setDragIndex(index),
@@ -251,30 +281,34 @@ export function FormUpload({ item, value, setValue, error, store }: NodeItemProp
       {progress ? <p className="text-xs text-muted-foreground">{progress}</p> : null}
       {uploadMessage ? <p className="text-xs text-destructive">{uploadMessage}</p> : null}
 
-      <ResourcePickerDialog
-        open={pickerOpen}
-        title={pickerTitle}
-        description={pickerDescription}
-        bizKey={uploadRules[0]?.bizKey}
-        initialScope={uploadRules[0]?.bizKey ? 'current' : 'all'}
-        defaultKind={resourceKind}
-        fixedKind={true}
-        value={files}
-        multiple={multiple}
-        maxSelection={maxCount}
-        emptyText={resolveUploadEmptyText(uploadType)}
-        uploadRules={uploadRules}
-        onOpenChange={setPickerOpen}
-        onConfirm={syncFiles}
-      />
+      {pickerOpen ? (
+        <ResourcePickerDialogLazy
+          open={pickerOpen}
+          title={pickerTitle}
+          description={pickerDescription}
+          bizKey={uploadRules[0]?.bizKey}
+          initialScope={uploadRules[0]?.bizKey ? 'current' : 'all'}
+          defaultKind={resourceKind}
+          fixedKind={true}
+          value={files}
+          multiple={multiple}
+          maxSelection={maxCount}
+          emptyText={resolveUploadEmptyText(uploadType)}
+          uploadRules={uploadRules}
+          onOpenChange={setPickerOpen}
+          onConfirm={syncFiles}
+        />
+      ) : null}
 
-      <ResourcePreviewDialog
-        open={previewOpen}
-        title={previewTitle}
-        items={previewItems}
-        initialItemId={previewInitialID}
-        onOpenChange={setPreviewOpen}
-      />
+      {previewOpen ? (
+        <ResourcePreviewDialogLazy
+          open={previewOpen}
+          title={previewTitle}
+          items={previewItems}
+          initialItemId={previewInitialID}
+          onOpenChange={setPreviewOpen}
+        />
+      ) : null}
     </div>
   )
 }
@@ -291,6 +325,7 @@ function renderUploadBody({
   sortable,
   onSelect,
   onOpenPicker,
+  aiGenerateAction,
   onRemove,
   onPreview,
   onDragStart,
@@ -309,6 +344,7 @@ function renderUploadBody({
   sortable: boolean
   onSelect: () => void
   onOpenPicker: () => void
+  aiGenerateAction?: ReactNode
   onRemove: (targetID: UploadFileItem['id']) => void
   onPreview: (targetID?: UploadFileItem['id']) => void
   onDragStart: (index: number) => void
@@ -356,6 +392,7 @@ function renderUploadBody({
               disabled={disabled}
               onClick={onOpenPicker}
             />
+            {aiGenerateAction}
           </div>
         </div>
       )
@@ -382,6 +419,7 @@ function renderUploadBody({
             <FolderOpen className="size-4" />
             资源库
           </Button>
+          {aiGenerateAction}
           {files[0] && isPreviewableResource(files[0]) ? (
             <Button type="button" variant="outline" onClick={() => onPreview(files[0].id)}>
               <Eye className="size-4" />
@@ -414,6 +452,7 @@ function renderUploadBody({
                 <FolderOpen className="size-4" />
                 资源库
               </Button>
+              {aiGenerateAction}
             </div>
             <span className="text-xs text-muted-foreground">
               已选择 {files.length} 个文件{sortable ? '，可拖动排序。' : ''}
@@ -538,6 +577,24 @@ function UploadActionTile({
       <span className="text-sm font-medium">{label}</span>
     </button>
   )
+}
+
+function resolveUploadAssistantMediaKind(kind: string): AssistantMediaKind {
+  if (kind === 'image' || kind === 'video' || kind === 'audio') {
+    return kind
+  }
+  return 'file'
+}
+
+function resolveUploadAIGenerateClassName(uploadType: string) {
+  if (isMediaUploadType(uploadType)) {
+    return 'flex size-36 flex-col items-center justify-center gap-3 rounded-2xl border-dashed px-3 py-0 text-muted-foreground'
+  }
+  return 'gap-1.5'
+}
+
+function isMediaUploadType(uploadType: string) {
+  return uploadType === 'pic' || uploadType === 'video' || uploadType === 'audio'
 }
 
 function SelectedMediaTile({

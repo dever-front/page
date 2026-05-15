@@ -13,6 +13,11 @@ type DisplayOption = OptionItem & {
   name?: string
 }
 
+export type OptionMatchItem = {
+  id?: unknown
+  value?: unknown
+}
+
 export function resolveOptionDisplayTexts(
   value: unknown,
   option: OptionItem[] | undefined,
@@ -82,7 +87,7 @@ function resolveOptionText(value: unknown, option: OptionItem[] | undefined) {
     return ''
   }
 
-  const found = option.find((current) => String(current.id) === String(value)) as
+  const found = option.find((current) => matchesOptionValue(current, value)) as
     | DisplayOption
     | undefined
   if (!found) {
@@ -90,6 +95,17 @@ function resolveOptionText(value: unknown, option: OptionItem[] | undefined) {
   }
 
   return String(found.label ?? found.value ?? found.name ?? '').trim()
+}
+
+export function matchesOptionValue(option: OptionMatchItem, value: unknown) {
+  const optionValues = [option.id, option.value].filter(
+    (current) => current != null && current !== ''
+  )
+  const valueText = String(value)
+  return optionValues.some((current) => {
+    const optionText = String(current)
+    return optionText === valueText || optionText.toLowerCase() === valueText.toLowerCase()
+  })
 }
 
 function resolveCaseText(value: unknown, cases: DisplayCase[] | undefined) {

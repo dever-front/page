@@ -26,6 +26,23 @@ export type MainInfoResult = {
   entry: string
 }
 
+export type FrontPermissionItem = {
+  id?: number
+  key: string
+  name: string
+  icon?: string
+  path?: string
+  parent_id?: number
+  parent_key?: string
+  type?: number
+  sort?: number
+  query?: Record<string, string>
+}
+
+export type AssistantPermissionContextResult = MainInfoResult & {
+  permissions: FrontPermissionItem[]
+}
+
 export type FrontRuntimeRefreshDetail = {
   reason: 'main-sync' | 'manual'
 }
@@ -37,6 +54,8 @@ type BackendResponseError = Error & {
 
 let mainInfoPromise: Promise<MainInfoResult> | null = null
 let mainInfoCacheToken = ''
+let assistantPermissionPromise: Promise<AssistantPermissionContextResult> | null = null
+let assistantPermissionCacheToken = ''
 const remoteSchemaPromiseCache = new Map<string, Promise<any>>()
 const remoteSchemaValueCache = new Map<string, { data: any; expiresAt: number }>()
 const REMOTE_SCHEMA_VALUE_CACHE_TTL = 1000
@@ -507,6 +526,25 @@ export async function loadMainInfo(): Promise<MainInfoResult> {
   return mainInfoPromise
 }
 
+export async function loadAssistantPermissionContext(): Promise<AssistantPermissionContextResult> {
+  const cacheToken = getMainInfoCacheToken()
+  if (!assistantPermissionPromise || assistantPermissionCacheToken !== cacheToken) {
+    assistantPermissionCacheToken = cacheToken
+    assistantPermissionPromise = (async () => {
+      const result = await request('/front/main/info', 'get', {
+        include: 'permissions',
+      })
+      return {
+        menu: Array.isArray(result.data?.menu) ? result.data.menu : [],
+        entry: typeof result.data?.entry === 'string' ? result.data.entry : '',
+        permissions: normalizeFrontPermissions(result.data?.permissions),
+      }
+    })()
+  }
+
+  return assistantPermissionPromise
+}
+
 export function resetFrontRuntimeCache(notify = false) {
   clearFrontRuntimeCache()
   if (notify) {
@@ -539,9 +577,76 @@ function applyRuntimeRequestSideEffects(
 function clearFrontRuntimeCache() {
   mainInfoPromise = null
   mainInfoCacheToken = ''
+  assistantPermissionPromise = null
+  assistantPermissionCacheToken = ''
   remoteSchemaPromiseCache.clear()
   remoteSchemaValueCache.clear()
   resetPageProgressCache()
+}
+
+function normalizeFrontPermissions(value: unknown): FrontPermissionItem[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map((item) => normalizeFrontPermission(item))
+    .filter((item): item is FrontPermissionItem => item != null)
+}
+
+function normalizeFrontPermission(value: unknown): FrontPermissionItem | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  const item = value as Record<string, unknown>
+  const key = String(item.key ?? '').trim()
+  const name = String(item.name ?? key).trim()
+  if (!key && !name) {
+    return null
+  }
+
+  const normalized: FrontPermissionItem = {
+    key,
+    name: name || key,
+    icon: String(item.icon ?? '').trim() || undefined,
+    path: String(item.path ?? '').trim() || undefined,
+    parent_key: String(item.parent_key ?? item.parentKey ?? '').trim() || undefined,
+    type: normalizeOptionalNumber(item.type),
+    sort: normalizeOptionalNumber(item.sort),
+  }
+  const id = normalizeOptionalNumber(item.id)
+  if (id !== undefined) {
+    normalized.id = id
+  }
+  const parentID = normalizeOptionalNumber(item.parent_id ?? item.parentId)
+  if (parentID !== undefined) {
+    normalized.parent_id = parentID
+  }
+  const query = normalizePermissionQuery(item.query)
+  if (query) {
+    normalized.query = query
+  }
+  return normalized
+}
+
+function normalizePermissionQuery(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>)
+    .map(([key, current]) => [key.trim(), String(current ?? '').trim()] as const)
+    .filter(([key, current]) => key !== '' && current !== '')
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined
+}
+
+function normalizeOptionalNumber(value: unknown) {
+  if (value == null || value === '') {
+    return undefined
+  }
+  const number = Number(value)
+  return Number.isFinite(number) ? number : undefined
 }
 
 function isMainInfoSyncRequest(api: string, method: string) {

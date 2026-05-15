@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { ResourcePickerDialog } from '@/components/resource/resource-picker-dialog'
+import { ResourcePickerDialogLazy } from '@/components/resource/lazy-dialogs'
 import { useResourcePreviewDialog } from '@/components/resource/use-resource-preview'
 import { findFloatingLayerContainer } from '@/lib/floating-layer'
 import {
@@ -58,6 +58,21 @@ export type TestParam = {
 export type ParamValueMap = Record<string, unknown>
 export type ParamUploadedFile = UploadFileItem
 export type ParamFileMap = Record<string, ParamUploadedFile[]>
+
+export type PowerParamSource = {
+  id: string
+  target_id?: string
+  name: string
+  service_name?: string
+  provider_name?: string
+}
+
+export type PowerParamConfig = {
+  sourceRule: number
+  selectedSourceID: string
+  sources: PowerParamSource[]
+  params: TestParam[]
+}
 
 type ParamControlSurface = 'main' | 'toolbar'
 
@@ -268,7 +283,7 @@ function TestParamControl({
 
       {message ? <p className="text-xs text-destructive">{message}</p> : null}
       {resourceRule ? (
-        <ResourcePickerDialog
+        <ResourcePickerDialogLazy
           open={pickerOpen}
           title={`${label}资源库`}
           description="可从资源库选择匹配当前上传规则的资源。"
@@ -755,6 +770,62 @@ export function normalizeTestParams(value: unknown): TestParam[] {
       }
       return Number(left.id || 0) - Number(right.id || 0)
     })
+}
+
+export function normalizePowerParamConfig(value: unknown): PowerParamConfig {
+  if (Array.isArray(value)) {
+    return {
+      sourceRule: 1,
+      selectedSourceID: '',
+      sources: [],
+      params: normalizeTestParams(value),
+    }
+  }
+
+  if (!isPlainObject(value)) {
+    return {
+      sourceRule: 1,
+      selectedSourceID: '',
+      sources: [],
+      params: [],
+    }
+  }
+
+  return {
+    sourceRule: Number(value.source_rule || 1),
+    selectedSourceID: valueText(value.selected_target_id),
+    sources: normalizePowerParamSources(value.sources),
+    params: normalizeTestParams(value.params),
+  }
+}
+
+function normalizePowerParamSources(value: unknown): PowerParamSource[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value
+    .map((row) => {
+      if (!isPlainObject(row)) {
+        return null
+      }
+      const id = valueText(row.target_id || row.id)
+      if (!id) {
+        return null
+      }
+      const serviceName = valueText(row.service_name)
+      const providerName = valueText(row.provider_name)
+      return {
+        id,
+        target_id: id,
+        service_name: serviceName,
+        provider_name: providerName,
+        name:
+          valueText(row.name) ||
+          [providerName, serviceName].filter(Boolean).join(' / ') ||
+          `来源 ${id}`,
+      }
+    })
+    .filter((row): row is PowerParamSource => row != null)
 }
 
 export function buildDefaultParamValues(params: TestParam[]): ParamValueMap {

@@ -48,7 +48,10 @@ function resolveTemplateText(
     }
     return stringifyTemplateValue(store.getState().getValueByPath(key))
   })
-  return rendered.replace(/（ID：\s*）/g, '').trim()
+  return rendered
+    .replace(/（ID：\s*0?\s*）/g, '')
+    .replace(/（\s*）/g, '')
+    .trim()
 }
 
 function stringifyTemplateValue(value: unknown) {

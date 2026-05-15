@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Loader2, Send } from 'lucide-react'
 import { request } from '@/lib/request'
 import { streamValueText as valueText } from '@/lib/stream'
@@ -10,6 +10,7 @@ import {
   buildRequestInput,
   inputKeyForParam,
   isHiddenParam,
+  normalizePowerParamConfig,
   normalizeTestParams,
   paramFilesRequestValue,
   summarizeParamDisplayValue,
@@ -20,54 +21,17 @@ import {
   type TestParam,
   type TestParamOption,
 } from './stream-request-params'
+import type {
+  AgentInteraction,
+  AgentInteractionSubmitResult,
+} from '@/lib/agent/types'
 
-export type AgentInteractionOption = {
-  id?: string | number
-  label?: string
-  name?: string
-  value?: unknown
-  native_value?: unknown
-}
-
-export type AgentInteractionField = {
-  id?: string | number
-  key?: string
-  name?: string
-  label?: string
-  type?: string
-  value_type?: string
-  default_value?: unknown
-  default?: unknown
-  value?: unknown
-  placeholder?: string
-  required?: boolean
-  upload_rule_id?: string | number
-  uploadRuleId?: string | number
-  max_files?: number
-  multiple?: boolean
-  sort?: number
-  options?: AgentInteractionOption[]
-}
-
-export type AgentInteraction = {
-  id?: string
-  type?: string
-  title?: string
-  description?: string
-  power?: string
-  fields?: AgentInteractionField[]
-  values?: Record<string, unknown>
-  default_values?: Record<string, unknown>
-  data?: Record<string, unknown>
-  input?: Record<string, unknown>
-  params?: Record<string, unknown>
-  arguments?: Record<string, unknown>
-}
-
-export type AgentInteractionSubmitResult = {
-  text: string
-  data: Record<string, unknown>
-}
+export type {
+  AgentInteraction,
+  AgentInteractionField,
+  AgentInteractionOption,
+  AgentInteractionSubmitResult,
+} from '@/lib/agent/types'
 
 type AgentInteractionPanelProps = {
   interaction: AgentInteraction
@@ -77,12 +41,55 @@ type AgentInteractionPanelProps = {
   hideHeader?: boolean
   layout?: 'inline' | 'dialog'
   initialData?: Record<string, unknown>
+  autoSubmitWhenReady?: boolean
   onSubmit?: (result: AgentInteractionSubmitResult) => void
 }
 
-type PowerParamConfig = {
-  params: TestParam[]
-  sourceTargetID: string
+export async function resolveAgentInteractionAutoSubmit(
+  interaction: AgentInteraction,
+  paramApi = '/bot/energon/power_params'
+): Promise<AgentInteractionSubmitResult | null> {
+  const interactionType = normalizeText(interaction.type)
+  const powerKey = normalizeText(interaction.power)
+  const initialValues = normalizeInteractionValues(interaction)
+  let params: TestParam[] = []
+  let extraData: Record<string, unknown> | undefined
+
+  if (interactionType === 'power_params') {
+    if (!powerKey) {
+      return null
+    }
+
+    const result = await request(paramApi, 'get', {
+      power: powerKey,
+      include_sources: 1,
+    })
+    if (result.code !== 0) {
+      return null
+    }
+
+    const config = normalizePowerParamConfig(result.data)
+    params = config.params
+    if (config.selectedSourceID) {
+      extraData = { source_target_id: config.selectedSourceID }
+    }
+  } else {
+    params = normalizeInteractionFields(interaction.fields)
+  }
+
+  const paramValues = buildInitialParamValues(params, initialValues)
+  if (validateMainParams(params, paramValues)) {
+    return null
+  }
+
+  const data = {
+    ...(extraData || {}),
+    ...buildRequestInput(params, paramValues),
+  }
+  return {
+    data,
+    text: summarizeSubmit(params, data, powerKey),
+  }
 }
 
 export function AgentInteractionPanel({
@@ -93,6 +100,7 @@ export function AgentInteractionPanel({
   hideHeader,
   layout = 'inline',
   initialData,
+  autoSubmitWhenReady = false,
   onSubmit,
 }: AgentInteractionPanelProps) {
   const [loading, setLoading] = useState(false)
@@ -158,7 +166,7 @@ export function AgentInteractionPanel({
 
       const config = normalizePowerParamConfig(result.data)
       setPowerParams(config.params)
-      setPowerSourceTargetID(config.sourceTargetID)
+      setPowerSourceTargetID(config.selectedSourceID)
       setLoading(false)
     }
 
@@ -200,6 +208,7 @@ export function AgentInteractionPanel({
         layout={layout}
         initialData={initialData}
         initialValues={interactionValues}
+        autoSubmitWhenReady={autoSubmitWhenReady}
         extraData={
           isPowerParams && powerSourceTargetID
             ? { source_target_id: powerSourceTargetID }
@@ -221,6 +230,7 @@ function AgentInteractionParamForm({
   layout,
   initialData,
   initialValues,
+  autoSubmitWhenReady,
   extraData,
   onSubmit,
 }: {
@@ -233,10 +243,12 @@ function AgentInteractionParamForm({
   layout: 'inline' | 'dialog'
   initialData?: Record<string, unknown>
   initialValues?: Record<string, unknown>
+  autoSubmitWhenReady?: boolean
   extraData?: Record<string, unknown>
   onSubmit?: (result: AgentInteractionSubmitResult) => void
 }) {
   const [error, setError] = useState('')
+  const [autoSubmitted, setAutoSubmitted] = useState(false)
   const [paramValues, setParamValues] = useState<ParamValueMap>(() =>
     buildInitialParamValues(params, initialValues)
   )
@@ -283,22 +295,62 @@ function AgentInteractionParamForm({
     }))
   }
 
-  const submit = () => {
+  const buildSubmitResult = useCallback((): AgentInteractionSubmitResult | string => {
     const validationError = validateMainParams(params, paramValues)
     if (validationError) {
-      setError(validationError)
-      return
+      return validationError
     }
 
     const data = {
       ...(extraData || {}),
       ...buildRequestInput(params, paramValues),
     }
-    onSubmit?.({
+    return {
       data,
       text: summarizeSubmit(params, data, powerKey),
-    })
+    }
+  }, [extraData, paramValues, params, powerKey])
+
+  const submit = () => {
+    const result = buildSubmitResult()
+    if (typeof result === 'string') {
+      setError(result)
+      return
+    }
+
+    onSubmit?.(result)
   }
+
+  useEffect(() => {
+    if (
+      !autoSubmitWhenReady ||
+      readonly ||
+      disabled ||
+      loading ||
+      loadError ||
+      autoSubmitted ||
+      !onSubmit
+    ) {
+      return
+    }
+
+    const result = buildSubmitResult()
+    if (typeof result === 'string') {
+      return
+    }
+
+    setAutoSubmitted(true)
+    onSubmit(result)
+  }, [
+    autoSubmitWhenReady,
+    autoSubmitted,
+    buildSubmitResult,
+    disabled,
+    loadError,
+    loading,
+    onSubmit,
+    readonly,
+  ])
 
   if (readonly) {
     return (
@@ -454,25 +506,6 @@ function ReadonlyInteractionValues({
       ))}
     </div>
   )
-}
-
-function normalizePowerParamConfig(value: unknown): PowerParamConfig {
-  if (Array.isArray(value)) {
-    return {
-      params: normalizeTestParams(value),
-      sourceTargetID: '',
-    }
-  }
-  if (isPlainObject(value)) {
-    return {
-      params: normalizeTestParams(value.params),
-      sourceTargetID: valueText(value.selected_target_id),
-    }
-  }
-  return {
-    params: [],
-    sourceTargetID: '',
-  }
 }
 
 function normalizeInteractionValues(
