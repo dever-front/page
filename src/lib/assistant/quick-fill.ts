@@ -1,4 +1,8 @@
 import { toast } from 'sonner'
+import type {
+  AgentInteraction,
+  AgentInteractionSubmitResult,
+} from '@/lib/agent/types'
 import type { PageStore } from '@/lib/store'
 import {
   applyAssistantFrontAction,
@@ -11,7 +15,11 @@ import {
   type AssistantFieldContext,
   type AssistantPageContext,
 } from './context'
-import { runAssistantAgent, type AssistantStatusHandler } from './client'
+import {
+  runAssistantAgent,
+  type AssistantMessage,
+  type AssistantStatusHandler,
+} from './client'
 import type { AssistantPageRegistration, AssistantPageScope } from './registry'
 import { loadAssistantPermissionContextSafe } from './permission'
 import {
@@ -22,6 +30,10 @@ import {
   buildAssistantFormFillTask,
   type AssistantFormTaskMode,
 } from './task'
+import {
+  buildAssistantInteractionInput,
+  normalizeAssistantInteraction,
+} from './interaction'
 
 type AssistantQuickFillMode = AssistantFormTaskMode
 
@@ -43,6 +55,10 @@ export type AssistantQuickFillResult = {
   text: string
 }
 
+export type AssistantQuickFillInteraction = AgentInteraction
+export type AssistantQuickFillInteractionSubmitResult =
+  AgentInteractionSubmitResult
+
 export type AssistantContextQuickFillOptions = {
   context: AssistantPageContext
   field?: AssistantFieldContext
@@ -54,6 +70,47 @@ export type AssistantContextQuickFillOptions = {
   onStatus?: AssistantStatusHandler
   onApplyField?: (path: string, value: unknown) => void | Promise<void>
   onApplyValues?: (values: Record<string, unknown>) => void | Promise<void>
+}
+
+export type AssistantQuickFillResumeOptions = AssistantQuickFillOptions & {
+  interaction: AssistantQuickFillInteraction
+  interactionText?: string
+  interactionResult: AssistantQuickFillInteractionSubmitResult
+}
+
+export type AssistantContextQuickFillResumeOptions =
+  AssistantContextQuickFillOptions & {
+    interaction: AssistantQuickFillInteraction
+    interactionText?: string
+    interactionResult: AssistantQuickFillInteractionSubmitResult
+  }
+
+export class AssistantQuickFillInteractionRequiredError extends Error {
+  interaction: AssistantQuickFillInteraction
+  interactionText: string
+
+  constructor(interaction: AssistantQuickFillInteraction, interactionText: string) {
+    super('继续填写前需要补充信息。')
+    this.name = 'AssistantQuickFillInteractionRequiredError'
+    this.interaction = interaction
+    this.interactionText = interactionText
+  }
+}
+
+type QuickFillAgentRequest = {
+  text: string
+  input?: Record<string, unknown>
+  history?: AssistantMessage[]
+  mode: AssistantQuickFillMode
+  field?: AssistantFieldContext
+  sourceText?: string
+  instruction?: string
+  references?: AssistantReferenceFile[]
+  overwrite: boolean
+  context: AssistantPageContext
+  permissionContext: Awaited<ReturnType<typeof loadAssistantPermissionContextSafe>>
+  signal?: AbortSignal
+  onStatus?: AssistantStatusHandler
 }
 
 export async function runAssistantQuickFill({
@@ -87,8 +144,278 @@ export async function runAssistantQuickFill({
   if (signal?.aborted) {
     return { applied: false, text: '' }
   }
+  const text = buildQuickFillUserText(mode, field, sourceText, instruction, references)
+  const { finalText, finalOutput } = await requestQuickFillAgent({
+    text,
+    mode,
+    field,
+    sourceText,
+    instruction,
+    references,
+    overwrite,
+    context,
+    permissionContext,
+    signal,
+    onStatus,
+  })
+  if (signal?.aborted) {
+    return { applied: false, text: finalText }
+  }
+  ensureNoQuickFillInteraction(finalOutput, finalText)
+  return applyAssistantQuickFillResult({
+    finalText,
+    registration,
+    context,
+    permissionContext,
+    field,
+    store,
+  })
+}
+
+export async function runAssistantContextQuickFill({
+  context,
+  field,
+  instruction,
+  sourceText,
+  references,
+  overwrite = false,
+  signal,
+  onStatus,
+  onApplyField,
+  onApplyValues,
+}: AssistantContextQuickFillOptions): Promise<AssistantQuickFillResult> {
+  const mode = resolveQuickFillMode(field, sourceText)
+
+  if (!context?.form?.fields.length) {
+    toast.error('当前页面没有可由 AI 填写的表单字段。')
+    return { applied: false, text: '' }
+  }
+
+  if (field && !context.form.fields.some((item) => sameFieldPath(item.path, field.path))) {
+    toast.error('当前字段不在可填写表单范围内。')
+    return { applied: false, text: '' }
+  }
+
+  onStatus?.('正在请求 AI 填写')
+  const permissionContext = await loadAssistantPermissionContextSafe()
+  if (signal?.aborted) {
+    return { applied: false, text: '' }
+  }
+  const text = buildQuickFillUserText(mode, field, sourceText, instruction, references)
+  const { finalText, finalOutput } = await requestQuickFillAgent({
+    text,
+    mode,
+    field,
+    sourceText,
+    instruction,
+    references,
+    overwrite,
+    context,
+    permissionContext,
+    signal,
+    onStatus,
+  })
+  if (signal?.aborted) {
+    return { applied: false, text: finalText }
+  }
+  ensureNoQuickFillInteraction(finalOutput, finalText)
+  return applyAssistantContextQuickFillResult({
+    finalText,
+    context,
+    field,
+    onApplyField,
+    onApplyValues,
+  })
+}
+
+export async function continueAssistantQuickFill({
+  store,
+  scope = 'modal',
+  route,
+  field,
+  instruction,
+  sourceText,
+  references,
+  overwrite = false,
+  signal,
+  onStatus,
+  interaction,
+  interactionText,
+  interactionResult,
+}: AssistantQuickFillResumeOptions): Promise<AssistantQuickFillResult> {
+  const registration = buildQuickFillRegistration(store, scope, route)
+  const context = buildAssistantPageContext(registration)
+  const mode = resolveQuickFillMode(field, sourceText)
+
+  if (!context?.form?.fields.length) {
+    toast.error('当前页面没有可由 AI 填写的表单字段。')
+    return { applied: false, text: '' }
+  }
+  if (field && !context.form.fields.some((item) => sameFieldPath(item.path, field.path))) {
+    toast.error('当前字段不在可填写表单范围内。')
+    return { applied: false, text: '' }
+  }
+
+  onStatus?.('正在继续 AI 填写')
+  const permissionContext = await loadAssistantPermissionContextSafe()
+  if (signal?.aborted) {
+    return { applied: false, text: '' }
+  }
+
+  const originalText = buildQuickFillUserText(
+    mode,
+    field,
+    sourceText,
+    instruction,
+    references
+  )
+  const { finalText, finalOutput } = await requestQuickFillAgent({
+    text: interactionResult.text,
+    input: buildAssistantInteractionInput(interaction, interactionResult),
+    mode,
+    field,
+    sourceText,
+    instruction,
+    references,
+    overwrite,
+    context,
+    permissionContext,
+    history: buildQuickFillInteractionHistory(
+      originalText,
+      interaction,
+      interactionText
+    ),
+    signal,
+    onStatus,
+  })
+  if (signal?.aborted) {
+    return { applied: false, text: finalText }
+  }
+  ensureNoQuickFillInteraction(finalOutput, finalText)
+  return applyAssistantQuickFillResult({
+    finalText,
+    registration,
+    context,
+    permissionContext,
+    field,
+    store,
+  })
+}
+
+export async function continueAssistantContextQuickFill({
+  context,
+  field,
+  instruction,
+  sourceText,
+  references,
+  overwrite = false,
+  signal,
+  onStatus,
+  onApplyField,
+  onApplyValues,
+  interaction,
+  interactionText,
+  interactionResult,
+}: AssistantContextQuickFillResumeOptions): Promise<AssistantQuickFillResult> {
+  const mode = resolveQuickFillMode(field, sourceText)
+
+  if (!context?.form?.fields.length) {
+    toast.error('当前页面没有可由 AI 填写的表单字段。')
+    return { applied: false, text: '' }
+  }
+  if (field && !context.form.fields.some((item) => sameFieldPath(item.path, field.path))) {
+    toast.error('当前字段不在可填写表单范围内。')
+    return { applied: false, text: '' }
+  }
+
+  onStatus?.('正在继续 AI 填写')
+  const permissionContext = await loadAssistantPermissionContextSafe()
+  if (signal?.aborted) {
+    return { applied: false, text: '' }
+  }
+
+  const originalText = buildQuickFillUserText(
+    mode,
+    field,
+    sourceText,
+    instruction,
+    references
+  )
+  const { finalText, finalOutput } = await requestQuickFillAgent({
+    text: interactionResult.text,
+    input: buildAssistantInteractionInput(interaction, interactionResult),
+    mode,
+    field,
+    sourceText,
+    instruction,
+    references,
+    overwrite,
+    context,
+    permissionContext,
+    history: buildQuickFillInteractionHistory(
+      originalText,
+      interaction,
+      interactionText
+    ),
+    signal,
+    onStatus,
+  })
+  if (signal?.aborted) {
+    return { applied: false, text: finalText }
+  }
+  ensureNoQuickFillInteraction(finalOutput, finalText)
+  return applyAssistantContextQuickFillResult({
+    finalText,
+    context,
+    field,
+    onApplyField,
+    onApplyValues,
+  })
+}
+
+function buildQuickFillRegistration(
+  store: PageStore,
+  scope: AssistantPageScope,
+  route?: string
+): AssistantPageRegistration {
+  const state = store.getState()
+  return {
+    id: 'assistant-quick-fill',
+    store,
+    scope,
+    route: route || state.pagePath || state.schema.page.route || '',
+  }
+}
+
+function ensureNoQuickFillInteraction(
+  finalOutput: Record<string, unknown>,
+  finalText: string
+) {
+  const interaction = normalizeAssistantInteraction(finalOutput)
+  if (interaction) {
+    throw new AssistantQuickFillInteractionRequiredError(interaction, finalText)
+  }
+}
+
+async function requestQuickFillAgent({
+  text,
+  input,
+  history = [],
+  mode,
+  field,
+  sourceText,
+  instruction,
+  references,
+  overwrite,
+  context,
+  permissionContext,
+  signal,
+  onStatus,
+}: QuickFillAgentRequest) {
+  let finalOutput: Record<string, unknown> = {}
   const finalText = await runAssistantAgent({
-    text: buildQuickFillUserText(mode, field, sourceText, instruction, references),
+    text,
+    input,
     task: buildAssistantFormFillTask({
       mode,
       field,
@@ -99,13 +426,50 @@ export async function runAssistantQuickFill({
     }),
     context,
     permissionContext,
-    history: [],
+    history,
     signal,
     onStatus,
+    onFinalOutput: (output) => {
+      finalOutput = output
+    },
   })
-  if (signal?.aborted) {
-    return { applied: false, text: finalText }
-  }
+  return { finalText, finalOutput }
+}
+
+function buildQuickFillInteractionHistory(
+  text: string,
+  interaction: AssistantQuickFillInteraction,
+  interactionText = ''
+): AssistantMessage[] {
+  return [
+    {
+      role: 'user' as const,
+      content: text,
+    },
+    {
+      role: 'assistant' as const,
+      content: interactionText,
+      interaction,
+      interaction_answered: false,
+    },
+  ]
+}
+
+async function applyAssistantQuickFillResult({
+  finalText,
+  registration,
+  context,
+  permissionContext,
+  field,
+  store,
+}: {
+  finalText: string
+  registration: AssistantPageRegistration
+  context: AssistantPageContext
+  permissionContext: Awaited<ReturnType<typeof loadAssistantPermissionContextSafe>>
+  field?: AssistantFieldContext
+  store: PageStore
+}): Promise<AssistantQuickFillResult> {
   const parsed = extractAssistantFrontActions(finalText)
   const actions = filterQuickFillActions(parsed.actions, field)
 
@@ -142,54 +506,19 @@ export async function runAssistantQuickFill({
   }
 }
 
-export async function runAssistantContextQuickFill({
+async function applyAssistantContextQuickFillResult({
+  finalText,
   context,
   field,
-  instruction,
-  sourceText,
-  references,
-  overwrite = false,
-  signal,
-  onStatus,
   onApplyField,
   onApplyValues,
-}: AssistantContextQuickFillOptions): Promise<AssistantQuickFillResult> {
-  const mode = resolveQuickFillMode(field, sourceText)
-
-  if (!context?.form?.fields.length) {
-    toast.error('当前页面没有可由 AI 填写的表单字段。')
-    return { applied: false, text: '' }
-  }
-
-  if (field && !context.form.fields.some((item) => sameFieldPath(item.path, field.path))) {
-    toast.error('当前字段不在可填写表单范围内。')
-    return { applied: false, text: '' }
-  }
-
-  onStatus?.('正在请求 AI 填写')
-  const permissionContext = await loadAssistantPermissionContextSafe()
-  if (signal?.aborted) {
-    return { applied: false, text: '' }
-  }
-  const finalText = await runAssistantAgent({
-    text: buildQuickFillUserText(mode, field, sourceText, instruction, references),
-    task: buildAssistantFormFillTask({
-      mode,
-      field,
-      sourceText,
-      instruction,
-      references,
-      overwrite,
-    }),
-    context,
-    permissionContext,
-    history: [],
-    signal,
-    onStatus,
-  })
-  if (signal?.aborted) {
-    return { applied: false, text: finalText }
-  }
+}: {
+  finalText: string
+  context: AssistantPageContext
+  field?: AssistantFieldContext
+  onApplyField?: (path: string, value: unknown) => void | Promise<void>
+  onApplyValues?: (values: Record<string, unknown>) => void | Promise<void>
+}): Promise<AssistantQuickFillResult> {
   const parsed = extractAssistantFrontActions(finalText)
   const actions = filterQuickFillActions(parsed.actions, field)
 
@@ -215,7 +544,7 @@ export async function runAssistantContextQuickFill({
       continue
     }
     if (action.type === 'patch_form') {
-      const values = filterPatchValues(action.values, context.form.fields)
+      const values = filterPatchValues(action.values, context.form?.fields || [])
       if (onApplyValues) {
         await onApplyValues(values)
         applied = Object.keys(values).length > 0
@@ -235,20 +564,6 @@ export async function runAssistantContextQuickFill({
   return {
     applied,
     text: parsed.cleanText || finalText,
-  }
-}
-
-function buildQuickFillRegistration(
-  store: PageStore,
-  scope: AssistantPageScope,
-  route?: string
-): AssistantPageRegistration {
-  const state = store.getState()
-  return {
-    id: 'assistant-quick-fill',
-    store,
-    scope,
-    route: route || state.pagePath || state.schema.page.route || '',
   }
 }
 

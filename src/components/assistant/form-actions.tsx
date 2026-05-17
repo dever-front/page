@@ -1,4 +1,5 @@
-import type { ComponentProps } from 'react'
+import { useState, type ComponentProps } from 'react'
+import { toast } from 'sonner'
 import { useStore } from 'zustand'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -11,10 +12,16 @@ import {
   type AssistantPageContext,
 } from '@/lib/assistant/context'
 import {
+  AssistantQuickFillInteractionRequiredError,
+  continueAssistantContextQuickFill,
+  continueAssistantQuickFill,
   runAssistantContextQuickFill,
   runAssistantQuickFill,
 } from '@/lib/assistant/quick-fill'
 import type { AssistantPageScope } from '@/lib/assistant/registry'
+import type { AssistantReferenceFile } from '@/lib/assistant/reference'
+import type { AgentInteractionSubmitResult } from '@/lib/agent/types'
+import { AssistantInteractionDialog } from './interaction-dialog'
 import { AssistantTaskPopover } from './task-popover'
 
 type AssistantFieldGenerateButtonProps = {
@@ -211,32 +218,95 @@ function AssistantQuickFillPopover({
   iconOnly = false,
   overwrite = true,
 }: AssistantQuickFillPopoverProps) {
+  const [interactionState, setInteractionState] = useState<{
+    error: AssistantQuickFillInteractionRequiredError
+    instruction: string
+    references: AssistantReferenceFile[]
+  } | null>(null)
+  const [interactionRunning, setInteractionRunning] = useState(false)
+
+  const resumeInteraction = async (result: AgentInteractionSubmitResult) => {
+    const current = interactionState
+    if (!current || interactionRunning) {
+      return
+    }
+
+    setInteractionRunning(true)
+    try {
+      const fillResult = await continueAssistantQuickFill({
+        store,
+        scope,
+        route,
+        field,
+        instruction: current.instruction,
+        references: current.references,
+        overwrite,
+        interaction: current.error.interaction,
+        interactionText: current.error.interactionText,
+        interactionResult: result,
+      })
+      if (fillResult.applied) {
+        setInteractionState(null)
+      }
+    } catch (error) {
+      if (error instanceof AssistantQuickFillInteractionRequiredError) {
+        setInteractionState({ ...current, error })
+      } else {
+        toast.error(error instanceof Error ? error.message : 'AI 填写失败')
+      }
+    } finally {
+      setInteractionRunning(false)
+    }
+  }
+
   return (
-    <AssistantTaskPopover
-      title={title}
-      description={description}
-      triggerLabel={triggerLabel}
-      triggerClassName={triggerClassName}
-      triggerVariant={triggerVariant}
-      triggerSize={triggerSize}
-      iconOnly={iconOnly}
-      textareaPlaceholder="可选：输入补充要求、粘贴参考文案，留空则按当前表单直接生成。"
-      onSubmit={async ({ instruction, references, signal, setStatus }) => {
-        const result = await runAssistantQuickFill({
-          store,
-          scope,
-          route,
-          field,
-          instruction,
-          references,
-          overwrite,
-          signal,
-          onStatus: setStatus,
-        })
-        return result.applied
-      }}
-      maxReferences={MAX_REFERENCE_FILES}
-    />
+    <>
+      <AssistantTaskPopover
+        title={title}
+        description={description}
+        triggerLabel={triggerLabel}
+        triggerClassName={triggerClassName}
+        triggerVariant={triggerVariant}
+        triggerSize={triggerSize}
+        iconOnly={iconOnly}
+        textareaPlaceholder="可选：输入补充要求、粘贴参考文案，留空则按当前表单直接生成。"
+        onSubmit={async ({ instruction, references, signal, setStatus }) => {
+          try {
+            const result = await runAssistantQuickFill({
+              store,
+              scope,
+              route,
+              field,
+              instruction,
+              references,
+              overwrite,
+              signal,
+              onStatus: setStatus,
+            })
+            return result.applied
+          } catch (error) {
+            if (error instanceof AssistantQuickFillInteractionRequiredError) {
+              setInteractionState({ error, instruction, references })
+              return true
+            }
+            throw error
+          }
+        }}
+        maxReferences={MAX_REFERENCE_FILES}
+      />
+      <AssistantInteractionDialog
+        open={Boolean(interactionState)}
+        interaction={interactionState?.error.interaction}
+        disabled={interactionRunning}
+        autoSubmitValid
+        onOpenChange={(open) => {
+          if (!open && !interactionRunning) {
+            setInteractionState(null)
+          }
+        }}
+        onSubmit={(result) => void resumeInteraction(result)}
+      />
+    </>
   )
 }
 
@@ -255,33 +325,96 @@ function AssistantContextQuickFillPopover({
   onApplyField,
   onApplyValues,
 }: AssistantContextQuickFillPopoverProps) {
+  const [interactionState, setInteractionState] = useState<{
+    error: AssistantQuickFillInteractionRequiredError
+    instruction: string
+    references: AssistantReferenceFile[]
+  } | null>(null)
+  const [interactionRunning, setInteractionRunning] = useState(false)
+
+  const resumeInteraction = async (result: AgentInteractionSubmitResult) => {
+    const current = interactionState
+    if (!current || interactionRunning) {
+      return
+    }
+
+    setInteractionRunning(true)
+    try {
+      const fillResult = await continueAssistantContextQuickFill({
+        context,
+        field,
+        instruction: current.instruction,
+        references: current.references,
+        overwrite,
+        onApplyField,
+        onApplyValues,
+        interaction: current.error.interaction,
+        interactionText: current.error.interactionText,
+        interactionResult: result,
+      })
+      if (fillResult.applied) {
+        setInteractionState(null)
+      }
+    } catch (error) {
+      if (error instanceof AssistantQuickFillInteractionRequiredError) {
+        setInteractionState({ ...current, error })
+      } else {
+        toast.error(error instanceof Error ? error.message : 'AI 填写失败')
+      }
+    } finally {
+      setInteractionRunning(false)
+    }
+  }
+
   return (
-    <AssistantTaskPopover
-      title={title}
-      description={description}
-      triggerLabel={triggerLabel}
-      triggerClassName={triggerClassName}
-      triggerVariant={triggerVariant}
-      triggerSize={triggerSize}
-      iconOnly={iconOnly}
-      disabled={disabled}
-      textareaPlaceholder="可选：输入补充要求、粘贴参考文案，留空则按当前表单直接生成。"
-      onSubmit={async ({ instruction, references, signal, setStatus }) => {
-        const result = await runAssistantContextQuickFill({
-          context,
-          field,
-          instruction,
-          references,
-          overwrite,
-          signal,
-          onStatus: setStatus,
-          onApplyField,
-          onApplyValues,
-        })
-        return result.applied
-      }}
-      maxReferences={MAX_REFERENCE_FILES}
-    />
+    <>
+      <AssistantTaskPopover
+        title={title}
+        description={description}
+        triggerLabel={triggerLabel}
+        triggerClassName={triggerClassName}
+        triggerVariant={triggerVariant}
+        triggerSize={triggerSize}
+        iconOnly={iconOnly}
+        disabled={disabled}
+        textareaPlaceholder="可选：输入补充要求、粘贴参考文案，留空则按当前表单直接生成。"
+        onSubmit={async ({ instruction, references, signal, setStatus }) => {
+          try {
+            const result = await runAssistantContextQuickFill({
+              context,
+              field,
+              instruction,
+              references,
+              overwrite,
+              signal,
+              onStatus: setStatus,
+              onApplyField,
+              onApplyValues,
+            })
+            return result.applied
+          } catch (error) {
+            if (error instanceof AssistantQuickFillInteractionRequiredError) {
+              setInteractionState({ error, instruction, references })
+              return true
+            }
+            throw error
+          }
+        }}
+        maxReferences={MAX_REFERENCE_FILES}
+      />
+      <AssistantInteractionDialog
+        open={Boolean(interactionState)}
+        interaction={interactionState?.error.interaction}
+        disabled={interactionRunning}
+        autoSubmitValid
+        onOpenChange={(open) => {
+          if (!open && !interactionRunning) {
+            setInteractionState(null)
+          }
+        }}
+        onSubmit={(result) => void resumeInteraction(result)}
+      />
+    </>
   )
 }
 

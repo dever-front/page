@@ -1,5 +1,4 @@
-import { type CSSProperties, createElement, useMemo } from 'react'
-import { renderJSONContentToReactElement } from '@tiptap/static-renderer/json/react'
+import { Fragment, type CSSProperties, createElement, type ReactNode, useMemo } from 'react'
 import {
   isEmptyRichTextDoc,
   normalizeRichTextMaxWidth,
@@ -57,71 +56,148 @@ const richTextClassName = cn(
 
 const previewClassName = 'line-clamp-2 max-w-full overflow-hidden [&_*]:inline [&_br]:hidden'
 
-const renderRichTextDoc = renderJSONContentToReactElement<RichTextMark, RichTextNode>({
-  nodeMapping: {
-    blockquote: ({ children }) => <blockquote>{children}</blockquote>,
-    bulletList: ({ children }) => <ul>{children}</ul>,
-    codeBlock: ({ children }) => (
-      <pre>
-        <code>{children}</code>
-      </pre>
-    ),
-    doc: ({ children }) => <>{children}</>,
-    hardBreak: () => <br />,
-    heading: ({ node, children }) => createElement(headingTag(node), null, children),
-    horizontalRule: () => <hr />,
-    listItem: ({ children }) => <li>{children}</li>,
-    orderedList: ({ children }) => <ol>{children}</ol>,
-    paragraph: ({ children }) => <p>{children}</p>,
-    table: ({ children }) => <table>{children}</table>,
-    tableCell: ({ children }) => <td>{children}</td>,
-    tableHeader: ({ children }) => <th>{children}</th>,
-    tableRow: ({ children }) => <tr>{children}</tr>,
-    text: ({ node }) => <>{node.text || ''}</>,
-    [richTextMediaNodeNames.image]: ({ node }) => {
-      const attrs = mediaAttrs(node)
-      if (!attrs.src) {
-        return null
-      }
+function renderRichTextDoc(doc: RichTextNode) {
+  return renderRichTextChildren(doc, 'doc')
+}
+
+function renderRichTextChildren(node: RichTextNode, key: string): ReactNode {
+  if (!Array.isArray(node.content)) {
+    return null
+  }
+  return node.content.map((child, index) => renderRichTextNode(child, `${key}-${index}`))
+}
+
+function renderRichTextNode(node: RichTextNode | null | undefined, key: string): ReactNode {
+  if (!node || typeof node.type !== 'string') {
+    return null
+  }
+
+  const children = renderRichTextChildren(node, key)
+  switch (node.type) {
+    case 'blockquote':
+      return <blockquote key={key}>{children}</blockquote>
+    case 'bulletList':
+      return <ul key={key}>{children}</ul>
+    case 'codeBlock':
       return (
-        <img
-          src={attrs.src}
-          alt={String(node.attrs?.alt || '')}
-          title={String(node.attrs?.title || '')}
-          style={attrs.style}
-        />
+        <pre key={key}>
+          <code>{children}</code>
+        </pre>
       )
-    },
-    [richTextMediaNodeNames.video]: ({ node }) => {
-      const attrs = mediaAttrs(node)
-      if (!attrs.src) {
-        return null
-      }
-      return <video src={attrs.src} controls preload="metadata" playsInline style={attrs.style} />
-    },
-    [richTextMediaNodeNames.audio]: ({ node }) => {
-      const attrs = mediaAttrs(node)
-      if (!attrs.src) {
-        return null
-      }
-      return <audio src={attrs.src} controls preload="none" style={attrs.style} />
-    },
-  },
-  markMapping: {
-    bold: ({ children }) => <strong>{children}</strong>,
-    code: ({ children }) => <code>{children}</code>,
-    italic: ({ children }) => <em>{children}</em>,
-    link: ({ mark, children }) => (
-      <a href={safeHref(mark.attrs?.href)} target="_blank" rel="noreferrer">
-        {children}
-      </a>
-    ),
-    strike: ({ children }) => <s>{children}</s>,
-    underline: ({ children }) => <u>{children}</u>,
-  },
-  unhandledNode: ({ children }) => <>{children}</>,
-  unhandledMark: ({ children }) => <>{children}</>,
-})
+    case 'doc':
+      return <Fragment key={key}>{children}</Fragment>
+    case 'hardBreak':
+      return <br key={key} />
+    case 'heading':
+      return createElement(headingTag(node), { key }, children)
+    case 'horizontalRule':
+      return <hr key={key} />
+    case 'listItem':
+      return <li key={key}>{children}</li>
+    case 'orderedList':
+      return <ol key={key}>{children}</ol>
+    case 'paragraph':
+      return <p key={key}>{children}</p>
+    case 'table':
+      return <table key={key}>{children}</table>
+    case 'tableCell':
+      return <td key={key}>{children}</td>
+    case 'tableHeader':
+      return <th key={key}>{children}</th>
+    case 'tableRow':
+      return <tr key={key}>{children}</tr>
+    case 'text':
+      return renderRichTextText(node, key)
+    case richTextMediaNodeNames.image:
+      return renderRichTextImage(node, key)
+    case richTextMediaNodeNames.video:
+      return renderRichTextVideo(node, key)
+    case richTextMediaNodeNames.audio:
+      return renderRichTextAudio(node, key)
+    default:
+      return <Fragment key={key}>{children}</Fragment>
+  }
+}
+
+function renderRichTextText(node: RichTextNode, key: string): ReactNode {
+  const text = node.text || ''
+  const content = <Fragment key={`${key}-text`}>{text}</Fragment>
+  if (!Array.isArray(node.marks) || node.marks.length === 0) {
+    return content
+  }
+  return node.marks.reduceRight<ReactNode>(
+    (children, mark, index) => renderRichTextMark(mark, children, `${key}-mark-${index}`),
+    content
+  )
+}
+
+function renderRichTextMark(mark: RichTextMark | null | undefined, children: ReactNode, key: string) {
+  if (!mark || typeof mark.type !== 'string') {
+    return <Fragment key={key}>{children}</Fragment>
+  }
+
+  switch (mark.type) {
+    case 'bold':
+      return <strong key={key}>{children}</strong>
+    case 'code':
+      return <code key={key}>{children}</code>
+    case 'italic':
+      return <em key={key}>{children}</em>
+    case 'link':
+      return (
+        <a key={key} href={safeHref(mark.attrs?.href)} target="_blank" rel="noreferrer">
+          {children}
+        </a>
+      )
+    case 'strike':
+      return <s key={key}>{children}</s>
+    case 'underline':
+      return <u key={key}>{children}</u>
+    default:
+      return <Fragment key={key}>{children}</Fragment>
+  }
+}
+
+function renderRichTextImage(node: RichTextNode, key: string) {
+  const attrs = mediaAttrs(node)
+  if (!attrs.src) {
+    return null
+  }
+  return (
+    <img
+      key={key}
+      src={attrs.src}
+      alt={String(node.attrs?.alt || '')}
+      title={String(node.attrs?.title || '')}
+      style={attrs.style}
+    />
+  )
+}
+
+function renderRichTextVideo(node: RichTextNode, key: string) {
+  const attrs = mediaAttrs(node)
+  if (!attrs.src) {
+    return null
+  }
+  return (
+    <video
+      key={key}
+      src={attrs.src}
+      controls
+      preload="metadata"
+      playsInline
+      style={attrs.style}
+    />
+  )
+}
+
+function renderRichTextAudio(node: RichTextNode, key: string) {
+  const attrs = mediaAttrs(node)
+  if (!attrs.src) {
+    return null
+  }
+  return <audio key={key} src={attrs.src} controls preload="none" style={attrs.style} />
+}
 
 function headingTag(node: RichTextNode) {
   const level = Number(node.attrs?.level || 2)

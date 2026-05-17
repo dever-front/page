@@ -25,6 +25,10 @@ import {
 } from './reference'
 import { loadAssistantPermissionContextSafe } from './permission'
 import { withAssistantTaskReferences } from './task'
+import {
+  buildAssistantInteractionInput,
+  normalizeAssistantInteraction,
+} from './interaction'
 
 export type AssistantMediaKind = 'image' | 'video' | 'audio' | 'file'
 export type AssistantMediaSurface = 'upload' | 'editor'
@@ -190,7 +194,7 @@ async function requestAssistantMediaGeneration({
     return []
   }
 
-  const interaction = normalizeAssistantMediaInteraction(finalOutput)
+  const interaction = normalizeAssistantInteraction(finalOutput)
   if (interaction) {
     throw new AssistantMediaInteractionRequiredError(interaction, finalText)
   }
@@ -398,14 +402,7 @@ async function requestAssistantMediaPowerGeneration(
   const text = buildMediaUserText(surface, kind, field, instruction, references)
   const { finalOutput, textOutput } = await runAgentStream<Record<string, unknown>>({
     agent: 'front-assistant',
-    input: {
-      type: 'interaction_result',
-      interaction_id: interaction.id || '',
-      interaction_type: interaction.type || '',
-      interaction,
-      data: interactionResult.data,
-      text: interactionResult.text,
-    },
+    input: buildAssistantInteractionInput(interaction, interactionResult),
     history: [
       {
         role: 'user',
@@ -424,7 +421,7 @@ async function requestAssistantMediaPowerGeneration(
   if (signal?.aborted) {
     return []
   }
-  const nextInteraction = normalizeAssistantMediaInteraction(finalOutput)
+  const nextInteraction = normalizeAssistantInteraction(finalOutput)
   if (nextInteraction) {
     throw new AssistantMediaInteractionRequiredError(nextInteraction, textOutput)
   }
@@ -433,27 +430,6 @@ async function requestAssistantMediaPowerGeneration(
     throw new Error(`媒体能力没有返回可用的${assistantMediaKindLabel(kind)}地址。`)
   }
   return items
-}
-
-function normalizeAssistantMediaInteraction(output: Record<string, unknown>) {
-  const interaction = output?.interaction
-  if (!isPlainObject(interaction)) {
-    return null
-  }
-
-  const type = firstText(interaction.type)
-  if (!type) {
-    return null
-  }
-
-  return {
-    ...interaction,
-    type,
-    id: firstText(interaction.id) || undefined,
-    power: firstText(interaction.power) || undefined,
-    title: firstText(interaction.title) || undefined,
-    description: firstText(interaction.description) || undefined,
-  } as AssistantMediaInteraction
 }
 
 function appendMediaItems(

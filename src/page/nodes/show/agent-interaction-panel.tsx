@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Send } from 'lucide-react'
 import { request } from '@/lib/request'
 import { streamValueText as valueText } from '@/lib/stream'
@@ -41,6 +41,7 @@ type AgentInteractionPanelProps = {
   hideHeader?: boolean
   layout?: 'inline' | 'dialog'
   initialData?: Record<string, unknown>
+  autoSubmitValid?: boolean
   onSubmit?: (result: AgentInteractionSubmitResult) => void
 }
 
@@ -52,6 +53,7 @@ export function AgentInteractionPanel({
   hideHeader,
   layout = 'inline',
   initialData,
+  autoSubmitValid,
   onSubmit,
 }: AgentInteractionPanelProps) {
   const [loading, setLoading] = useState(false)
@@ -159,6 +161,7 @@ export function AgentInteractionPanel({
         layout={layout}
         initialData={initialData}
         initialValues={interactionValues}
+        autoSubmitValid={autoSubmitValid && isPowerParams}
         extraData={
           isPowerParams && powerSourceTargetID
             ? { source_target_id: powerSourceTargetID }
@@ -180,6 +183,7 @@ function AgentInteractionParamForm({
   layout,
   initialData,
   initialValues,
+  autoSubmitValid,
   extraData,
   onSubmit,
 }: {
@@ -192,10 +196,12 @@ function AgentInteractionParamForm({
   layout: 'inline' | 'dialog'
   initialData?: Record<string, unknown>
   initialValues?: Record<string, unknown>
+  autoSubmitValid?: boolean
   extraData?: Record<string, unknown>
   onSubmit?: (result: AgentInteractionSubmitResult) => void
 }) {
   const [error, setError] = useState('')
+  const autoSubmittedRef = useRef(false)
   const [paramValues, setParamValues] = useState<ParamValueMap>(() =>
     buildInitialParamValues(params, initialValues)
   )
@@ -257,6 +263,34 @@ function AgentInteractionParamForm({
       text: summarizeSubmit(params, data, powerKey),
     }
   }, [extraData, paramValues, params, powerKey])
+
+  useEffect(() => {
+    if (
+      !autoSubmitValid ||
+      autoSubmittedRef.current ||
+      readonly ||
+      disabled ||
+      loading ||
+      loadError
+    ) {
+      return
+    }
+
+    const result = buildSubmitResult()
+    if (typeof result === 'string') {
+      return
+    }
+    autoSubmittedRef.current = true
+    onSubmit?.(result)
+  }, [
+    autoSubmitValid,
+    buildSubmitResult,
+    disabled,
+    loadError,
+    loading,
+    onSubmit,
+    readonly,
+  ])
 
   const submit = () => {
     const result = buildSubmitResult()

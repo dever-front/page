@@ -21,7 +21,7 @@ export const richTextMediaNodeNames: Record<RichTextMediaKind, string> = {
 
 export function parseRichTextDoc(value: unknown): RichTextNode | null {
   if (isRichTextDoc(value)) {
-    return value
+    return normalizeRichTextDoc(value)
   }
   if (typeof value !== 'string') {
     return null
@@ -34,14 +34,14 @@ export function parseRichTextDoc(value: unknown): RichTextNode | null {
 
   try {
     const parsed = JSON.parse(text)
-    return isRichTextDoc(parsed) ? parsed : null
+    return isRichTextDoc(parsed) ? normalizeRichTextDoc(parsed) : null
   } catch {
     return null
   }
 }
 
 export function serializeRichTextDoc(value: unknown): string {
-  const doc = isRichTextDoc(value) ? value : parseRichTextDoc(value)
+  const doc = parseRichTextDoc(value)
   if (isEmptyRichTextDoc(doc)) {
     return ''
   }
@@ -80,6 +80,14 @@ function isRichTextDoc(value: unknown): value is RichTextNode {
   return value.content == null || Array.isArray(value.content)
 }
 
+function normalizeRichTextDoc(doc: RichTextNode): RichTextNode {
+  return {
+    type: 'doc',
+    attrs: normalizeAttrs(doc.attrs),
+    content: normalizeRichTextContent(doc.content),
+  }
+}
+
 export function emptyRichTextDoc(): RichTextNode {
   return {
     type: 'doc',
@@ -101,6 +109,74 @@ function hasVisibleRichText(node: RichTextNode): boolean {
     return !!String(node.text || '').trim()
   }
   return Array.isArray(node.content) && node.content.some(hasVisibleRichText)
+}
+
+function normalizeRichTextContent(content: unknown): RichTextNode[] {
+  if (!Array.isArray(content)) {
+    return []
+  }
+  return content
+    .map(normalizeRichTextNode)
+    .filter((node): node is RichTextNode => node != null)
+}
+
+function normalizeRichTextNode(value: unknown): RichTextNode | null {
+  if (!isRecord(value)) {
+    return null
+  }
+  const type = String(value.type || '').trim()
+  if (!type) {
+    return null
+  }
+
+  const node: RichTextNode = { type }
+  const attrs = normalizeAttrs(value.attrs)
+  if (attrs) {
+    node.attrs = attrs
+  }
+  const marks = normalizeRichTextMarks(value.marks)
+  if (marks.length > 0) {
+    node.marks = marks
+  }
+  if (type === 'text') {
+    node.text = String(value.text || '')
+    return node.text ? node : null
+  }
+  const children = normalizeRichTextContent(value.content)
+  if (children.length > 0) {
+    node.content = children
+  }
+  return node
+}
+
+function normalizeRichTextMarks(marks: unknown): RichTextMark[] {
+  if (!Array.isArray(marks)) {
+    return []
+  }
+  return marks
+    .map((mark) => {
+      if (!isRecord(mark)) {
+        return null
+      }
+      const type = String(mark.type || '').trim()
+      if (!type) {
+        return null
+      }
+      const row: RichTextMark = { type }
+      const attrs = normalizeAttrs(mark.attrs)
+      if (attrs) {
+        row.attrs = attrs
+      }
+      return row
+    })
+    .filter((mark): mark is RichTextMark => mark != null)
+}
+
+function normalizeAttrs(value: unknown): Record<string, any> | undefined {
+  if (!isRecord(value)) {
+    return undefined
+  }
+  return value
 }
 
 function isRecord(value: unknown): value is Record<string, any> {

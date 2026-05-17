@@ -20,11 +20,19 @@ import {
   type AssistantFrontAction,
 } from '@/lib/assistant/actions'
 import { runAssistantAgent, type AssistantMessage } from '@/lib/assistant/client'
+import type {
+  AgentInteraction,
+  AgentInteractionSubmitResult,
+} from '@/lib/agent/types'
 import type { AgentStreamStatus } from '@/lib/agent/runner'
 import {
   assistantContextSummary,
   buildAssistantPageContext,
 } from '@/lib/assistant/context'
+import {
+  buildAssistantInteractionInput,
+  normalizeAssistantInteraction,
+} from '@/lib/assistant/interaction'
 import {
   getActiveAssistantPage,
   getAssistantRegistryVersion,
@@ -56,6 +64,7 @@ import {
   AssistantReferenceList,
   AssistantReferencePicker,
 } from './reference-picker'
+import { AssistantInteractionDialog } from './interaction-dialog'
 
 type AssistantDrawerProps = {
   open: boolean
@@ -67,12 +76,22 @@ type ChatMessage = AssistantMessage & {
   output?: Record<string, unknown>
   actions?: AssistantFrontAction[]
   appliedActionIndexes?: number[]
+  interaction?: AgentInteraction
+  interactionAnswered?: boolean
+  interactionData?: Record<string, unknown>
+  kind?: 'chat' | 'interaction_result'
+  data?: Record<string, unknown>
 }
 
 type SendOptions = {
   text?: string
+  input?: Record<string, unknown>
   task?: Record<string, unknown>
   clearInput?: boolean
+  messageKind?: ChatMessage['kind']
+  messageData?: Record<string, unknown>
+  answeredInteractionMessageID?: string
+  answeredInteractionData?: Record<string, unknown>
 }
 
 export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
@@ -84,6 +103,9 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
   const [running, setRunning] = useState(false)
   const [status, setStatus] = useState('')
   const [timing, setTiming] = useState<StreamTiming | undefined>()
+  const [interactionDialogOpen, setInteractionDialogOpen] = useState(false)
+  const [interactionDialogMessageID, setInteractionDialogMessageID] =
+    useState('')
   const [permissionContext, setPermissionContext] =
     useState<AssistantPermissionContext | null>(null)
   const [permissionLoading, setPermissionLoading] = useState(false)
@@ -103,6 +125,31 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
     () => buildAssistantPageContext(activePage),
     [activePage, registryVersion]
   )
+  const pendingInteractionMessage = useMemo(
+    () =>
+      [...messages]
+        .reverse()
+        .find(
+          (message) =>
+            message.role === 'assistant' &&
+            message.interaction &&
+            !message.interactionAnswered
+        ),
+    [messages]
+  )
+  const interactionDialogMessage = useMemo(() => {
+    if (!interactionDialogMessageID) {
+      return pendingInteractionMessage
+    }
+    return (
+      messages.find(
+        (message) =>
+          message.id === interactionDialogMessageID &&
+          message.role === 'assistant' &&
+          Boolean(message.interaction)
+      ) || pendingInteractionMessage
+    )
+  }, [interactionDialogMessageID, messages, pendingInteractionMessage])
   const contextText = assistantContextSummary(pageContext)
   const now = useStreamClock(running || timing?.status === 'running')
 
@@ -121,6 +168,13 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
   }, [messages, running])
+
+  useEffect(() => {
+    if (pendingInteractionMessage?.id) {
+      setInteractionDialogMessageID(pendingInteractionMessage.id)
+      setInteractionDialogOpen(true)
+    }
+  }, [pendingInteractionMessage?.id])
 
   useEffect(() => {
     if (!open || permissionContext || permissionLoading) {
@@ -157,6 +211,42 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
     setTiming((current) => markStreamTimingStopping(current))
   }
 
+  const changeInteractionDialogOpen = (nextOpen: boolean) => {
+    setInteractionDialogOpen(nextOpen)
+    if (!nextOpen) {
+      setInteractionDialogMessageID('')
+    }
+  }
+
+  const openInteractionDialog = (messageID: string) => {
+    setInteractionDialogMessageID(messageID)
+    setInteractionDialogOpen(true)
+  }
+
+  const submitInteraction = async (result: AgentInteractionSubmitResult) => {
+    const sourceMessage = interactionDialogMessage
+    if (
+      !sourceMessage?.interaction ||
+      sourceMessage.interactionAnswered ||
+      running
+    ) {
+      return
+    }
+
+    setInteractionDialogOpen(false)
+    setInteractionDialogMessageID('')
+
+    await send({
+      text: result.text,
+      input: buildAssistantInteractionInput(sourceMessage.interaction, result),
+      clearInput: false,
+      messageKind: 'interaction_result',
+      messageData: result.data,
+      answeredInteractionMessageID: sourceMessage.id,
+      answeredInteractionData: result.data,
+    })
+  }
+
   const send = async (options: SendOptions = {}) => {
     const runReferences = references
     const text =
@@ -176,6 +266,9 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
       id: createMessageID(),
       role: 'user',
       content: buildAssistantReferenceMessage(text, runReferences),
+      type: options.messageKind,
+      kind: options.messageKind,
+      data: options.messageData,
     }
     const assistantID = createMessageID()
     const assistantMessage: ChatMessage = {
@@ -183,9 +276,24 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
       role: 'assistant',
       content: '',
     }
-    const history = messages.map(({ role, content }) => ({ role, content }))
+    const history = buildAssistantHistory(messages)
 
-    setMessages((current) => [...current, userMessage, assistantMessage])
+    setMessages((current) => {
+      const next = options.answeredInteractionMessageID
+        ? current.map((message) =>
+            message.id === options.answeredInteractionMessageID
+              ? {
+                  ...message,
+                  interactionAnswered: true,
+                  interaction_answered: true,
+                  interactionData: options.answeredInteractionData,
+                  interaction_data: options.answeredInteractionData,
+                }
+              : message
+          )
+        : current
+      return [...next, userMessage, assistantMessage]
+    })
     if (options.clearInput ?? options.text == null) {
       setInput('')
     }
@@ -205,6 +313,7 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
       let finalOutput: Record<string, unknown> = {}
       const finalText = await runAssistantAgent({
         text,
+        input: options.input,
         task: mergeAssistantTaskReferences(options.task, runReferences),
         context: runPageContext,
         permissionContext: runPermissionContext,
@@ -226,6 +335,7 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
       if (controller.signal.aborted) {
         return
       }
+      const interaction = normalizeAssistantInteraction(finalOutput)
       const parsed = extractAssistantFrontActions(finalText)
       const visibleText =
         parsed.cleanText ||
@@ -237,9 +347,16 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
           ...message,
           content: visibleText,
           output: buildAssistantMessageOutput(finalOutput, visibleText),
-          actions: parsed.actions,
+          actions: interaction ? [] : parsed.actions,
+          interaction,
+          interactionAnswered: false,
+          interaction_answered: false,
         }))
       )
+      if (interaction) {
+        updateRunStatus('等待补充信息')
+        return
+      }
       const autoAppliedIndexes = await applyActionsFromCurrentPage(
         parsed.actions,
         runPermissionContext,
@@ -436,6 +553,13 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
                           onApply={() => void applyAction(message.id, index, action)}
                         />
                       ))}
+                      {message.interaction ? (
+                        <AssistantInteractionNotice
+                          answered={Boolean(message.interactionAnswered)}
+                          disabled={running && !message.interactionAnswered}
+                          onOpen={() => openInteractionDialog(message.id)}
+                        />
+                      ) : null}
                     </div>
                   </div>
                 ))}
@@ -537,6 +661,19 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
           </div>
         </div>
       </SheetContent>
+      <AssistantInteractionDialog
+        open={
+          Boolean(interactionDialogMessage?.interaction) &&
+          interactionDialogOpen
+        }
+        interaction={interactionDialogMessage?.interaction}
+        readonly={Boolean(interactionDialogMessage?.interactionAnswered)}
+        initialData={interactionDialogMessage?.interactionData}
+        autoSubmitValid
+        disabled={running}
+        onOpenChange={changeInteractionDialogOpen}
+        onSubmit={(result) => void submitInteraction(result)}
+      />
     </Sheet>
   )
 }
@@ -555,6 +692,19 @@ async function ensurePermissionContext(
   setPermissionContext(next)
   setPermissionLoading(false)
   return next
+}
+
+function buildAssistantHistory(messages: ChatMessage[]): AssistantMessage[] {
+  return messages.map((message) => ({
+    role: message.role,
+    content: message.content,
+    type: message.type || message.kind,
+    data: message.data,
+    output: message.output,
+    interaction: message.interaction,
+    interaction_answered: message.interactionAnswered ?? message.interaction_answered,
+    interaction_data: message.interactionData ?? message.interaction_data,
+  }))
 }
 
 function patchAssistantMessage(
@@ -604,6 +754,32 @@ function AssistantMessageContent({
   }
 
   return <div className="whitespace-pre-wrap break-all">{content}</div>
+}
+
+function AssistantInteractionNotice({
+  answered,
+  disabled,
+  onOpen,
+}: {
+  answered: boolean
+  disabled?: boolean
+  onOpen: () => void
+}) {
+  return (
+    <div className="mt-2 flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-2 py-1.5 text-xs text-muted-foreground">
+      <span>{answered ? '交互信息已提交。' : '需要补充交互信息。'}</span>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-7 px-2 text-xs"
+        disabled={disabled}
+        onClick={onOpen}
+      >
+        {answered ? '查看参数' : '填写参数'}
+      </Button>
+    </div>
+  )
 }
 
 function createMessageID() {

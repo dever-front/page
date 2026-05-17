@@ -45,7 +45,6 @@
     "@tiptap/extension-underline": "^3.22.1",
     "@tiptap/react": "^3.22.1",
     "@tiptap/starter-kit": "^3.22.1",
-    "@tiptap/static-renderer": "3.22.1",
     "axios": "^1.13.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

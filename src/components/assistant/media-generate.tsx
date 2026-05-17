@@ -2,19 +2,11 @@ import { useRef, useState, type ComponentProps } from 'react'
 import { toast } from 'sonner'
 import { RotateCcw, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { ResourcePreviewDialogLazy } from '@/components/resource/lazy-dialogs'
-import {
-  AgentInteractionPanel,
-  type AgentInteraction,
-  type AgentInteractionSubmitResult,
-} from '@/page/nodes/show/agent-interaction-panel'
+import type {
+  AgentInteraction,
+  AgentInteractionSubmitResult,
+} from '@/lib/agent/types'
 import type { Item } from '@/lib/schema'
 import type { PageStore } from '@/lib/store'
 import type { ResourceUploadRule } from '@/lib/resource'
@@ -42,6 +34,7 @@ import {
   type StreamTiming,
 } from '@/page/nodes/show/shared/stream-timing'
 import type { AgentStreamStatus } from '@/lib/agent/runner'
+import { AssistantInteractionDialog } from './interaction-dialog'
 import { AssistantTaskPopover } from './task-popover'
 
 export type AssistantMediaGenerateButtonProps = {
@@ -444,7 +437,7 @@ export function AssistantMediaGenerateButton({
         onRegenerate={() => void regeneratePreview()}
       />
 
-      <AssistantMediaInteractionDialog
+      <AssistantInteractionDialog
         open={Boolean(interactionState)}
         interaction={interactionState?.error.interaction as AgentInteraction | undefined}
         title={`补充${label}能力参数`}
@@ -454,6 +447,7 @@ export function AssistantMediaGenerateButton({
             : `补充这些参数后会继续生成${label}并填入当前控件；如果 AI 已经给出完整参数，会自动继续。`
         }
         disabled={interactionRunning}
+        autoSubmitValid
         onOpenChange={(open) => {
           if (!open && !interactionRunning) {
             setInteractionState(null)
@@ -524,51 +518,5 @@ function AssistantMediaPreviewDialog({
         </>
       )}
     />
-  )
-}
-
-function AssistantMediaInteractionDialog({
-  open,
-  interaction,
-  title,
-  description,
-  disabled,
-  onOpenChange,
-  onSubmit,
-}: {
-  open: boolean
-  interaction?: AgentInteraction
-  title: string
-  description: string
-  disabled?: boolean
-  onOpenChange: (open: boolean) => void
-  onSubmit: (result: AgentInteractionSubmitResult) => void
-}) {
-  if (!interaction) {
-    return null
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        data-assistant-layer="true"
-        layerClassName="z-[95]"
-        className="flex max-h-[86vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
-      >
-        <DialogHeader className="border-b px-5 py-4 text-start">
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-        <div className="min-h-0 overflow-hidden">
-          <AgentInteractionPanel
-            interaction={interaction}
-            disabled={disabled}
-            layout="dialog"
-            hideHeader
-            onSubmit={onSubmit}
-          />
-        </div>
-      </DialogContent>
-    </Dialog>
   )
 }

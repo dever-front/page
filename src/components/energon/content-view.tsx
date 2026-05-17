@@ -1,6 +1,10 @@
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
+import {
+  isEmptyRichTextDoc,
+  parseRichTextDoc,
+} from '@/lib/rich-text'
 import { RichTextView } from '@/components/rich-text-view'
 import { Badge } from '@/components/ui/badge'
 import { EnergonMediaView } from '@/components/energon/media-view'
@@ -118,7 +122,9 @@ function EnergonOutputBlock({
 }) {
   const event = valueText(output.event).toLowerCase()
   const isProgressEvent = event === 'start' || event === 'progress'
-  const text = isProgressEvent ? '' : valueText(output.text)
+  const richDoc = parseRichTextDoc(output.rich)
+  const hasRich = !isEmptyRichTextDoc(richDoc)
+  const text = isProgressEvent || hasRich ? '' : valueText(output.text)
 
   if (event === 'end' && !output.text && !output.error) {
     return null
@@ -137,15 +143,24 @@ function EnergonOutputBlock({
       ) : null}
       {output.reasoning ? <ReasoningBlock text={valueText(output.reasoning)} /> : null}
       {text ? <MarkdownBlock text={text} /> : null}
-      {output.rich ? <RichBlock value={output.rich} /> : null}
+      {hasRich ? <RichBlock value={richDoc} /> : null}
       <ImageBlock
-        urls={normalizeStringList(output.images)}
+        urls={hasRich ? [] : normalizeStringList(output.images)}
         meta={output.meta}
         uploadRules={uploadRules}
       />
-      <VideoBlock urls={normalizeStringList(output.videos)} uploadRules={uploadRules} />
-      <AudioBlock urls={normalizeStringList(output.audios)} uploadRules={uploadRules} />
-      <FileBlock urls={normalizeStringList(output.files)} uploadRules={uploadRules} />
+      <VideoBlock
+        urls={hasRich ? [] : normalizeStringList(output.videos)}
+        uploadRules={uploadRules}
+      />
+      <AudioBlock
+        urls={hasRich ? [] : normalizeStringList(output.audios)}
+        uploadRules={uploadRules}
+      />
+      <FileBlock
+        urls={hasRich ? [] : normalizeStringList(output.files)}
+        uploadRules={uploadRules}
+      />
       {output.json != null ? <JsonFallback value={output.json} event={event} /> : null}
     </div>
   )

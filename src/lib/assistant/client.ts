@@ -3,6 +3,7 @@ import {
   stopAgentStream,
   type AgentStreamStatus,
 } from '@/lib/agent/runner'
+import type { AgentInteraction } from '@/lib/agent/types'
 import { streamValueText } from '@/lib/stream'
 import type { AssistantPageContext } from './context'
 import type { AssistantPermissionContext } from './actions'
@@ -11,6 +12,12 @@ import { buildAssistantPermissionPayload } from './permission'
 export type AssistantMessage = {
   role: 'user' | 'assistant'
   content: string
+  type?: string
+  data?: Record<string, unknown>
+  output?: Record<string, unknown>
+  interaction?: AgentInteraction
+  interaction_answered?: boolean
+  interaction_data?: Record<string, unknown>
 }
 
 export type AssistantStatusHandler = (
@@ -52,10 +59,7 @@ export async function runAssistantAgent({
       permission_context: buildAssistantPermissionPayload(permissionContext),
       task,
     },
-    history: history.map((message) => ({
-      role: message.role,
-      content: message.content,
-    })),
+    history: history.map(buildAssistantHistoryRow),
     signal,
     onDelta,
     onStatus,
@@ -67,6 +71,31 @@ export async function runAssistantAgent({
 
 export async function stopAssistantAgent(requestID: string) {
   await stopAgentStream(requestID)
+}
+
+function buildAssistantHistoryRow(message: AssistantMessage) {
+  const row: Record<string, unknown> = {
+    role: message.role,
+    content: message.content,
+    text: message.content,
+  }
+  if (message.type) {
+    row.type = message.type
+  }
+  if (message.data) {
+    row.data = message.data
+  }
+  if (message.output) {
+    row.output = message.output
+  }
+  if (message.interaction) {
+    row.interaction = message.interaction
+    row.interaction_answered = Boolean(message.interaction_answered)
+    if (message.interaction_data) {
+      row.interaction_data = message.interaction_data
+    }
+  }
+  return row
 }
 
 function assistantFinalText(output: Record<string, unknown>) {
