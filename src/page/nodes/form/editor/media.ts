@@ -2,24 +2,26 @@ import { createElement } from 'react'
 import { mergeAttributes, Node, ReactNodeViewRenderer } from '@tiptap/react'
 import type { ResourceUploadRule } from '@/lib/resource'
 import { resolveResourceKind } from '@/lib/resource'
+import {
+  defaultRichTextMediaMaxWidth,
+  normalizeRichTextMaxWidth,
+  richTextMediaNodeNames,
+} from '@/lib/rich-text'
 import type { UploadFileItem } from '@/lib/upload'
 import { EditorMediaNodeView } from './media-node-view'
 
 export type EditorMediaKind = 'image' | 'video' | 'audio'
 export type EditorUploadRule = ResourceUploadRule & { kind: EditorMediaKind }
 
-const IMAGE_NODE_NAME = 'editorMediaImage'
-const VIDEO_NODE_NAME = 'editorMediaVideo'
-const AUDIO_NODE_NAME = 'editorMediaAudio'
 const EDITOR_MEDIA_NODE_NAMES: Record<EditorMediaKind, string> = {
-  image: IMAGE_NODE_NAME,
-  video: VIDEO_NODE_NAME,
-  audio: AUDIO_NODE_NAME,
+  image: richTextMediaNodeNames.image,
+  video: richTextMediaNodeNames.video,
+  audio: richTextMediaNodeNames.audio,
 }
 
 export const editorMediaExtensions = [
   Node.create({
-    name: IMAGE_NODE_NAME,
+    name: richTextMediaNodeNames.image,
     group: 'block',
     atom: true,
     isolating: true,
@@ -51,13 +53,13 @@ export const editorMediaExtensions = [
           ...props,
           kind: 'image',
           label: '图片',
-          defaultMaxWidth: resolveDefaultEditorMediaMaxWidth('image'),
+          defaultMaxWidth: defaultRichTextMediaMaxWidth('image'),
         })
       )
     },
   }),
   Node.create({
-    name: VIDEO_NODE_NAME,
+    name: richTextMediaNodeNames.video,
     group: 'block',
     atom: true,
     isolating: true,
@@ -93,13 +95,13 @@ export const editorMediaExtensions = [
           ...props,
           kind: 'video',
           label: '视频',
-          defaultMaxWidth: resolveDefaultEditorMediaMaxWidth('video'),
+          defaultMaxWidth: defaultRichTextMediaMaxWidth('video'),
         })
       )
     },
   }),
   Node.create({
-    name: AUDIO_NODE_NAME,
+    name: richTextMediaNodeNames.audio,
     group: 'block',
     atom: true,
     isolating: true,
@@ -134,7 +136,7 @@ export const editorMediaExtensions = [
           ...props,
           kind: 'audio',
           label: '音频',
-          defaultMaxWidth: resolveDefaultEditorMediaMaxWidth('audio'),
+          defaultMaxWidth: defaultRichTextMediaMaxWidth('audio'),
         })
       )
     },
@@ -202,11 +204,11 @@ export function buildEditorMediaInsertContent(
               src,
               alt: name,
               title: name,
-              maxWidth: resolveDefaultEditorMediaMaxWidth(kind),
+              maxWidth: defaultRichTextMediaMaxWidth(kind),
             }
           : {
               src,
-              maxWidth: resolveDefaultEditorMediaMaxWidth(kind),
+              maxWidth: defaultRichTextMediaMaxWidth(kind),
             },
     },
     {
@@ -236,7 +238,7 @@ function createMediaMaxWidthAttribute() {
   return {
     default: '',
     parseHTML: (element: HTMLElement) =>
-      normalizeEditorMediaMaxWidthValue(
+      normalizeRichTextMaxWidth(
         element.getAttribute('data-max-width') || element.style.maxWidth
       ),
   }
@@ -247,7 +249,7 @@ function buildEditorMediaHTMLAttributes(
   htmlAttributes?: Record<string, any>
 ) {
   const mergedAttributes = mergeAttributes(baseAttributes, htmlAttributes)
-  const normalizedMaxWidth = normalizeEditorMediaMaxWidthValue(mergedAttributes.maxWidth)
+  const normalizedMaxWidth = normalizeRichTextMaxWidth(mergedAttributes.maxWidth)
   const style = normalizeInlineStyle(mergedAttributes.style)
   const nextStyle = normalizedMaxWidth
     ? appendInlineStyle(style, `max-width:${normalizedMaxWidth}`)
@@ -270,31 +272,4 @@ function normalizeInlineStyle(value: unknown) {
   return String(value || '')
     .trim()
     .replace(/;+\s*$/, '')
-}
-
-function normalizeEditorMediaMaxWidthValue(value: unknown) {
-  const normalizedValue = String(value || '').trim()
-  if (!normalizedValue) {
-    return ''
-  }
-
-  if (/^\d+(\.\d+)?%$/.test(normalizedValue)) {
-    return normalizedValue
-  }
-
-  if (/^\d+(\.\d+)?px$/.test(normalizedValue)) {
-    return normalizedValue
-  }
-
-  return ''
-}
-
-function resolveDefaultEditorMediaMaxWidth(kind: EditorMediaKind) {
-  switch (kind) {
-    case 'image':
-    case 'video':
-      return '50%'
-    case 'audio':
-      return '384px'
-  }
 }

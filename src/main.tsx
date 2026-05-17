@@ -77,7 +77,7 @@ const queryClient = new QueryClient({
 const router = createRouter({
   routeTree,
   context: { queryClient },
-  defaultPreload: 'intent',
+  defaultPreload: false,
   defaultPreloadStaleTime: 0,
   parseSearch: parseRouterSearch,
   stringifySearch: stringifyRouterSearch,

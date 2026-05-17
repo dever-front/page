@@ -90,7 +90,7 @@ function extractAgentResultText(text: string) {
     const payload = JSON.parse(match[1].trim())
     const content = payload?.content
     if (content && typeof content === 'object') {
-      return streamValueText(content.text || content.markdown || content.html) || text
+      return streamValueText(content.text) || text
     }
     return streamValueText(payload?.text) || text.replace(match[0], '').trim()
   } catch {

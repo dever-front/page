@@ -30,7 +30,7 @@ const PARAM_USAGE_TOOLBAR = 2
 const INLINE_OPTION_LIMIT = 5
 const DEFAULT_MAX_FILES = 5
 
-export type TestParamOption = {
+export type PowerParamOption = {
   id: string | number
   name?: string
   value: string
@@ -38,7 +38,7 @@ export type TestParamOption = {
   sort?: number
 }
 
-export type TestParam = {
+export type PowerParam = {
   id: string | number
   power_param_id?: string | number
   name: string
@@ -52,7 +52,7 @@ export type TestParam = {
   upload_rule_id?: string | number
   max_files?: number
   sort?: number
-  options?: TestParamOption[]
+  options?: PowerParamOption[]
 }
 
 export type ParamValueMap = Record<string, unknown>
@@ -71,13 +71,13 @@ export type PowerParamConfig = {
   sourceRule: number
   selectedSourceID: string
   sources: PowerParamSource[]
-  params: TestParam[]
+  params: PowerParam[]
 }
 
 type ParamControlSurface = 'main' | 'toolbar'
 
 type ParamControlProps = {
-  param: TestParam
+  param: PowerParam
   value: unknown
   files: ParamUploadedFile[]
   uploadRuleMeta?: UploadRuleMeta
@@ -88,13 +88,13 @@ type ParamControlProps = {
   onClose?: () => void
 }
 
-export function TestParamField(props: Omit<ParamControlProps, 'surface'>) {
+export function PowerParamField(props: Omit<ParamControlProps, 'surface'>) {
   const { param, value } = props
   if (isHiddenParam(param)) {
     return null
   }
   if (isDescriptionParam(param)) {
-    return <TestParamDescription param={param} surface="main" />
+    return <PowerParamDescription param={param} surface="main" />
   }
 
   const currentValue = displayParamValue(param, value)
@@ -106,7 +106,7 @@ export function TestParamField(props: Omit<ParamControlProps, 'surface'>) {
         {label}
         {isRequiredParam(param) ? <span className="ml-0.5 text-destructive">*</span> : null}
       </Label>
-      <TestParamControl
+      <PowerParamControl
         {...props}
         value={currentValue}
         surface="main"
@@ -115,7 +115,7 @@ export function TestParamField(props: Omit<ParamControlProps, 'surface'>) {
   )
 }
 
-export function TestParamPopover(props: Omit<ParamControlProps, 'surface'>) {
+export function PowerParamPopover(props: Omit<ParamControlProps, 'surface'>) {
   const { param, value, files, disabled } = props
   const [open, setOpen] = useState(false)
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
@@ -131,7 +131,7 @@ export function TestParamPopover(props: Omit<ParamControlProps, 'surface'>) {
   }
 
   if (isDescriptionParam(param)) {
-    return <TestParamDescription param={param} surface="toolbar" />
+    return <PowerParamDescription param={param} surface="toolbar" />
   }
 
   return (
@@ -165,7 +165,7 @@ export function TestParamPopover(props: Omit<ParamControlProps, 'surface'>) {
           {label}
           {isRequiredParam(param) ? <span className="ml-0.5 text-destructive">*</span> : null}
         </p>
-        <TestParamControl
+        <PowerParamControl
           {...props}
           value={currentValue}
           surface="toolbar"
@@ -176,7 +176,7 @@ export function TestParamPopover(props: Omit<ParamControlProps, 'surface'>) {
   )
 }
 
-function TestParamControl({
+function PowerParamControl({
   param,
   value,
   files,
@@ -319,7 +319,7 @@ function renderParamControl({
   onRemoveFile,
   canPickResources,
 }: {
-  param: TestParam
+  param: PowerParam
   value: unknown
   files: ParamUploadedFile[]
   uploading: boolean
@@ -335,7 +335,7 @@ function renderParamControl({
 }) {
   switch (normalizeParamType(param.type)) {
     case 'description':
-      return <TestParamDescription param={param} surface={surface} />
+      return <PowerParamDescription param={param} surface={surface} />
     case 'textarea':
       return (
         <Textarea
@@ -414,7 +414,7 @@ function SingleOptionControl({
   onChange,
   onClose,
 }: {
-  param: TestParam
+  param: PowerParam
   value: unknown
   disabled: boolean
   surface: ParamControlSurface
@@ -501,7 +501,7 @@ function MultiOptionControl({
   surface,
   onChange,
 }: {
-  param: TestParam
+  param: PowerParam
   value: unknown
   disabled: boolean
   surface: ParamControlSurface
@@ -571,7 +571,7 @@ function FileParamControl({
   onPreviewFile,
   onRemoveFile,
 }: {
-  param: TestParam
+  param: PowerParam
   files: ParamUploadedFile[]
   uploading: boolean
   disabled: boolean
@@ -651,7 +651,7 @@ function FileParamControl({
 }
 
 function resolveParamResourceRule(
-  param: TestParam,
+  param: PowerParam,
   uploadRuleMeta?: UploadRuleMeta
 ): ResourceUploadRule | undefined {
   const ruleId = Number(param.upload_rule_id || 0)
@@ -721,11 +721,11 @@ const audioAcceptExtensions = new Set([
   '.ogg',
 ])
 
-function TestParamDescription({
+function PowerParamDescription({
   param,
   surface,
 }: {
-  param: TestParam
+  param: PowerParam
   surface: ParamControlSurface
 }) {
   const label = paramLabel(param)
@@ -755,13 +755,13 @@ function TestParamDescription({
   )
 }
 
-export function normalizeTestParams(value: unknown): TestParam[] {
+export function normalizePowerParams(value: unknown): PowerParam[] {
   if (!Array.isArray(value)) {
     return []
   }
   return value
-    .map((row) => normalizeTestParam(row))
-    .filter((row): row is TestParam => row != null)
+    .map((row) => normalizePowerParam(row))
+    .filter((row): row is PowerParam => row != null)
     .sort((left, right) => {
       const leftSort = Number(left.sort || 0)
       const rightSort = Number(right.sort || 0)
@@ -778,7 +778,7 @@ export function normalizePowerParamConfig(value: unknown): PowerParamConfig {
       sourceRule: 1,
       selectedSourceID: '',
       sources: [],
-      params: normalizeTestParams(value),
+      params: normalizePowerParams(value),
     }
   }
 
@@ -795,7 +795,7 @@ export function normalizePowerParamConfig(value: unknown): PowerParamConfig {
     sourceRule: Number(value.source_rule || 1),
     selectedSourceID: valueText(value.selected_target_id),
     sources: normalizePowerParamSources(value.sources),
-    params: normalizeTestParams(value.params),
+    params: normalizePowerParams(value.params),
   }
 }
 
@@ -828,7 +828,7 @@ function normalizePowerParamSources(value: unknown): PowerParamSource[] {
     .filter((row): row is PowerParamSource => row != null)
 }
 
-export function buildDefaultParamValues(params: TestParam[]): ParamValueMap {
+export function buildDefaultParamValues(params: PowerParam[]): ParamValueMap {
   const result: ParamValueMap = {}
   for (const param of params) {
     if (isDisplayOnlyParam(param)) {
@@ -847,7 +847,7 @@ export function buildDefaultParamValues(params: TestParam[]): ParamValueMap {
 }
 
 export function buildRequestInput(
-  params: TestParam[],
+  params: PowerParam[],
   values: ParamValueMap
 ): Record<string, unknown> {
   const input: Record<string, unknown> = {}
@@ -868,7 +868,7 @@ export function buildRequestInput(
   return input
 }
 
-export function validateMainParams(params: TestParam[], values: ParamValueMap) {
+export function validateMainParams(params: PowerParam[], values: ParamValueMap) {
   for (const param of params) {
     if (!isRequiredParam(param) || isDisplayOnlyParam(param)) {
       continue
@@ -882,7 +882,7 @@ export function validateMainParams(params: TestParam[], values: ParamValueMap) {
   return ''
 }
 
-export function paramFilesRequestValue(param: TestParam, files: ParamUploadedFile[]) {
+export function paramFilesRequestValue(param: PowerParam, files: ParamUploadedFile[]) {
   const values = files.map(uploadFileRequestValue).filter(Boolean)
   if (isFilesParam(param)) {
     return values
@@ -890,7 +890,7 @@ export function paramFilesRequestValue(param: TestParam, files: ParamUploadedFil
   return values[0] || ''
 }
 
-export function summarizeParamDisplayValue(param: TestParam, value: unknown) {
+export function summarizeParamDisplayValue(param: PowerParam, value: unknown) {
   if (isFileParam(param)) {
     const files = normalizeStringArray(value)
     if (files.length === 0) {
@@ -924,7 +924,7 @@ export function summarizeParamDisplayValue(param: TestParam, value: unknown) {
   return valueText(value) || '空'
 }
 
-export function inputKeyForParam(param: TestParam) {
+export function inputKeyForParam(param: PowerParam) {
   return (
     String(param.key || '').trim() ||
     String(param.name || '').trim() ||
@@ -932,27 +932,27 @@ export function inputKeyForParam(param: TestParam) {
   )
 }
 
-export function isMainParam(param: TestParam) {
+export function isMainParam(param: PowerParam) {
   return Number(param.usage || PARAM_USAGE_MAIN) === PARAM_USAGE_MAIN
 }
 
-export function isToolbarParam(param: TestParam) {
+export function isToolbarParam(param: PowerParam) {
   return Number(param.usage || PARAM_USAGE_MAIN) === PARAM_USAGE_TOOLBAR
 }
 
-export function isHiddenParam(param: TestParam) {
+export function isHiddenParam(param: PowerParam) {
   return normalizeParamType(param.type) === 'hidden'
 }
 
-function isDescriptionParam(param: TestParam) {
+function isDescriptionParam(param: PowerParam) {
   return normalizeParamType(param.type) === 'description'
 }
 
-function isDisplayOnlyParam(param: TestParam) {
+function isDisplayOnlyParam(param: PowerParam) {
   return isDescriptionParam(param)
 }
 
-function normalizeTestParam(row: unknown): TestParam | null {
+function normalizePowerParam(row: unknown): PowerParam | null {
   if (!isPlainObject(row)) {
     return null
   }
@@ -991,7 +991,7 @@ function normalizeTestParam(row: unknown): TestParam | null {
   }
 }
 
-function parseClientDefaultValue(param: TestParam) {
+function parseClientDefaultValue(param: PowerParam) {
   const value = String(param.default_value || '').trim()
   if (!value) {
     return missingDefaultParamValue(param)
@@ -1021,12 +1021,12 @@ function parseClientDefaultValue(param: TestParam) {
   }
 }
 
-function firstOptionRequestValue(param: TestParam) {
+function firstOptionRequestValue(param: PowerParam) {
   const firstOption = param.options?.[0]
   return firstOption ? optionRequestValue(firstOption) : undefined
 }
 
-function optionDefaultValue(param: TestParam, value: string) {
+function optionDefaultValue(param: PowerParam, value: string) {
   const options = param.options || []
   if (options.length === 0) {
     return value || undefined
@@ -1035,7 +1035,7 @@ function optionDefaultValue(param: TestParam, value: string) {
   return optionRequestValue(matched || options[0])
 }
 
-function normalizeParamRequestValue(param: TestParam, value: unknown) {
+function normalizeParamRequestValue(param: PowerParam, value: unknown) {
   if (isParamValueMissing(param, value)) {
     return missingDefaultParamValue(param) ?? value
   }
@@ -1056,14 +1056,14 @@ function normalizeParamRequestValue(param: TestParam, value: unknown) {
   }
 }
 
-function displayParamValue(param: TestParam, value: unknown) {
+function displayParamValue(param: PowerParam, value: unknown) {
   if (!isParamValueMissing(param, value)) {
     return value
   }
   return missingDefaultParamValue(param) ?? value
 }
 
-function missingDefaultParamValue(param: TestParam) {
+function missingDefaultParamValue(param: PowerParam) {
   switch (normalizeParamType(param.type)) {
     case 'option':
       return firstOptionRequestValue(param)
@@ -1074,7 +1074,7 @@ function missingDefaultParamValue(param: TestParam) {
   }
 }
 
-function isParamValueMissing(param: TestParam, value: unknown) {
+function isParamValueMissing(param: PowerParam, value: unknown) {
   if (isFileParam(param)) {
     return normalizeStringArray(value).length === 0
   }
@@ -1093,7 +1093,7 @@ function isParamValueMissing(param: TestParam, value: unknown) {
   return false
 }
 
-function isRequiredParam(param: TestParam) {
+function isRequiredParam(param: PowerParam) {
   return param.required !== false
 }
 
@@ -1118,7 +1118,7 @@ function uploadFileRequestValue(file: ParamUploadedFile) {
   return ''
 }
 
-function paramSummary(param: TestParam, value: unknown, files: ParamUploadedFile[]) {
+function paramSummary(param: PowerParam, value: unknown, files: ParamUploadedFile[]) {
   if (isFileParam(param)) {
     if (files.length === 0) {
       return ''
@@ -1140,12 +1140,12 @@ function paramSummary(param: TestParam, value: unknown, files: ParamUploadedFile
   return truncateText(valueText(value), 18)
 }
 
-function optionLabels(options: TestParamOption[], selectedValues: string[]) {
+function optionLabels(options: PowerParamOption[], selectedValues: string[]) {
   return optionDisplayLabels(options, selectedValues, false)
 }
 
 function optionDisplayLabels(
-  options: TestParamOption[],
+  options: PowerParamOption[],
   selectedValues: string[],
   fallbackToRaw = true
 ) {
@@ -1160,7 +1160,7 @@ function optionDisplayLabels(
     .filter((label) => label !== '')
 }
 
-function optionRequestValues(param: TestParam, value: unknown) {
+function optionRequestValues(param: PowerParam, value: unknown) {
   const options = param.options || []
   return normalizeStringArray(value).map((current) => {
     const option = options.find((candidate) => isSelectedOptionValue(candidate, [current]))
@@ -1168,7 +1168,7 @@ function optionRequestValues(param: TestParam, value: unknown) {
   })
 }
 
-function optionRequestValue(option: TestParamOption) {
+function optionRequestValue(option: PowerParamOption) {
   return (
     String(option.native_value || '').trim() ||
     String(option.value || '').trim() ||
@@ -1177,14 +1177,14 @@ function optionRequestValue(option: TestParamOption) {
   )
 }
 
-function optionPickerOptions(options: TestParamOption[]) {
+function optionPickerOptions(options: PowerParamOption[]) {
   return options.map((option) => ({
     id: optionRequestValue(option),
     value: option.value,
   }))
 }
 
-function isSelectedOptionValue(option: TestParamOption, values: string[]) {
+function isSelectedOptionValue(option: PowerParamOption, values: string[]) {
   const candidates = [
     String(option.id),
     String(option.native_value || '').trim(),
@@ -1194,11 +1194,11 @@ function isSelectedOptionValue(option: TestParamOption, values: string[]) {
   return values.some((value) => candidates.includes(String(value).trim()))
 }
 
-function paramLabel(param: TestParam) {
+function paramLabel(param: PowerParam) {
   return String(param.name || param.key || param.id || '参数').trim()
 }
 
-function paramInputPlaceholder(param: TestParam) {
+function paramInputPlaceholder(param: PowerParam) {
   if (String(param.placeholder || '').trim()) {
     return String(param.placeholder || '').trim()
   }
@@ -1241,23 +1241,23 @@ function normalizeValueType(value: unknown) {
   return ['number', 'int', 'integer', 'float', 'double'].includes(type) ? 'number' : 'string'
 }
 
-function isFileParam(param: TestParam) {
+function isFileParam(param: PowerParam) {
   const type = normalizeParamType(param.type)
   return type === 'file' || type === 'files'
 }
 
-function isFilesParam(param: TestParam) {
+function isFilesParam(param: PowerParam) {
   return normalizeParamType(param.type) === 'files'
 }
 
-function resolveMaxFiles(param: TestParam) {
+function resolveMaxFiles(param: PowerParam) {
   if (isFilesParam(param)) {
     return Math.max(1, Number(param.max_files || DEFAULT_MAX_FILES))
   }
   return 1
 }
 
-function convertValueByType(param: TestParam, value: unknown) {
+function convertValueByType(param: PowerParam, value: unknown) {
   const text = valueText(value).trim()
   switch (normalizeValueType(param.value_type)) {
     case 'number': {
@@ -1269,7 +1269,7 @@ function convertValueByType(param: TestParam, value: unknown) {
   }
 }
 
-function convertSwitchValueByType(param: TestParam, value: unknown) {
+function convertSwitchValueByType(param: PowerParam, value: unknown) {
   const checked = isTruthyValue(value)
   return normalizeValueType(param.value_type) === 'string' ? String(checked) : checked
 }

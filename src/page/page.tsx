@@ -30,7 +30,6 @@ import {
   getCurrentRouteNavigationKey,
   normalizeRouteKey,
 } from '@/lib/route-key'
-import { preloadNodeComponents } from '@/lib/registry'
 import { LayoutRenderer } from './layout'
 
 type PageProps = {
@@ -41,8 +40,6 @@ type PageProps = {
   assistantScope?: AssistantPageScope
   updateDocumentTitle?: boolean
 }
-
-const LINKED_PAGE_PRELOAD_MAX_DEPTH = 3
 
 function formatDocumentTitle(pageTitle?: string) {
   const currentTitle = String(pageTitle || '').trim()
@@ -152,15 +149,11 @@ export function Page({
         }
 
         const validated = validatePageSchema(raw)
-        void preloadNodeComponents(validated)
         if (cancelled) return
         setPageSchema(validated)
         loadedKeyRef.current = loadKey
         setLoadedKey(loadKey)
         hasLoadedRef.current = true
-        if (!schemaProp) {
-          scheduleLinkedPageSchemaPreload(validated, route)
-        }
       } catch (err: any) {
         if (!cancelled) {
           console.error('[Page] Schema 校验失败:', err)
@@ -218,114 +211,6 @@ export function Page({
       updateDocumentTitle={updateDocumentTitle}
     />
   )
-}
-
-async function preloadLinkedPageSchemas(
-  schema: PageSchemaType,
-  currentRoute?: string,
-  visited = new Set<string>(),
-  depth = 0
-) {
-  if (depth >= LINKED_PAGE_PRELOAD_MAX_DEPTH) {
-    return
-  }
-
-  const currentKey = normalizeLinkedPageRouteKey(currentRoute)
-  if (currentKey) {
-    visited.add(currentKey)
-  }
-
-  const paths = collectStaticLinkedPagePaths(schema.layout)
-    .filter((path) => {
-      const key = normalizeLinkedPageRouteKey(path)
-      return key && !visited.has(key)
-    })
-
-  if (paths.length === 0) {
-    return
-  }
-
-  await Promise.all(
-    paths.map(async (path) => {
-      const key = normalizeLinkedPageRouteKey(path)
-      if (!key || visited.has(key)) {
-        return
-      }
-      visited.add(key)
-
-      try {
-        const linkedSchema = await loadPageSchema(path)
-        if (!linkedSchema) {
-          return
-        }
-        const validated = validatePageSchema(linkedSchema)
-        void preloadNodeComponents(validated)
-        await preloadLinkedPageSchemas(validated, path, visited, depth + 1)
-      } catch (error) {
-        console.warn('[Page] 子页面预加载校验失败:', path, error)
-      }
-    })
-  )
-}
-
-function scheduleLinkedPageSchemaPreload(schema: PageSchemaType, currentRoute?: string) {
-  const run = () => {
-    void preloadLinkedPageSchemas(schema, currentRoute)
-  }
-  if (typeof window === 'undefined') {
-    run()
-    return
-  }
-  const idleWindow = window as Window & {
-    requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
-  }
-  if (idleWindow.requestIdleCallback) {
-    idleWindow.requestIdleCallback(run, { timeout: 1200 })
-    return
-  }
-  window.setTimeout(run, 0)
-}
-
-function collectStaticLinkedPagePaths(layout: unknown): string[] {
-  const paths: string[] = []
-
-  const walk = (node: unknown) => {
-    if (!node || typeof node !== 'object' || Array.isArray(node)) {
-      return
-    }
-
-    const current = node as Record<string, any>
-    const path = String(current.path || '').trim()
-    if (isStaticLinkedPagePath(path) && current.meta?.preload !== false) {
-      paths.push(path)
-    }
-
-    const children = current.children
-    if (!children || typeof children !== 'object' || Array.isArray(children)) {
-      return
-    }
-
-    Object.values(children).forEach(walk)
-  }
-
-  walk(layout)
-  return Array.from(new Set(paths))
-}
-
-function isStaticLinkedPagePath(path: string) {
-  return path.startsWith('/') && !path.startsWith('//')
-}
-
-function normalizeLinkedPageRouteKey(route?: string) {
-  const value = String(route || '').trim()
-  if (!value) {
-    return ''
-  }
-
-  const [path, query = ''] = value.split('?')
-  const normalizedPath = path.replace(/^\/+/, '').replace(/\/+$/, '')
-  const normalizedQuery = new URLSearchParams(query).toString()
-  return normalizedQuery ? `${normalizedPath}?${normalizedQuery}` : normalizedPath
 }
 
 /**

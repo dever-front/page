@@ -18,6 +18,7 @@ export function ShowTitle({ item, value }: NodeItemProps) {
     value,
     item.info || item.meta?.description || item.meta?.subtitle
   )
+  const section = item.meta?.variant === 'section' || item.meta?.size === 'section'
 
   if (!title && !description) {
     return null
@@ -26,14 +27,17 @@ export function ShowTitle({ item, value }: NodeItemProps) {
   return (
     <div className={cn('flex min-w-0 flex-col gap-0.5', item.className)}>
       {title ? (
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
+        <h1
+          className={cn(
+            'font-semibold tracking-tight text-foreground',
+            section ? 'text-base' : 'text-xl'
+          )}
+        >
           {title}
         </h1>
       ) : null}
       {description ? (
-        <p className="text-sm leading-6 text-muted-foreground">
-          {description}
-        </p>
+        <p className="text-sm leading-6 text-muted-foreground">{description}</p>
       ) : null}
     </div>
   )

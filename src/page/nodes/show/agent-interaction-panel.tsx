@@ -5,21 +5,21 @@ import { streamValueText as valueText } from '@/lib/stream'
 import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
 import { Button } from '@/components/ui/button'
 import {
-  TestParamField,
+  PowerParamField,
   buildDefaultParamValues,
   buildRequestInput,
   inputKeyForParam,
   isHiddenParam,
   normalizePowerParamConfig,
-  normalizeTestParams,
+  normalizePowerParams,
   paramFilesRequestValue,
   summarizeParamDisplayValue,
   validateMainParams,
   type ParamFileMap,
   type ParamUploadedFile,
   type ParamValueMap,
-  type TestParam,
-  type TestParamOption,
+  type PowerParam,
+  type PowerParamOption,
 } from './stream-request-params'
 import type {
   AgentInteraction,
@@ -56,7 +56,7 @@ export function AgentInteractionPanel({
 }: AgentInteractionPanelProps) {
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
-  const [powerParams, setPowerParams] = useState<TestParam[]>([])
+  const [powerParams, setPowerParams] = useState<PowerParam[]>([])
   const [powerSourceTargetID, setPowerSourceTargetID] = useState('')
   const interactionType = normalizeText(interaction.type)
   const powerKey = normalizeText(interaction.power)
@@ -183,7 +183,7 @@ function AgentInteractionParamForm({
   extraData,
   onSubmit,
 }: {
-  params: TestParam[]
+  params: PowerParam[]
   loading: boolean
   loadError: string
   powerKey: string
@@ -213,7 +213,7 @@ function AgentInteractionParamForm({
   )
   const uploadRuleMetas = useUploadRuleMetas(uploadRuleIds)
 
-  const setParamValue = (param: TestParam, nextValue: unknown) => {
+  const setParamValue = (param: PowerParam, nextValue: unknown) => {
     const key = inputKeyForParam(param)
     if (!key) {
       return
@@ -225,7 +225,7 @@ function AgentInteractionParamForm({
   }
 
   const setParamFileValue = (
-    param: TestParam,
+    param: PowerParam,
     nextFiles: ParamUploadedFile[]
   ) => {
     const key = inputKeyForParam(param)
@@ -327,7 +327,7 @@ function AgentInteractionParamForm({
         {visibleParams.map((param) => {
           const key = inputKeyForParam(param)
           return (
-            <TestParamField
+            <PowerParamField
               key={`${param.id}-${key}`}
               param={param}
               value={paramValues[key]}
@@ -368,7 +368,7 @@ function ReadonlyInteractionValues({
   params,
   data,
 }: {
-  params: TestParam[]
+  params: PowerParam[]
   data: Record<string, unknown>
 }) {
   const renderedKeys = new Set<string>()
@@ -438,7 +438,7 @@ function normalizeInteractionValues(
 }
 
 function buildInitialParamValues(
-  params: TestParam[],
+  params: PowerParam[],
   initialValues?: Record<string, unknown>
 ) {
   const values = {
@@ -465,7 +465,7 @@ function buildInitialParamValues(
 }
 
 function resolveInitialParamValue(
-  param: TestParam,
+  param: PowerParam,
   provided: Record<string, unknown>
 ) {
   for (const key of initialParamLookupKeys(param)) {
@@ -482,7 +482,7 @@ function resolveInitialParamValue(
   }
 }
 
-function initialParamLookupKeys(param: TestParam) {
+function initialParamLookupKeys(param: PowerParam) {
   const keys = [
     inputKeyForParam(param),
     param.name,
@@ -493,7 +493,7 @@ function initialParamLookupKeys(param: TestParam) {
   ]
 }
 
-function initialParamAliases(param: TestParam) {
+function initialParamAliases(param: PowerParam) {
   const key = inputKeyForParam(param)
   const name = String(param.name || '').trim()
   const aliases: string[] = []
@@ -510,7 +510,7 @@ function initialParamAliases(param: TestParam) {
   return aliases
 }
 
-function isPromptParam(param: TestParam) {
+function isPromptParam(param: PowerParam) {
   const key = inputKeyForParam(param)
   return key === 'text' || String(param.name || '').trim() === '提示词'
 }
@@ -543,21 +543,21 @@ function normalizeRecord(value: unknown): Record<string, unknown> {
   return isPlainObject(value) ? value : {}
 }
 
-function normalizeInteractionFields(fields: unknown): TestParam[] {
+function normalizeInteractionFields(fields: unknown): PowerParam[] {
   if (!Array.isArray(fields)) {
     return []
   }
 
   return fields
     .map((field, index) => normalizeInteractionField(field, index))
-    .filter((field): field is TestParam => field != null)
+    .filter((field): field is PowerParam => field != null)
     .sort((left, right) => Number(left.sort || 0) - Number(right.sort || 0))
 }
 
 function normalizeInteractionField(
   field: unknown,
   index: number
-): TestParam | null {
+): PowerParam | null {
   if (!isPlainObject(field)) {
     return null
   }
@@ -586,7 +586,7 @@ function normalizeInteractionField(
   }
 }
 
-function normalizeInteractionOptions(options: unknown): TestParamOption[] {
+function normalizeInteractionOptions(options: unknown): PowerParamOption[] {
   if (!Array.isArray(options)) {
     return []
   }
@@ -599,7 +599,7 @@ function normalizeInteractionOptions(options: unknown): TestParamOption[] {
         option.label || option.name || option.value || option.id
       )
       const value = option.value == null ? label : option.value
-      const row: TestParamOption = {
+      const row: PowerParamOption = {
         id: normalizeID(option.id) ?? index + 1,
         name: normalizeText(option.name || label),
         value: label || String(index + 1),
@@ -610,7 +610,7 @@ function normalizeInteractionOptions(options: unknown): TestParamOption[] {
       }
       return row
     })
-    .filter((option): option is TestParamOption => option != null)
+    .filter((option): option is PowerParamOption => option != null)
 }
 
 function normalizeID(value: unknown): string | number | undefined {
@@ -687,7 +687,7 @@ function normalizeDefaultValue(field: Record<string, unknown>) {
 }
 
 function summarizeSubmit(
-  params: TestParam[],
+  params: PowerParam[],
   data: Record<string, unknown>,
   powerKey: string
 ) {

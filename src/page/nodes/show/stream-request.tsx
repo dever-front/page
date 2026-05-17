@@ -35,8 +35,8 @@ import {
 import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
 import type { NodeItemProps } from '../../nodes'
 import {
-  TestParamPopover,
-  TestParamField,
+  PowerParamPopover,
+  PowerParamField,
   buildDefaultParamValues,
   buildRequestInput,
   inputKeyForParam,
@@ -50,7 +50,7 @@ import {
   type ParamUploadedFile,
   type ParamValueMap,
   type PowerParamSource,
-  type TestParam,
+  type PowerParam,
 } from './stream-request-params'
 import {
   StreamTimingBadge,
@@ -90,8 +90,8 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
   const [output, setOutput] = useState<StreamOutput>(EMPTY_OUTPUT)
   const [timing, setTiming] = useState<StreamTiming | undefined>()
   const [paramsLoading, setParamsLoading] = useState(false)
-  const [testParams, setTestParams] = useState<TestParam[]>([])
-  const [testSources, setTestSources] = useState<PowerParamSource[]>([])
+  const [powerParams, setPowerParams] = useState<PowerParam[]>([])
+  const [powerSources, setPowerSources] = useState<PowerParamSource[]>([])
   const [sourceRule, setSourceRule] = useState(1)
   const [selectedSource, setSelectedSource] = useState({ power: '', id: '' })
   const [paramValues, setParamValues] = useState<ParamValueMap>({})
@@ -118,10 +118,10 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
   )
   const paramUploadRuleIds = useMemo(
     () =>
-      testParams
+      powerParams
         .map((param) => Number(param.upload_rule_id || 0))
         .filter((ruleId) => Number.isFinite(ruleId) && ruleId > 0),
-    [testParams]
+    [powerParams]
   )
   const uploadRuleMetas = useUploadRuleMetas([
     ...rawUploadRules.map((current) => current.ruleId),
@@ -131,20 +131,20 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
     () => mergeResourceUploadRules(rawUploadRules, uploadRuleMetas),
     [rawUploadRules, uploadRuleMetas]
   )
-  const mainTestParams = useMemo(
+  const mainPowerParams = useMemo(
     () =>
-      testParams.filter((param) => isMainParam(param) && !isHiddenParam(param)),
-    [testParams]
+      powerParams.filter((param) => isMainParam(param) && !isHiddenParam(param)),
+    [powerParams]
   )
-  const toolbarTestParams = useMemo(
+  const toolbarPowerParams = useMemo(
     () =>
-      testParams.filter((param) => isToolbarParam(param) && !isHiddenParam(param)),
-    [testParams]
+      powerParams.filter((param) => isToolbarParam(param) && !isHiddenParam(param)),
+    [powerParams]
   )
-  const hasConfiguredParams = testParams.length > 0
+  const hasConfiguredParams = powerParams.length > 0
   const sourcePickerOptions = useMemo(
-    () => testSources.map((source) => ({ id: source.id, value: source.name })),
-    [testSources]
+    () => powerSources.map((source) => ({ id: source.id, value: source.name })),
+    [powerSources]
   )
   const sourceReady =
     sourceRule !== SOURCE_RULE_PICK || activeSelectedSourceID.length > 0
@@ -170,8 +170,8 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
 
   useEffect(() => {
     let cancelled = false
-    setTestParams([])
-    setTestSources([])
+    setPowerParams([])
+    setPowerSources([])
     setParamValues({})
     setParamFiles({})
     setError('')
@@ -184,7 +184,7 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
       }
     }
 
-    async function loadTestParams() {
+    async function loadPowerParams() {
       setParamsLoading(true)
       const result = await request(paramApi, 'get', {
         power: powerKey,
@@ -203,19 +203,19 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
       const config = normalizePowerParamConfig(result.data)
       const rows = config.params
       setSourceRule(config.sourceRule)
-      setTestSources(config.sources)
+      setPowerSources(config.sources)
       if (
         config.selectedSourceID &&
         config.selectedSourceID !== activeSelectedSourceID
       ) {
         setSelectedSource({ power: powerKey, id: config.selectedSourceID })
       }
-      setTestParams(rows)
+      setPowerParams(rows)
       setParamValues(buildDefaultParamValues(rows))
       setParamsLoading(false)
     }
 
-    void loadTestParams()
+    void loadPowerParams()
     return () => {
       cancelled = true
     }
@@ -267,7 +267,7 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
       setError('未选择能力。')
       return
     }
-    const validationError = validateMainParams(testParams, paramValues)
+    const validationError = validateMainParams(powerParams, paramValues)
     if (validationError) {
       setError(validationError)
       return
@@ -291,7 +291,7 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
     try {
       const body: Record<string, unknown> = {
         power: powerKey,
-        input: buildRequestInput(testParams, paramValues),
+        input: buildRequestInput(powerParams, paramValues),
         history: [],
         options: {
           stream: true,
@@ -385,7 +385,7 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
     })
   }
 
-  const setParamValue = (param: TestParam, nextValue: unknown) => {
+  const setParamValue = (param: PowerParam, nextValue: unknown) => {
     const key = inputKeyForParam(param)
     if (!key) {
       return
@@ -396,7 +396,7 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
     }))
   }
 
-  const setParamFileValue = (param: TestParam, nextFiles: ParamUploadedFile[]) => {
+  const setParamFileValue = (param: PowerParam, nextFiles: ParamUploadedFile[]) => {
     const key = inputKeyForParam(param)
     if (!key) {
       return
@@ -444,7 +444,7 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
             </span>
           ) : null}
 
-          {sourceRule === SOURCE_RULE_PICK && testSources.length > 0 ? (
+          {sourceRule === SOURCE_RULE_PICK && powerSources.length > 0 ? (
             <div className="mb-3">
               <SearchableOptionPicker
                 value={activeSelectedSourceID || undefined}
@@ -460,12 +460,12 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
             </div>
           ) : null}
 
-          {mainTestParams.length > 0 ? (
+          {mainPowerParams.length > 0 ? (
             <div className="space-y-3">
-              {mainTestParams.map((param) => {
+              {mainPowerParams.map((param) => {
                 const key = inputKeyForParam(param)
                 return (
-                  <TestParamField
+                  <PowerParamField
                     key={`${param.id}-${key}`}
                     param={param}
                     value={paramValues[key]}
@@ -484,12 +484,12 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
             </div>
           ) : null}
 
-          {toolbarTestParams.length > 0 ? (
+          {toolbarPowerParams.length > 0 ? (
             <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
-              {toolbarTestParams.map((param) => {
+              {toolbarPowerParams.map((param) => {
                 const key = inputKeyForParam(param)
                 return (
-                  <TestParamPopover
+                  <PowerParamPopover
                     key={`${param.id}-${key}`}
                     param={param}
                     value={paramValues[key]}

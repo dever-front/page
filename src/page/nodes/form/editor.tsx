@@ -25,8 +25,10 @@ import {
 } from 'lucide-react'
 import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
 import { mergeResourceUploadRules, normalizeResourceUploadRules } from '@/lib/resource'
+import { emptyRichTextDoc, parseRichTextDoc, serializeRichTextDoc } from '@/lib/rich-text'
 import type { UploadFileItem } from '@/lib/upload'
 import { uploadFileByRule } from '@/lib/upload'
+import { cn } from '@/lib/utils'
 import { ResourcePickerDialogLazy } from '@/components/resource/lazy-dialogs'
 import { AssistantMediaGenerateLazyButton } from '@/components/assistant/lazy-media-generate'
 import { Button } from '@/components/ui/button'
@@ -36,7 +38,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { cn } from '@/lib/utils'
 import type { NodeItemProps } from '../../nodes'
 import {
   buildEditorMediaInsertContent,
@@ -70,7 +71,7 @@ export function FormEditor({ item, value, setValue, error, store }: NodeItemProp
   const minHeight = Number(item.meta?.minHeight || 220)
   const maxHeight = Math.max(Number(item.meta?.maxHeight || 560), minHeight + 120)
   const contentMaxHeight = Math.max(maxHeight - 56, minHeight)
-  const initialHtml = useMemo(() => normalizeEditorHtml(String(value ?? '')), [value])
+  const initialDoc = useMemo(() => parseRichTextDoc(value) || emptyRichTextDoc(), [value])
   const rawUploadRules = useMemo(
     () => normalizeResourceUploadRules(item.meta?.uploadRules),
     [item.meta?.uploadRules]
@@ -126,9 +127,9 @@ export function FormEditor({ item, value, setValue, error, store }: NodeItemProp
         style: `min-height:${minHeight}px`,
       },
     },
-    content: initialHtml,
+    content: initialDoc,
     onUpdate({ editor: currentEditor }) {
-      setValue(normalizeEditorHtml(currentEditor.getHTML()))
+      setValue(serializeRichTextDoc(currentEditor.getJSON()))
     },
   })
 
@@ -143,13 +144,17 @@ export function FormEditor({ item, value, setValue, error, store }: NodeItemProp
     if (!editor) {
       return
     }
-    const nextHtml = normalizeEditorHtml(String(value ?? ''))
-    const currentHtml = normalizeEditorHtml(editor.getHTML())
-    if (nextHtml === currentHtml) {
+    const nextDoc = parseRichTextDoc(value) || emptyRichTextDoc()
+    const nextValue = serializeRichTextDoc(nextDoc)
+    const currentValue = serializeRichTextDoc(editor.getJSON())
+    if (inputValue(value) !== nextValue) {
+      setValue(nextValue)
+    }
+    if (nextValue === currentValue) {
       return
     }
-    editor.commands.setContent(nextHtml || '', false)
-  }, [editor, value])
+    editor.commands.setContent(nextDoc, { emitUpdate: false })
+  }, [editor, setValue, value])
 
   const toolbarItems: ToolbarItem[] = useMemo(
     () => [
@@ -439,6 +444,13 @@ export function FormEditor({ item, value, setValue, error, store }: NodeItemProp
   )
 }
 
+function inputValue(value: unknown) {
+  if (value == null) {
+    return ''
+  }
+  return typeof value === 'string' ? value.trim() : JSON.stringify(value) || ''
+}
+
 function EditorMediaMenuButton({
   icon: Icon,
   label,
@@ -481,27 +493,4 @@ function EditorMediaMenuButton({
       </DropdownMenuContent>
     </DropdownMenu>
   )
-}
-
-function normalizeEditorHtml(input: string) {
-  const html = String(input || '').trim()
-  if (!html || isEditorHtmlEmpty(html)) {
-    return ''
-  }
-  return html
-}
-
-function isEditorHtmlEmpty(input: string) {
-  if (/<(img|video|audio)\b/i.test(String(input || ''))) {
-    return false
-  }
-
-  const html = String(input || '')
-    .replace(/<p><br><\/p>/gi, '')
-    .replace(/<div><br><\/div>/gi, '')
-    .replace(/<br\s*\/?>/gi, '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/<[^>]+>/g, '')
-    .trim()
-  return html.length === 0
 }

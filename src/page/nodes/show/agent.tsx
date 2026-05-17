@@ -98,6 +98,16 @@ type AgentSuggestion = {
 
 type AgentFrame = RuntimeStreamFrame<AgentOutput>
 
+const agentResultOutputKeys = [
+  'title',
+  'rich',
+  'images',
+  'videos',
+  'audios',
+  'files',
+  'json',
+] as const
+
 const EMPTY_OUTPUT: AgentStreamOutput = {
   text: '',
   finalOutput: null,
@@ -921,6 +931,15 @@ function buildHistory(messages: AgentMessage[]) {
       if (message.data) {
         row.data = message.data
       }
+      if (message.output?.finalOutput) {
+        const output = normalizeAgentDisplayOutput(
+          message.output.finalOutput,
+          message.text
+        )
+        if (!isNonResultOutput(output)) {
+          row.output = output
+        }
+      }
       if (message.interaction) {
         row.interaction = message.interaction
         row.interaction_answered = Boolean(message.interactionAnswered)
@@ -934,7 +953,8 @@ function buildHistory(messages: AgentMessage[]) {
       (row) =>
         valueText(row.text).trim().length > 0 ||
         Boolean(row.interaction) ||
-        Boolean(row.data)
+        Boolean(row.data) ||
+        Boolean(row.output)
     )
 }
 
@@ -1019,6 +1039,13 @@ function normalizeAgentDisplayOutput(
     valueText(next.text) || fallbackText
   )
   if (protocol) {
+    const content = isPlainObject(protocol.payload.content)
+      ? protocol.payload.content
+      : null
+    if (content) {
+      copyAgentResultOutputFields(next, content)
+    }
+    copyAgentResultOutputFields(next, protocol.payload)
     const text = agentResultText(protocol.payload) || protocol.cleanText
     if (text) {
       next.text = text
@@ -1033,6 +1060,9 @@ function normalizeAgentDisplayOutput(
     return next
   }
 
+  if (isPlainObject(next.content)) {
+    copyAgentResultOutputFields(next, next.content)
+  }
   if (!valueText(next.text)) {
     const text = agentResultText(next)
     if (text) {
@@ -1135,7 +1165,9 @@ function isAgentResultPayload(
     kind === 'final_result' ||
     kind === 'tool_result' ||
     'content' in value ||
-    'suggestions' in value
+    'suggestions' in value ||
+    hasAgentResultOutputField(value) ||
+    (isPlainObject(value.content) && hasAgentResultOutputField(value.content))
   )
 }
 
@@ -1161,7 +1193,47 @@ function agentResultText(value: unknown): string {
   if (!isPlainObject(content)) {
     return valueText(content)
   }
-  return valueText(content.text || content.markdown || content.html)
+  return valueText(content.text)
+}
+
+function copyAgentResultOutputFields(
+  target: AgentOutput,
+  source: Record<string, unknown>
+) {
+  const mutableTarget = target as Record<string, unknown>
+  agentResultOutputKeys.forEach((key) => {
+    const value = source[key]
+    if (!hasAgentResultValue(value)) {
+      return
+    }
+    mutableTarget[key] = value
+  })
+  if (!hasAgentResultValue(target.rich) && isPlainObject(source.value)) {
+    target.rich = source.value
+  }
+}
+
+function hasAgentResultOutputField(source: Record<string, unknown>) {
+  return (
+    agentResultOutputKeys.some((key) => hasAgentResultValue(source[key])) ||
+    isPlainObject(source.value)
+  )
+}
+
+function hasAgentResultValue(value: unknown) {
+  if (value == null) {
+    return false
+  }
+  if (typeof value === 'string') {
+    return value.trim().length > 0
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0
+  }
+  if (isPlainObject(value)) {
+    return Object.keys(value).length > 0
+  }
+  return true
 }
 
 function normalizeAgentSuggestions(value: unknown): AgentSuggestion[] {

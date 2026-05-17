@@ -1,3 +1,7 @@
+import ReactMarkdown, { type Components } from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
+import remarkGfm from 'remark-gfm'
+import { RichTextView } from '@/components/rich-text-view'
 import { Badge } from '@/components/ui/badge'
 import { EnergonMediaView } from '@/components/energon/media-view'
 import { EnergonProgressBlock, normalizeEnergonPercent } from '@/components/energon/progress'
@@ -17,7 +21,6 @@ export type EnergonOutput = {
   meta?: Record<string, any>
   error?: any
   json?: any
-  html?: any
   rich?: any
 }
 
@@ -37,7 +40,6 @@ const outputScalarKeys = [
   'progress',
   'error',
   'json',
-  'html',
   'rich',
 ] as const
 
@@ -135,8 +137,12 @@ function EnergonOutputBlock({
       ) : null}
       {output.reasoning ? <ReasoningBlock text={valueText(output.reasoning)} /> : null}
       {text ? <MarkdownBlock text={text} /> : null}
-      {output.html || output.rich ? <RichBlock html={valueText(output.html || output.rich)} /> : null}
-      <ImageBlock urls={normalizeStringList(output.images)} meta={output.meta} uploadRules={uploadRules} />
+      {output.rich ? <RichBlock value={output.rich} /> : null}
+      <ImageBlock
+        urls={normalizeStringList(output.images)}
+        meta={output.meta}
+        uploadRules={uploadRules}
+      />
       <VideoBlock urls={normalizeStringList(output.videos)} uploadRules={uploadRules} />
       <AudioBlock urls={normalizeStringList(output.audios)} uploadRules={uploadRules} />
       <FileBlock urls={normalizeStringList(output.files)} uploadRules={uploadRules} />
@@ -150,18 +156,23 @@ function MarkdownBlock({ text }: { text: string }) {
     return null
   }
   return (
-    <div
-      className={richTextClassName}
-      dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }}
-    />
+    <div className={markdownClassName}>
+      <ReactMarkdown
+        skipHtml
+        remarkPlugins={markdownPlugins}
+        components={markdownComponents}
+      >
+        {normalizeMarkdownSource(text)}
+      </ReactMarkdown>
+    </div>
   )
 }
 
-function RichBlock({ html }: { html: string }) {
-  if (!html) {
+function RichBlock({ value }: { value: any }) {
+  if (!value) {
     return null
   }
-  return <div className={richTextClassName} dangerouslySetInnerHTML={{ __html: html }} />
+  return <RichTextView value={value} />
 }
 
 function ReasoningBlock({ text }: { text: string }) {
@@ -260,7 +271,7 @@ function StreamingCursor() {
   return <span className="inline-block h-4 w-1 animate-pulse bg-primary align-[-2px]" />
 }
 
-const richTextClassName = cn(
+const markdownClassName = cn(
   'min-w-0 text-sm leading-7 text-foreground',
   '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4',
   '[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground',
@@ -268,103 +279,43 @@ const richTextClassName = cn(
   '[&_h1]:mb-3 [&_h1]:mt-4 [&_h1]:text-xl [&_h1]:font-semibold',
   '[&_h2]:mb-2.5 [&_h2]:mt-4 [&_h2]:text-lg [&_h2]:font-semibold',
   '[&_h3]:mb-2 [&_h3]:mt-3 [&_h3]:text-base [&_h3]:font-semibold',
+  '[&_h4]:mb-1.5 [&_h4]:mt-3 [&_h4]:text-sm [&_h4]:font-semibold',
+  '[&_h5]:mb-1.5 [&_h5]:mt-3 [&_h5]:text-sm [&_h5]:font-medium',
+  '[&_h6]:mb-1.5 [&_h6]:mt-3 [&_h6]:text-xs [&_h6]:font-medium [&_h6]:text-muted-foreground',
+  '[&_hr]:my-4 [&_hr]:border-border',
   '[&_li]:my-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6',
   '[&_p]:my-2 [&_pre]:my-3 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-muted/60',
   '[&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0',
-  '[&_strong]:font-semibold [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6'
+  '[&_strong]:font-semibold [&_table]:my-3 [&_table]:w-full [&_table]:border-collapse',
+  '[&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1',
+  '[&_th]:border [&_th]:border-border [&_th]:bg-muted/50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left',
+  '[&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6'
 )
 
-function renderMarkdown(markdown: string) {
-  const codeBlocks: string[] = []
-  let source = markdown.replace(/\r\n/g, '\n')
+const markdownPlugins = [remarkGfm, remarkBreaks]
 
-  source = source.replace(/```([\s\S]*?)```/g, (_, code) => {
-    const index = codeBlocks.length
-    codeBlocks.push(`<pre><code>${escapeHtml(String(code).replace(/^\n|\n$/g, ''))}</code></pre>`)
-    return `\n\n@@CODEBLOCK${index}@@\n\n`
-  })
-
-  source = escapeHtml(source)
-
-  const blocks = source
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-    .map((block) => renderMarkdownBlock(block))
-    .join('\n')
-
-  return restorePlaceholders(blocks, codeBlocks, 'CODEBLOCK')
+const markdownComponents: Components = {
+  a({ children, node, ...props }) {
+    void node
+    return (
+      <a {...props} target="_blank" rel="noreferrer">
+        {children}
+      </a>
+    )
+  },
 }
 
-function renderMarkdownBlock(block: string) {
-  const codeBlock = block.match(/^@@CODEBLOCK(\d+)@@$/)
-  if (codeBlock) {
-    return block
-  }
-
-  const heading = block.match(/^(#{1,6})\s+(.+)$/)
-  if (heading) {
-    const level = Math.min(3, heading[1].length)
-    return `<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`
-  }
-
-  const lines = block.split('\n')
-  if (lines.every((line) => /^\s*[-*+]\s+/.test(line))) {
-    return `<ul>${lines
-      .map((line) => `<li>${renderInlineMarkdown(line.replace(/^\s*[-*+]\s+/, ''))}</li>`)
-      .join('')}</ul>`
-  }
-  if (lines.every((line) => /^\s*\d+\.\s+/.test(line))) {
-    return `<ol>${lines
-      .map((line) => `<li>${renderInlineMarkdown(line.replace(/^\s*\d+\.\s+/, ''))}</li>`)
-      .join('')}</ol>`
-  }
-  if (lines.every((line) => /^\s*&gt;\s?/.test(line))) {
-    return `<blockquote>${lines
-      .map((line) => renderInlineMarkdown(line.replace(/^\s*&gt;\s?/, '')))
-      .join('<br/>')}</blockquote>`
-  }
-
-  return `<p>${lines.map(renderInlineMarkdown).join('<br/>')}</p>`
+function normalizeMarkdownSource(value: unknown) {
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/(^|\n)(\s{0,3}#{1,6})(?=\S)(?!#)/g, '$1$2 ')
 }
 
-function renderInlineMarkdown(value: string) {
-  return value
-    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/_([^_]+)_/g, '<em>$1</em>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
-      const href = safeHref(url)
-      return `<a href="${href}" target="_blank" rel="noreferrer">${label}</a>`
-    })
-}
-
-function restorePlaceholders(value: string, replacements: string[], key: string) {
-  return value.replace(new RegExp(`@@${key}(\\d+)@@`, 'g'), (_, index) => {
-    return replacements[Number(index)] || ''
-  })
-}
-
-function safeHref(value: string) {
-  const href = String(value || '').trim()
-  if (/^(https?:|mailto:|\/)/i.test(href)) {
-    return escapeHtml(href)
-  }
-  return '#'
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-function copyValue(target: EnergonOutput, source: Record<string, any>, key: keyof EnergonOutput) {
+function copyValue(
+  target: EnergonOutput,
+  source: Record<string, any>,
+  key: keyof EnergonOutput
+) {
   if (!(key in source) || isEmptyValue(source[key])) {
     return
   }

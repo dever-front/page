@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig(async () => {
-  const enableRouteGeneration = process.env.VITE_ROUTE_GENERATION === '1'
+  const enableRouteGeneration = process.env.VITE_ROUTE_GENERATION !== '0'
   const enablePolling =
     process.env.VITE_FORCE_POLLING === '1' ||
     process.env.CHOKIDAR_USEPOLLING === 'true'
@@ -19,6 +19,7 @@ export default defineConfig(async () => {
       tanstackRouter({
         target: 'react',
         autoCodeSplitting: true,
+        disableLogging: true,
       })
     )
   }
