@@ -284,8 +284,8 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
 
   const fillCurrentForm = () => {
     void send({
-      text: '请根据当前表单上下文补全当前表单。',
-      task: buildAssistantFormFillTask({ mode: 'form' }),
+      text: '请根据当前表单上下文生成并填写当前表单；已有内容可以在保持业务语义的前提下优化重写。',
+      task: buildAssistantFormFillTask({ mode: 'form', overwrite: true }),
       clearInput: false,
     })
   }

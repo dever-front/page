@@ -12,7 +12,6 @@ import {
 import { ResourcePreviewDialogLazy } from '@/components/resource/lazy-dialogs'
 import {
   AgentInteractionPanel,
-  resolveAgentInteractionAutoSubmit,
   type AgentInteraction,
   type AgentInteractionSubmitResult,
 } from '@/page/nodes/show/agent-interaction-panel'
@@ -339,23 +338,6 @@ export function AssistantMediaGenerateButton({
       showGeneratedPreview(generatedItems, `${label}已重新生成，请确认是否使用。`)
     } catch (error) {
       if (error instanceof AssistantMediaInteractionRequiredError) {
-        const autoResult = await resolveAgentInteractionAutoSubmit(
-          error.interaction as AgentInteraction
-        )
-        if (autoResult) {
-          await continueWithInteraction(error, autoResult, (status, detail) =>
-            setPreviewState((current) =>
-              current
-                ? {
-                    ...current,
-                    status,
-                    timing: updateGenerationTiming(status, detail),
-                  }
-                : current
-            )
-          )
-          return
-        }
         setInteractionState({ error })
       } else {
         toast.error(error instanceof Error ? error.message : `AI 生成${label}失败`)
@@ -425,27 +407,7 @@ export function AssistantMediaGenerateButton({
               return false
             }
             if (error instanceof AssistantMediaInteractionRequiredError) {
-              reportStatus(`正在检查${label}能力参数。`)
-              const autoResult = await resolveAgentInteractionAutoSubmit(
-                error.interaction as AgentInteraction
-              )
-              if (autoResult) {
-                reportStatus(`已生成${label}能力参数，正在继续。`)
-                const continued = await continueWithInteraction(
-                  error,
-                  autoResult,
-                  reportStatus,
-                  signal
-                )
-                if (!continued) {
-                  if (signal.aborted) {
-                    return false
-                  }
-                  throw new Error(`AI 生成${label}失败`)
-                }
-                return true
-              }
-              reportStatus(`请补充${label}能力参数。`)
+              reportStatus(`请确认${label}能力参数。`)
               generationTimingRef.current = undefined
               setInteractionState({ error })
               return true
@@ -603,7 +565,6 @@ function AssistantMediaInteractionDialog({
             disabled={disabled}
             layout="dialog"
             hideHeader
-            autoSubmitWhenReady
             onSubmit={onSubmit}
           />
         </div>

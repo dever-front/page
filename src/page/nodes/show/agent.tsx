@@ -1169,7 +1169,7 @@ function normalizeAgentSuggestions(value: unknown): AgentSuggestion[] {
   return values
     .map(normalizeAgentSuggestion)
     .filter((suggestion): suggestion is AgentSuggestion => suggestion != null)
-    .slice(0, 4)
+    .slice(0, 5)
 }
 
 function normalizeAgentSuggestion(value: unknown): AgentSuggestion | null {
@@ -1234,7 +1234,6 @@ function AgentInteractionDialog({
             disabled={disabled}
             layout='dialog'
             hideHeader
-            autoSubmitWhenReady={!readonly}
             onSubmit={readonly ? undefined : onSubmit}
           />
         </div>

@@ -41,55 +41,7 @@ type AgentInteractionPanelProps = {
   hideHeader?: boolean
   layout?: 'inline' | 'dialog'
   initialData?: Record<string, unknown>
-  autoSubmitWhenReady?: boolean
   onSubmit?: (result: AgentInteractionSubmitResult) => void
-}
-
-export async function resolveAgentInteractionAutoSubmit(
-  interaction: AgentInteraction,
-  paramApi = '/bot/energon/power_params'
-): Promise<AgentInteractionSubmitResult | null> {
-  const interactionType = normalizeText(interaction.type)
-  const powerKey = normalizeText(interaction.power)
-  const initialValues = normalizeInteractionValues(interaction)
-  let params: TestParam[] = []
-  let extraData: Record<string, unknown> | undefined
-
-  if (interactionType === 'power_params') {
-    if (!powerKey) {
-      return null
-    }
-
-    const result = await request(paramApi, 'get', {
-      power: powerKey,
-      include_sources: 1,
-    })
-    if (result.code !== 0) {
-      return null
-    }
-
-    const config = normalizePowerParamConfig(result.data)
-    params = config.params
-    if (config.selectedSourceID) {
-      extraData = { source_target_id: config.selectedSourceID }
-    }
-  } else {
-    params = normalizeInteractionFields(interaction.fields)
-  }
-
-  const paramValues = buildInitialParamValues(params, initialValues)
-  if (validateMainParams(params, paramValues)) {
-    return null
-  }
-
-  const data = {
-    ...(extraData || {}),
-    ...buildRequestInput(params, paramValues),
-  }
-  return {
-    data,
-    text: summarizeSubmit(params, data, powerKey),
-  }
 }
 
 export function AgentInteractionPanel({
@@ -100,7 +52,6 @@ export function AgentInteractionPanel({
   hideHeader,
   layout = 'inline',
   initialData,
-  autoSubmitWhenReady = false,
   onSubmit,
 }: AgentInteractionPanelProps) {
   const [loading, setLoading] = useState(false)
@@ -208,7 +159,6 @@ export function AgentInteractionPanel({
         layout={layout}
         initialData={initialData}
         initialValues={interactionValues}
-        autoSubmitWhenReady={autoSubmitWhenReady}
         extraData={
           isPowerParams && powerSourceTargetID
             ? { source_target_id: powerSourceTargetID }
@@ -230,7 +180,6 @@ function AgentInteractionParamForm({
   layout,
   initialData,
   initialValues,
-  autoSubmitWhenReady,
   extraData,
   onSubmit,
 }: {
@@ -243,12 +192,10 @@ function AgentInteractionParamForm({
   layout: 'inline' | 'dialog'
   initialData?: Record<string, unknown>
   initialValues?: Record<string, unknown>
-  autoSubmitWhenReady?: boolean
   extraData?: Record<string, unknown>
   onSubmit?: (result: AgentInteractionSubmitResult) => void
 }) {
   const [error, setError] = useState('')
-  const [autoSubmitted, setAutoSubmitted] = useState(false)
   const [paramValues, setParamValues] = useState<ParamValueMap>(() =>
     buildInitialParamValues(params, initialValues)
   )
@@ -320,37 +267,6 @@ function AgentInteractionParamForm({
 
     onSubmit?.(result)
   }
-
-  useEffect(() => {
-    if (
-      !autoSubmitWhenReady ||
-      readonly ||
-      disabled ||
-      loading ||
-      loadError ||
-      autoSubmitted ||
-      !onSubmit
-    ) {
-      return
-    }
-
-    const result = buildSubmitResult()
-    if (typeof result === 'string') {
-      return
-    }
-
-    setAutoSubmitted(true)
-    onSubmit(result)
-  }, [
-    autoSubmitWhenReady,
-    autoSubmitted,
-    buildSubmitResult,
-    disabled,
-    loadError,
-    loading,
-    onSubmit,
-    readonly,
-  ])
 
   if (readonly) {
     return (
