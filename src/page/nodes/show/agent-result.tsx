@@ -263,14 +263,14 @@ function resultTaskOutputNodes(task: AgentResultTask): Record<string, unknown>[]
       return nodes
     }
   }
-  if (kind === 'audio' || kind === 'audios') {
+  if (kind === 'audio' || kind === 'audios' || kind === 'song' || kind === 'music') {
     const nodes = mediaNodes(
       'editorMediaAudio',
       resultTaskMediaURLs(task.output, 'audios', 'audio'),
       task.title
     )
     if (nodes.length > 0) {
-      return nodes
+      return [...nodes, ...resultTaskTextNodes(task.output)]
     }
   }
   const media = [
@@ -299,10 +299,7 @@ function resultTaskOutputNodes(task: AgentResultTask): Record<string, unknown>[]
   }
   const text = resultTaskOutputText(task.output)
   if (text) {
-    return text.split(/\n{2,}/).map((paragraph) => ({
-      type: 'paragraph',
-      content: [{ type: 'text', text: paragraph.trim() }],
-    }))
+    return textNodes(text)
   }
   return []
 }
@@ -349,7 +346,57 @@ function resultTaskRichNodes(output: AgentResultOutput): Record<string, unknown>
 
 function resultTaskOutputText(output: AgentResultOutput) {
   const content = isPlainObject(output.content) ? output.content : {}
-  return valueText(output.text || content.text || output.title || content.title).trim()
+  const record = output as Record<string, unknown>
+  return valueText(
+    output.text ||
+      content.text ||
+      record.lyrics ||
+      content.lyrics ||
+      record.lyric ||
+      content.lyric ||
+      record.lrc ||
+      content.lrc ||
+      record.song_lyrics ||
+      content.song_lyrics ||
+      record.songLyrics ||
+      content.songLyrics ||
+      output.title ||
+      content.title
+  ).trim()
+}
+
+function resultTaskTextNodes(output: AgentResultOutput) {
+  const richNodes = resultTaskRichNodes(output)
+  if (richNodes.length > 0) {
+    return richNodes
+  }
+  const text = resultTaskOutputText(output)
+  return text ? textNodes(text) : []
+}
+
+function textNodes(text: string): Record<string, unknown>[] {
+  return text
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => ({
+      type: 'paragraph',
+      content: inlineTextNodes(paragraph),
+    }))
+}
+
+function inlineTextNodes(text: string): Record<string, unknown>[] {
+  const lines = text.split(/\n/)
+  const nodes: Record<string, unknown>[] = []
+  lines.forEach((line, index) => {
+    if (index > 0) {
+      nodes.push({ type: 'hardBreak' })
+    }
+    if (line) {
+      nodes.push({ type: 'text', text: line })
+    }
+  })
+  return nodes
 }
 
 function stringList(value: unknown): string[] {
