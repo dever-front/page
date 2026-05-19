@@ -55,6 +55,15 @@ pnpm install
 pnpm dev
 ```
 
+打包给后端托管：
+
+```bash
+pnpm build:backend
+```
+
+默认会把静态文件输出到 `backend/package/front/html`，后端默认从 `/_admin` 访问。
+如果要改访问前缀，需要同步调整 `public/config.js` 的 `basePath` 和构建时的 `VITE_FRONT_BASE`。
+
 ## 运行时配置
 
 主要配置在：
@@ -68,6 +77,7 @@ public/config.js
 - `site`：站点名称、描述、图标
 - `appearance`：默认主题、侧边栏、布局方向
 - `runtime.host`：Dever 后端 JSON 页面接口地址
+- `runtime.basePath`：前端被后端托管时的访问前缀，默认 `/_admin`
 - `runtime.skin`：当前皮肤名称
 - `runtime.routerMode`：路由模式
 

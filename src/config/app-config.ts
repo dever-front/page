@@ -22,6 +22,7 @@ export type AppearanceConfig = {
 export type RuntimeConfig = {
   skin: string
   routerMode: 'hash' | 'history'
+  basePath?: string
   host: string
 }
 

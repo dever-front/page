@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import {
   isEmptyRichTextDoc,
   parseRichTextDoc,
+  richTextMediaSources,
 } from '@/lib/rich-text'
 import { RichTextView } from '@/components/rich-text-view'
 import { Badge } from '@/components/ui/badge'
@@ -95,14 +96,23 @@ function normalizeOutput(value: any): EnergonOutput {
   }
 
   const output: EnergonOutput = {}
+  const content = isPlainObject(value.content) ? value.content : null
+  if (content) {
+    outputScalarKeys.forEach((key) => copyValue(output, content, key))
+  } else if (value.content != null && isEmptyValue(value.text)) {
+    output.text = valueText(value.content)
+  }
   outputScalarKeys.forEach((key) => copyValue(output, value, key))
   if (isPlainObject(value.meta)) {
     output.meta = value.meta
+  } else if (content && isPlainObject(content.meta)) {
+    output.meta = content.meta
   }
   outputListFields.forEach((field) => {
     copyList(
       output,
       field.target,
+      ...(content ? field.sources.map((source) => content[source]) : []),
       ...field.sources.map((source) => value[source])
     )
   })
@@ -125,6 +135,18 @@ function EnergonOutputBlock({
   const richDoc = parseRichTextDoc(output.rich)
   const hasRich = !isEmptyRichTextDoc(richDoc)
   const text = isProgressEvent || hasRich ? '' : valueText(output.text)
+  const imageUrls = mediaOutsideRich(
+    output.images,
+    richTextMediaSources(richDoc, 'image')
+  )
+  const videoUrls = mediaOutsideRich(
+    output.videos,
+    richTextMediaSources(richDoc, 'video')
+  )
+  const audioUrls = mediaOutsideRich(
+    output.audios,
+    richTextMediaSources(richDoc, 'audio')
+  )
 
   if (event === 'end' && !output.text && !output.error) {
     return null
@@ -145,20 +167,20 @@ function EnergonOutputBlock({
       {text ? <MarkdownBlock text={text} /> : null}
       {hasRich ? <RichBlock value={richDoc} /> : null}
       <ImageBlock
-        urls={hasRich ? [] : normalizeStringList(output.images)}
+        urls={imageUrls}
         meta={output.meta}
         uploadRules={uploadRules}
       />
       <VideoBlock
-        urls={hasRich ? [] : normalizeStringList(output.videos)}
+        urls={videoUrls}
         uploadRules={uploadRules}
       />
       <AudioBlock
-        urls={hasRich ? [] : normalizeStringList(output.audios)}
+        urls={audioUrls}
         uploadRules={uploadRules}
       />
       <FileBlock
-        urls={hasRich ? [] : normalizeStringList(output.files)}
+        urls={normalizeStringList(output.files)}
         uploadRules={uploadRules}
       />
       {output.json != null ? <JsonFallback value={output.json} event={event} /> : null}
@@ -298,6 +320,7 @@ const markdownClassName = cn(
   '[&_h5]:mb-1.5 [&_h5]:mt-3 [&_h5]:text-sm [&_h5]:font-medium',
   '[&_h6]:mb-1.5 [&_h6]:mt-3 [&_h6]:text-xs [&_h6]:font-medium [&_h6]:text-muted-foreground',
   '[&_hr]:my-4 [&_hr]:border-border',
+  '[&_img]:my-4 [&_img]:block [&_img]:max-w-full [&_img]:rounded-lg',
   '[&_li]:my-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6',
   '[&_p]:my-2 [&_pre]:my-3 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-muted/60',
   '[&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0',
@@ -323,7 +346,23 @@ const markdownComponents: Components = {
 function normalizeMarkdownSource(value: unknown) {
   return String(value || '')
     .replace(/\r\n/g, '\n')
-    .replace(/(^|\n)(\s{0,3}#{1,6})(?=\S)(?!#)/g, '$1$2 ')
+    .replace(
+      /(^|\n)([ \t\u00a0\u3000]{0,3})(#{1,6})(?!#)([ \t\u00a0\u3000]*)(?=\S)/g,
+      normalizeMarkdownHeadingMarker
+    )
+}
+
+function normalizeMarkdownHeadingMarker(
+  match: string,
+  start: string,
+  indent: string,
+  marker: string,
+  gap: string
+) {
+  if (marker.length === 1 && gap.length === 0) {
+    return match
+  }
+  return `${start}${indent}${marker} `
 }
 
 function copyValue(
@@ -392,6 +431,15 @@ function normalizeStringList(value: any) {
   }
   const text = valueText(value)
   return text ? [text] : []
+}
+
+function mediaOutsideRich(value: any, richUrls: string[]) {
+  const urls = normalizeStringList(value)
+  if (urls.length === 0 || richUrls.length === 0) {
+    return urls
+  }
+  const used = new Set(richUrls.map((url) => url.trim()).filter(Boolean))
+  return urls.filter((url) => !used.has(url.trim()))
 }
 
 const mediaFieldConfig: Partial<Record<keyof EnergonOutput, { sources: string[] }>> = {

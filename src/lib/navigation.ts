@@ -1,4 +1,8 @@
 import { parseRouterSearch } from '@/lib/router-search'
+import {
+  getCurrentRouterHref,
+  stripRouterBasePath,
+} from '@/lib/router-path'
 
 export const NAV_QUERY_KEY = '_nav'
 
@@ -78,7 +82,7 @@ export function parseInternalNavigationHref(href?: unknown): NavigationTarget | 
     }
 
     return {
-      to: url.pathname || '/',
+      to: stripRouterBasePath(url.pathname) || '/',
       search: parseRouterSearch(url.search),
     }
   } catch {
@@ -114,15 +118,11 @@ function getCurrentNavigationToken() {
 }
 
 function getCurrentInternalHref() {
-  if (typeof window === 'undefined') {
-    return ''
-  }
-
-  return `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`
+  return getCurrentRouterHref()
 }
 
 function normalizeRouteHref(routePath?: string) {
-  return String(routePath || '').trim()
+  return stripRouterBasePath(routePath)
 }
 
 function stripRouteQuery(href: string) {

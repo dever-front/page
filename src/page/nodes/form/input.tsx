@@ -8,6 +8,7 @@ import {
   getRemoteSearchLayoutItems,
   resolveRemoteSearchMode,
 } from '@/lib/remote-search'
+import { getCurrentRouterPathname } from '@/lib/router-path'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { AssistantFieldGenerateButton } from '@/components/assistant/form-actions'
@@ -60,7 +61,7 @@ export function FormInput({
 
           debounceRef.current = window.setTimeout(() => {
             navigate({
-              to: window.location.pathname,
+              to: getCurrentRouterPathname(),
               search: (prev: Record<string, unknown>) => ({
                 ...prev,
                 page: undefined,

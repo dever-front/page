@@ -7,6 +7,7 @@ import {
   getRemoteSearchKey,
   normalizeRemoteSearchValue,
 } from '@/lib/remote-search'
+import { getCurrentRouterPathname } from '@/lib/router-path'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { ActionConfig } from '@/lib/schema'
 import type { NodeItemProps } from '../../nodes'
@@ -217,7 +218,7 @@ export function NavTab({ item, option, runAction, store }: NodeItemProps) {
           : nextTargetValue
 
       navigate({
-        to: window.location.pathname,
+        to: getCurrentRouterPathname(),
         search: (prev: Record<string, unknown>) => ({
           ...prev,
           ...buildRemoteSearchPatch(store.getState(), searchLayoutId),

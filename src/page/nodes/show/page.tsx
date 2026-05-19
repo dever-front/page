@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn, getPageNumbers } from '@/lib/utils'
+import { getCurrentRouterPathname } from '@/lib/router-path'
 import type { NodeItemProps } from '../../nodes'
 import type { Item } from '@/lib/schema'
 import { useStorePathValue } from '@/lib/store'
@@ -53,7 +54,7 @@ export function ShowPage({ item, value, store, layoutId }: NodeItemProps) {
     if (!pagePath) return
     if (isRemote) {
       navigate({
-        to: window.location.pathname,
+        to: getCurrentRouterPathname(),
         search: (prev: Record<string, unknown>) => ({
           ...prev,
           page: nextPage <= 1 ? undefined : nextPage,
@@ -68,7 +69,7 @@ export function ShowPage({ item, value, store, layoutId }: NodeItemProps) {
     if (!pageSizePath) return
     if (isRemote) {
       navigate({
-        to: window.location.pathname,
+        to: getCurrentRouterPathname(),
         search: (prev: Record<string, unknown>) => ({
           ...prev,
           page: undefined,

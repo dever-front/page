@@ -13,6 +13,7 @@ import {
   getRemoteSearchLayoutItems,
   resolveRemoteSearchMode,
 } from '@/lib/remote-search'
+import { getCurrentRouterPathname } from '@/lib/router-path'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { SearchableOptionPicker } from '@/components/searchable-option-picker'
@@ -163,7 +164,7 @@ export function FormSelect({
       }
 
       navigate({
-        to: window.location.pathname,
+        to: getCurrentRouterPathname(),
         search: (prev: Record<string, unknown>) => ({
           ...prev,
           page: undefined,

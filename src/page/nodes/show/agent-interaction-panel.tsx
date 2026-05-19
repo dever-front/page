@@ -602,12 +602,13 @@ function normalizeInteractionField(
     return null
   }
   const type = normalizeInteractionFieldType(field)
+  const options = normalizeInteractionOptions(fieldOptionsSource(field))
 
   return {
     id: normalizeText(field.id || key) || `field_${index + 1}`,
     name: normalizeText(field.name || field.label || key),
     key,
-    type,
+    type: resolveInteractionControlType(type, field, options),
     usage: 1,
     value_type: normalizeInteractionValueType(field),
     default_value: normalizeDefaultValue(field),
@@ -616,35 +617,99 @@ function normalizeInteractionField(
     upload_rule_id: normalizeID(field.upload_rule_id ?? field.uploadRuleId),
     max_files: Number(field.max_files || 0),
     sort: Number(field.sort || index + 1),
-    options: normalizeInteractionOptions(field.options),
+    options,
   }
 }
 
+function resolveInteractionControlType(
+  type: string,
+  field: Record<string, unknown>,
+  options: PowerParamOption[]
+) {
+  if ((type === 'option' || type === 'multi_option') && options.length === 0) {
+    return isBooleanInteractionField(field) ? 'switch' : 'input'
+  }
+  return type
+}
+
+function isBooleanInteractionField(field: Record<string, unknown>) {
+  const text = normalizeText(
+    field.name || field.label || field.key || field.placeholder
+  )
+  return /^(是否|要不要|需不需要|是否需要)/.test(text)
+}
+
+function fieldOptionsSource(field: Record<string, unknown>) {
+  return (
+    field.options ??
+    field.option ??
+    field.choices ??
+    field.items ??
+    field.enums ??
+    field.enum
+  )
+}
+
 function normalizeInteractionOptions(options: unknown): PowerParamOption[] {
-  if (!Array.isArray(options)) {
+  const rows = normalizeOptionRows(options)
+  if (rows.length === 0) {
     return []
   }
-  return options
+  return rows
     .map((option, index) => {
-      if (!isPlainObject(option)) {
-        return null
-      }
-      const label = normalizeText(
-        option.label || option.name || option.value || option.id
-      )
-      const value = option.value == null ? label : option.value
+      const optionRow = normalizeOptionRow(option, index)
+      const label = normalizeText(optionRow.label)
+      const value = optionRow.value == null ? label : optionRow.value
       const row: PowerParamOption = {
-        id: normalizeID(option.id) ?? index + 1,
-        name: normalizeText(option.name || label),
+        id: normalizeID(optionRow.id) ?? index + 1,
+        name: normalizeText(optionRow.name || label),
         value: label || String(index + 1),
         native_value: stringifyNativeValue(
-          option.native_value == null ? value : option.native_value
+          optionRow.native_value == null ? value : optionRow.native_value
         ),
-        sort: Number(option.sort || index + 1),
+        sort: Number(optionRow.sort || index + 1),
       }
       return row
     })
     .filter((option): option is PowerParamOption => option != null)
+}
+
+function normalizeOptionRows(options: unknown): unknown[] {
+  if (Array.isArray(options)) {
+    return options
+  }
+  if (isPlainObject(options)) {
+    return Object.entries(options).map(([key, value]) => ({
+      id: key,
+      value,
+    }))
+  }
+  return []
+}
+
+function normalizeOptionRow(option: unknown, index: number) {
+  if (isPlainObject(option)) {
+    const label = normalizeText(
+      option.label || option.name || option.title || option.value || option.id
+    )
+    return {
+      id: option.id,
+      name: option.name,
+      label: label || String(index + 1),
+      value: option.value == null ? label : option.value,
+      native_value: option.native_value ?? option.nativeValue,
+      sort: option.sort,
+    }
+  }
+
+  const label = normalizeText(option)
+  return {
+    id: label || index + 1,
+    label: label || String(index + 1),
+    value: option,
+    native_value: option,
+    sort: index + 1,
+  }
 }
 
 function normalizeID(value: unknown): string | number | undefined {

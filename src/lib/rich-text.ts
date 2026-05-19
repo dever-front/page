@@ -19,6 +19,15 @@ export const richTextMediaNodeNames: Record<RichTextMediaKind, string> = {
   audio: 'editorMediaAudio',
 }
 
+const richTextNodeAliases: Record<string, string> = {
+  audio: richTextMediaNodeNames.audio,
+  image: richTextMediaNodeNames.image,
+  mediaAudio: richTextMediaNodeNames.audio,
+  mediaImage: richTextMediaNodeNames.image,
+  mediaVideo: richTextMediaNodeNames.video,
+  video: richTextMediaNodeNames.video,
+}
+
 export function parseRichTextDoc(value: unknown): RichTextNode | null {
   if (isRichTextDoc(value)) {
     return normalizeRichTextDoc(value)
@@ -73,6 +82,18 @@ export function defaultRichTextMediaMaxWidth(kind: RichTextMediaKind): string {
   }
 }
 
+export function richTextMediaSources(
+  doc: RichTextNode | null | undefined,
+  kind: RichTextMediaKind
+): string[] {
+  if (!doc) {
+    return []
+  }
+  const result: string[] = []
+  collectRichTextMediaSources(doc, richTextMediaNodeNames[kind], result)
+  return uniqueStrings(result)
+}
+
 function isRichTextDoc(value: unknown): value is RichTextNode {
   if (!isRecord(value) || value.type !== 'doc') {
     return false
@@ -111,6 +132,24 @@ function hasVisibleRichText(node: RichTextNode): boolean {
   return Array.isArray(node.content) && node.content.some(hasVisibleRichText)
 }
 
+function collectRichTextMediaSources(
+  node: RichTextNode,
+  mediaType: string,
+  result: string[]
+) {
+  if (node.type === mediaType) {
+    const src = String(node.attrs?.src || '').trim()
+    if (src) {
+      result.push(src)
+    }
+  }
+  if (Array.isArray(node.content)) {
+    node.content.forEach((child) =>
+      collectRichTextMediaSources(child, mediaType, result)
+    )
+  }
+}
+
 function normalizeRichTextContent(content: unknown): RichTextNode[] {
   if (!Array.isArray(content)) {
     return []
@@ -124,7 +163,7 @@ function normalizeRichTextNode(value: unknown): RichTextNode | null {
   if (!isRecord(value)) {
     return null
   }
-  const type = String(value.type || '').trim()
+  const type = normalizeRichTextNodeType(value.type)
   if (!type) {
     return null
   }
@@ -146,7 +185,68 @@ function normalizeRichTextNode(value: unknown): RichTextNode | null {
   if (children.length > 0) {
     node.content = children
   }
+  if (type === 'paragraph') {
+    return normalizeMarkdownHeadingParagraph(node)
+  }
   return node
+}
+
+function normalizeRichTextNodeType(value: unknown) {
+  const type = String(value || '').trim()
+  return richTextNodeAliases[type] || type
+}
+
+function normalizeMarkdownHeadingParagraph(node: RichTextNode): RichTextNode {
+  if (!Array.isArray(node.content)) {
+    return node
+  }
+
+  const textIndex = node.content.findIndex(
+    (child) => child.type === 'text' && String(child.text || '').trim()
+  )
+  if (textIndex < 0) {
+    return node
+  }
+  if (node.content.slice(0, textIndex).some((child) => child.type !== 'text')) {
+    return node
+  }
+
+  const firstText = String(node.content[textIndex].text || '')
+  const match = firstText.match(
+    /^([ \t\u00a0\u3000]{0,3})(#{1,6})(?!#)([ \t\u00a0\u3000]*)(.*)$/
+  )
+  if (!match) {
+    return node
+  }
+
+  const marker = match[2] || ''
+  const gap = match[3] || ''
+  if (marker.length === 1 && gap.length === 0) {
+    return node
+  }
+
+  const nextText = (match[4] || '').trimStart()
+  if (!nextText) {
+    return node
+  }
+
+  const content = node.content.slice(textIndex)
+  const firstChild = content[0]
+  if (!firstChild) {
+    return node
+  }
+  content[0] = {
+    ...firstChild,
+    text: nextText,
+  }
+  return {
+    type: 'heading',
+    attrs: {
+      ...(node.attrs || {}),
+      level: marker.length,
+    },
+    content,
+  }
 }
 
 function normalizeRichTextMarks(marks: unknown): RichTextMark[] {
@@ -170,6 +270,20 @@ function normalizeRichTextMarks(marks: unknown): RichTextMark[] {
       return row
     })
     .filter((mark): mark is RichTextMark => mark != null)
+}
+
+function uniqueStrings(values: string[]) {
+  const seen = new Set<string>()
+  const result: string[] = []
+  values.forEach((value) => {
+    const text = String(value || '').trim()
+    if (!text || seen.has(text)) {
+      return
+    }
+    seen.add(text)
+    result.push(text)
+  })
+  return result
 }
 
 function normalizeAttrs(value: unknown): Record<string, any> | undefined {

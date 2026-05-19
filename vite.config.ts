@@ -6,6 +6,8 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig(async () => {
   const enableRouteGeneration = process.env.VITE_ROUTE_GENERATION !== '0'
+  const frontBase = process.env.VITE_FRONT_BASE || '/_admin/'
+  const frontOutDir = process.env.VITE_FRONT_OUT_DIR || 'dist'
   const enablePolling =
     process.env.VITE_FORCE_POLLING === '1' ||
     process.env.CHOKIDAR_USEPOLLING === 'true'
@@ -27,7 +29,12 @@ export default defineConfig(async () => {
   plugins.push(react(), tailwindcss())
 
   return {
+    base: frontBase,
     plugins,
+    build: {
+      outDir: frontOutDir,
+      emptyOutDir: true,
+    },
     resolve: {
       dedupe: ['react', 'react-dom'],
       alias: {

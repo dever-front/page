@@ -28,6 +28,7 @@ import {
   runtimeErrorMessage,
 } from '@/lib/runtime-stream-output'
 import { runAgentStream, stopAgentStream } from '@/lib/agent/runner'
+import { reloadStorePageSchema } from '@/lib/page-schema-reload'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -127,6 +128,7 @@ export function ShowAgent({ item, store }: NodeItemProps) {
     useState('')
   const messageListRef = useRef<HTMLDivElement>(null)
   const lastAutoScrollResultKeyRef = useRef('')
+  const finalSideEffectKeyRef = useRef('')
   const runTokenRef = useRef(0)
   const openWasTrackedRef = useRef(false)
   const scrollMessageListToBottom = useCallback(() => {
@@ -373,6 +375,7 @@ export function ShowAgent({ item, store }: NodeItemProps) {
     )
 
     runTokenRef.current = token
+    finalSideEffectKeyRef.current = ''
     setMessages((current) => {
       const next = answeredInteractionMessageID
         ? current.map((message) =>
@@ -415,6 +418,7 @@ export function ShowAgent({ item, store }: NodeItemProps) {
             setLastStreamID(streamID)
           }
           applyFrameToMessage(assistantID, frame)
+          handleFinalFrameSideEffects(frame)
         },
       })
     } catch (currentError: unknown) {
@@ -459,6 +463,34 @@ export function ShowAgent({ item, store }: NodeItemProps) {
     }
   }
 
+  const handleFinalFrameSideEffects = (frame: AgentFrame) => {
+    if (frame?.type !== 'result' || item.meta?.reloadPageOnFinal !== true) {
+      return
+    }
+    if (Number(frame.status) === 2) {
+      return
+    }
+
+    const output = normalizeRuntimeFrameOutput(frame?.output, frame)
+    const kind = valueText(output.kind || output.type || output.event)
+      .trim()
+      .toLowerCase()
+    if (!shouldRunFinalSideEffect(kind, item.meta?.reloadPageOnFinalKinds)) {
+      return
+    }
+
+    const key = [frame.request_id, frame.stream_id, kind].map(valueText).join(':')
+    if (finalSideEffectKeyRef.current === key) {
+      return
+    }
+    finalSideEffectKeyRef.current = key
+
+    const delayMs = Math.max(0, Number(item.meta?.reloadPageOnFinalDelayMs || 0))
+    window.setTimeout(() => {
+      void reloadStorePageSchema(store)
+    }, delayMs)
+  }
+
   const applyFrameToMessage = (
     messageID: string,
     frame: AgentFrame,
@@ -467,7 +499,7 @@ export function ShowAgent({ item, store }: NodeItemProps) {
     }
   ) => {
     const frameOutput = normalizeRuntimeFrameOutput(frame?.output, frame)
-    if (isEmptyRuntimeOutput(frameOutput)) {
+    if (isEmptyRuntimeOutput(frameOutput) && frame?.type !== 'result') {
       return
     }
     const frameCancelable = resolveRuntimeFrameCancelable(frame)
@@ -491,8 +523,20 @@ export function ShowAgent({ item, store }: NodeItemProps) {
         actionTiming = updateStreamTimingFromOutput(actionTiming, frameOutput)
       }
       if (frame?.type === 'result') {
-        nextOutput.finalOutput = frameOutput
-        const finalText = valueText(frameOutput.text) || nextOutput.text
+        let finalOutput = isEmptyRuntimeOutput(frameOutput)
+          ? normalizeAgentDisplayOutput({
+              text: nextOutput.text || valueText(frame?.msg),
+            })
+          : frameOutput
+        if (isNonResultOutput(finalOutput) && nextOutput.text.trim()) {
+          finalOutput = normalizeAgentDisplayOutput({
+            ...finalOutput,
+            event: 'final',
+            text: nextOutput.text,
+          })
+        }
+        nextOutput.finalOutput = finalOutput
+        const finalText = valueText(finalOutput.text) || nextOutput.text
         return {
           ...message,
           text: finalText,
@@ -1012,6 +1056,22 @@ function buildMessageSuggestions(
   return []
 }
 
+function shouldRunFinalSideEffect(kind: string, allowedKinds: unknown) {
+  const normalized = kind.trim().toLowerCase()
+  const kinds = normalizeFinalSideEffectKinds(allowedKinds)
+  if (kinds.length === 0) {
+    return true
+  }
+  return kinds.includes(normalized)
+}
+
+function normalizeFinalSideEffectKinds(value: unknown): string[] {
+  const rawValues = Array.isArray(value) ? value : [value]
+  return rawValues
+    .map((item) => valueText(item).trim().toLowerCase())
+    .filter(Boolean)
+}
+
 function resolveMessageKindLabel(message: AgentMessage, hasOutput: boolean) {
   if (message.interaction && !message.interactionAnswered) {
     return '需要用户参与'
@@ -1039,6 +1099,7 @@ function normalizeAgentDisplayOutput(
     valueText(next.text) || fallbackText
   )
   if (protocol) {
+    clearAgentResultOutputFields(next)
     const content = isPlainObject(protocol.payload.content)
       ? protocol.payload.content
       : null
@@ -1049,6 +1110,8 @@ function normalizeAgentDisplayOutput(
     const text = agentResultText(protocol.payload) || protocol.cleanText
     if (text) {
       next.text = text
+    } else {
+      delete next.text
     }
     next.kind = normalizeAgentOutputKind(
       valueText(
@@ -1072,12 +1135,23 @@ function normalizeAgentDisplayOutput(
   return next
 }
 
+function clearAgentResultOutputFields(target: AgentOutput) {
+  const mutableTarget = target as Record<string, unknown>
+  agentResultOutputKeys.forEach((key) => {
+    delete mutableTarget[key]
+  })
+  delete mutableTarget.content
+}
+
 function isNonResultOutput(output: AgentOutput) {
   const event = valueText(output.event).toLowerCase()
   if (['start', 'progress', 'status', 'reasoning', 'warning'].includes(event)) {
     return true
   }
-  return isProtocolDraftText(valueText(output.text))
+  if (isProtocolDraftText(valueText(output.text))) {
+    return !hasAgentDisplayPayload(output)
+  }
+  return false
 }
 
 function isProtocolDraftText(value: unknown) {
@@ -1093,15 +1167,7 @@ function isProtocolDraftText(value: unknown) {
   ) {
     return true
   }
-  const looksLikeJSONDraft = text.startsWith('{') || text.startsWith('"')
-  return (
-    looksLikeJSONDraft &&
-    (text.includes('"type"') ||
-      text.includes('"fields"') ||
-      text.includes('"options"') ||
-      text.includes('"power"') ||
-      text.includes('"suggestions"'))
-  )
+  return false
 }
 
 function extractAgentResultPayload(text: string):
@@ -1116,6 +1182,13 @@ function extractAgentResultPayload(text: string):
       return result
     }
   }
+  const payload = parseAgentResultPayload(text)
+  if (payload) {
+    return {
+      cleanText: '',
+      payload,
+    }
+  }
   return undefined
 }
 
@@ -1128,28 +1201,107 @@ function extractAgentResultPayloadByLang(
       payload: Record<string, unknown>
     }
   | undefined {
-  const pattern = new RegExp(`\`\`\`${lang}\\s*([\\s\\S]*?)\`\`\``)
-  const match = text.match(pattern)
-  if (!match) {
+  const open = `\`\`\`${lang}`
+  const start = text.indexOf(open)
+  if (start < 0) {
     return undefined
   }
-  const payload = parseAgentResultPayload(match[1])
-  if (!payload) {
-    return undefined
+
+  let bodyStart = start + open.length
+  while (bodyStart < text.length && isFenceWhitespace(text[bodyStart])) {
+    bodyStart += 1
   }
-  return {
-    cleanText: text.replace(match[0], '').trim(),
-    payload,
+
+  let searchStart = bodyStart
+  while (searchStart < text.length) {
+    const end = text.indexOf('```', searchStart)
+    if (end < 0) {
+      return undefined
+    }
+
+    const payload = parseAgentResultPayload(text.slice(bodyStart, end))
+    if (payload) {
+      return {
+        cleanText: `${text.slice(0, start)}${text.slice(end + 3)}`.trim(),
+        payload,
+      }
+    }
+    searchStart = end + 3
   }
+
+  return undefined
 }
 
 function parseAgentResultPayload(value: string) {
+  const text = value.trim()
+  const repaired = repairJSONControlChars(text)
+  const sources = repaired === text ? [text] : [text, repaired]
+  for (const source of sources) {
+    const payload = parseAgentResultJSON(source)
+    if (payload) {
+      return payload
+    }
+  }
+  return undefined
+}
+
+function parseAgentResultJSON(value: string) {
   try {
-    const parsed = JSON.parse(value.trim())
+    const parsed = JSON.parse(value)
     return isAgentResultPayload(parsed) ? parsed : undefined
   } catch {
     return undefined
   }
+}
+
+function repairJSONControlChars(value: string) {
+  let result = ''
+  let inString = false
+  let escaped = false
+  for (const char of value) {
+    if (escaped) {
+      result += char
+      escaped = false
+      continue
+    }
+    if (char === '\\') {
+      result += char
+      escaped = inString
+      continue
+    }
+    if (char === '"') {
+      inString = !inString
+      result += char
+      continue
+    }
+    if (inString && isJSONControlChar(char)) {
+      result += escapeJSONControlChar(char)
+      continue
+    }
+    result += char
+  }
+  return result
+}
+
+function isJSONControlChar(value: string) {
+  return value.length > 0 && value.charCodeAt(0) < 32
+}
+
+function escapeJSONControlChar(value: string) {
+  switch (value) {
+    case '\n':
+      return '\\n'
+    case '\r':
+      return '\\r'
+    case '\t':
+      return '\\t'
+    default:
+      return `\\u${value.charCodeAt(0).toString(16).padStart(4, '0')}`
+  }
+}
+
+function isFenceWhitespace(value: string) {
+  return value === ' ' || value === '\t' || value === '\r' || value === '\n'
 }
 
 function isAgentResultPayload(
@@ -1217,6 +1369,16 @@ function hasAgentResultOutputField(source: Record<string, unknown>) {
   return (
     agentResultOutputKeys.some((key) => hasAgentResultValue(source[key])) ||
     isPlainObject(source.value)
+  )
+}
+
+function hasAgentDisplayPayload(output: AgentOutput) {
+  const content = isPlainObject(output.content) ? output.content : null
+  return (
+    hasAgentResultOutputField(output as Record<string, unknown>) ||
+    hasAgentResultValue(output.error) ||
+    (content != null &&
+      (hasAgentResultOutputField(content) || hasAgentResultValue(content.text)))
   )
 }
 

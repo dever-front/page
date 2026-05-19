@@ -5,6 +5,7 @@ import { runActions } from '@/lib/action'
 import { resolveLucideIcon } from '@/lib/icon'
 import { withBackNavigationSearch } from '@/lib/navigation'
 import { getByPath } from '@/lib/path'
+import { stripRouterBasePath } from '@/lib/router-path'
 import { cn } from '@/lib/utils'
 import type { PageStore } from '@/lib/store'
 
@@ -54,7 +55,7 @@ export function ActionButton({
           : { [searchParam]: String(searchValue) }
 
       navigate({
-        to: buttonMeta.to,
+        to: stripRouterBasePath(buttonMeta.to),
         search: withBackNavigationSearch(
           search,
           buttonMeta?.withBack ?? buttonMeta?.meta?.withBack

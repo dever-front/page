@@ -113,7 +113,10 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
     ? `${baseTitle}：${titleNameFromPath}${titleKeyFromPath ? `(${titleKeyFromPath})` : ''}`
     : baseTitle
   const description = descriptionFromPath || item.meta?.description || item.info
-  const assistantFormStore = pageStore ?? (item.meta?.formSection ? store : null)
+  const assistantEnabled = item.meta?.assistant !== false
+  const assistantFormStore = assistantEnabled
+    ? pageStore ?? (item.meta?.formSection ? store : null)
+    : null
   const assistantOverlayStore = assistantFormStore ?? store
   const [hotVersion, setHotVersion] = useState(0)
   const activateAssistantOverlay = useAssistantOverlayRegistration({

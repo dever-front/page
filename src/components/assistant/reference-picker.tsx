@@ -4,7 +4,16 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from 'react'
-import { FileText, FolderOpen, ImageIcon, Paperclip, Upload, X } from 'lucide-react'
+import {
+  FileText,
+  FolderOpen,
+  ImageIcon,
+  Paperclip,
+  Upload,
+  Video,
+  Volume2,
+  X,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -210,7 +219,14 @@ function ReferenceFileRow({
 }
 
 function referenceIcon(file: AssistantReferenceFile): ReactNode {
-  return file.kind === 'image'
-    ? <ImageIcon className="size-4 shrink-0 text-muted-foreground" />
-    : <FileText className="size-4 shrink-0 text-muted-foreground" />
+  if (file.kind === 'image') {
+    return <ImageIcon className="size-4 shrink-0 text-muted-foreground" />
+  }
+  if (file.kind === 'video') {
+    return <Video className="size-4 shrink-0 text-muted-foreground" />
+  }
+  if (file.kind === 'audio') {
+    return <Volume2 className="size-4 shrink-0 text-muted-foreground" />
+  }
+  return <FileText className="size-4 shrink-0 text-muted-foreground" />
 }

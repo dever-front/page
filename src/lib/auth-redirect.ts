@@ -1,4 +1,5 @@
 import { parseInternalNavigationHref, type NavigationTarget } from '@/lib/navigation'
+import { stripRouterBasePath } from '@/lib/router-path'
 
 type RedirectMenuItem = {
   path?: string
@@ -119,7 +120,7 @@ function addMenuPath(paths: Set<string>, path: unknown) {
 }
 
 function normalizeMenuPath(path: unknown) {
-  return String(path || '').replace(/[?#].*$/, '').replace(/^\/+|\/+$/g, '')
+  return stripRouterBasePath(path).replace(/[?#].*$/, '').replace(/^\/+|\/+$/g, '')
 }
 
 function isBlockedRedirectPath(path: string) {

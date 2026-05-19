@@ -1,4 +1,5 @@
 import { resolveLucideIcon } from '@/lib/icon'
+import { stripRouterBasePath } from '@/lib/router-path'
 import { type NavItem, type NavLink, type SidebarData } from './types'
 
 export type RemoteMenuItem = {
@@ -279,7 +280,7 @@ function normalizeAppPath(path: string) {
     pathname = rawPath
   }
 
-  pathname = pathname.split('?')[0].split('#')[0].trim()
+  pathname = stripRouterBasePath(pathname).split('?')[0].split('#')[0].trim()
   const normalized = pathname.replace(/^\/+|\/+$/g, '')
   if (!normalized) {
     return ''

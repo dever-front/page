@@ -24,6 +24,10 @@ export type AgentInteractionField = {
   multiple?: boolean
   sort?: number
   options?: AgentInteractionOption[]
+  option?: unknown
+  choices?: unknown
+  items?: unknown
+  enums?: unknown
 }
 
 export type AgentInteraction = {

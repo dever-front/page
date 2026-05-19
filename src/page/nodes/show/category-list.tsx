@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { getByPath, resolvePath, setByPath } from '@/lib/path'
+import { getCurrentRouterPathname } from '@/lib/router-path'
 import { ActionButton } from './shared/action-button'
 import { ShowStatus } from './status'
 import type { NodeItemProps } from '../../nodes'
@@ -79,7 +80,7 @@ export function ShowCategoryList({
       }
 
       navigate({
-        to: window.location.pathname,
+        to: getCurrentRouterPathname(),
         replace: options?.replace === true,
         search: (prev: Record<string, unknown>) => ({
           ...prev,

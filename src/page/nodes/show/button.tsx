@@ -24,6 +24,10 @@ import {
   parseInternalNavigationHref,
   withBackNavigationSearch,
 } from '@/lib/navigation'
+import {
+  getCurrentRouterPathname,
+  stripRouterBasePath,
+} from '@/lib/router-path'
 import { resolveLucideIcon } from '@/lib/icon'
 import { cn } from '@/lib/utils'
 import type { NodeItemProps } from '../../nodes'
@@ -61,7 +65,7 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
 
     if (item.meta?.searchSubmit === true) {
       navigate({
-        to: window.location.pathname,
+        to: getCurrentRouterPathname(),
         search: (prev: Record<string, unknown>) => ({
           ...prev,
           ...buildRemoteSearchPatch(
@@ -76,11 +80,12 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
     if (item.meta?.to) {
       const openMode = item.meta?.open || 'path'
       const searchLayoutId = String(item.meta?.searchLayoutId || layoutId || '').trim()
+      const targetPath = stripRouterBasePath(item.meta.to)
 
       if (openMode === 'modal') {
         const stateKey = item.meta?.stateKey || 'dialog.open'
         const routeKey = item.meta?.routeKey || 'dialog.route'
-        store.getState().setPageState(routeKey, item.meta.to)
+        store.getState().setPageState(routeKey, targetPath)
         store.getState().setPageState(stateKey, true)
         return true
       }
@@ -88,18 +93,18 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
       if (openMode === 'drawer') {
         const stateKey = item.meta?.stateKey || 'drawer.open'
         const routeKey = item.meta?.routeKey || 'drawer.route'
-        store.getState().setPageState(routeKey, item.meta.to)
+        store.getState().setPageState(routeKey, targetPath)
         store.getState().setPageState(stateKey, true)
         return true
       }
 
       if (
-        item.meta.to === window.location.pathname &&
+        targetPath === getCurrentRouterPathname() &&
         isManualRemoteSearchLayout(store.getState().schema, searchLayoutId)
       ) {
         resetRemoteSearchValues(store, searchLayoutId)
         navigate({
-          to: item.meta.to,
+          to: targetPath,
           search: (prev: Record<string, unknown>) => ({
             ...prev,
             ...buildRemoteSearchResetPatch(store.getState().schema, searchLayoutId),
@@ -109,7 +114,7 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
       }
 
       const search = withBackNavigationSearch(undefined, item.meta?.withBack)
-      navigate({ to: item.meta.to, search })
+      navigate({ to: targetPath, search })
       return true
     }
 

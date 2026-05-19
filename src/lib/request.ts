@@ -5,6 +5,10 @@
 import { getRuntimeConfig } from '@/config/app-config'
 import { getCookie } from '@/lib/cookies'
 import { resetPageProgressCache } from '@/lib/page-progress'
+import {
+  getCurrentRouterHref,
+  stripRouterBasePath,
+} from '@/lib/router-path'
 import { ACCESS_TOKEN_KEY, useAuthStore } from '@/stores/auth-store'
 
 export type RequestResult = {
@@ -179,7 +183,7 @@ function applyClientPageHeader(headers: Record<string, string>) {
     return headers
   }
 
-  const clientPage = `${window.location.pathname || ''}${window.location.search || ''}${window.location.hash || ''}`.trim()
+  const clientPage = getCurrentRouterHref().trim()
   if (!clientPage) {
     return headers
   }
@@ -208,7 +212,7 @@ function appendQueryString(url: string, params?: any) {
 }
 
 function normalizeRoute(route: string) {
-  return route.replace(/[?#].*$/, '').replace(/^\/+|\/+$/g, '')
+  return stripRouterBasePath(route).replace(/[?#].*$/, '').replace(/^\/+|\/+$/g, '')
 }
 
 /**
@@ -295,25 +299,8 @@ export async function request(
       return normalized
     }
 
-    if (
-      result &&
-      typeof result === 'object' &&
-      'status' in result &&
-      'content' in result
-    ) {
-      const normalized: RequestResult = {
-        code: result.status === 1 ? 0 : Number(result.code ?? -1),
-        data: result,
-        message: String(result.msg ?? result.message ?? ''),
-      }
-
-      if (Number(result.status) === 2 && normalized.message) {
-        emitRequestError({
-          code: normalized.code,
-          message: normalized.message,
-        })
-      }
-
+    if (isRuntimeResponseFrame(result)) {
+      const normalized = normalizeRuntimeResponseFrame(result)
       applyRuntimeRequestSideEffects(api, normalizedMethod, normalized)
       return normalized
     }
@@ -375,6 +362,34 @@ function isBackendResponseEnvelope(value: unknown) {
     !Array.isArray(value) &&
     ('status' in value || 'code' in value || 'msg' in value || 'message' in value)
   )
+}
+
+function isRuntimeResponseFrame(value: unknown) {
+  return (
+    value != null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    'status' in value &&
+    ('content' in value ||
+      ('request_id' in value && 'type' in value && 'output' in value))
+  )
+}
+
+function normalizeRuntimeResponseFrame(result: any): RequestResult {
+  const normalized: RequestResult = {
+    code: Number(result.status) === 1 ? 0 : Number(result.code ?? -1),
+    data: result,
+    message: String(result.msg ?? result.message ?? ''),
+  }
+
+  if (Number(result.status) === 2 && normalized.message) {
+    emitRequestError({
+      code: normalized.code,
+      message: normalized.message,
+    })
+  }
+
+  return normalized
 }
 
 function parseResponseBody(rawText: string) {

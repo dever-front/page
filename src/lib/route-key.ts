@@ -1,7 +1,12 @@
+import {
+  getCurrentRouterHref,
+  stripRouterBasePath,
+} from '@/lib/router-path'
+
 let activeRouteNavigationKey = ''
 
 export function normalizeRouteKey(route: unknown) {
-  const normalized = String(route ?? '').trim()
+  const normalized = stripRouterBasePath(route)
   if (!normalized) {
     return ''
   }
@@ -60,5 +65,5 @@ function getCurrentInternalHref() {
     return hash.slice(1)
   }
 
-  return `${window.location.pathname || ''}${window.location.search || ''}`
+  return getCurrentRouterHref()
 }

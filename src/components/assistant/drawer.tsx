@@ -47,6 +47,7 @@ import {
   buildAssistantFormFillTask,
   mergeAssistantTaskReferences,
 } from '@/lib/assistant/task'
+import { stripRouterBasePath } from '@/lib/router-path'
 import {
   cancelStreamTiming,
   createStreamTiming,
@@ -462,7 +463,11 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
         registration,
         context,
         permissionContext: runPermissionContext,
-        navigate: (target) => navigate({ to: target.to, search: target.search }),
+        navigate: (target) =>
+          navigate({
+            to: stripRouterBasePath(target.to),
+            search: target.search,
+          }),
       },
       action
     )

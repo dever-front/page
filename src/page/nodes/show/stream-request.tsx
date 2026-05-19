@@ -338,7 +338,7 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
 
   const applyFrame = (frame: StreamFrame) => {
     const frameOutput = normalizeRuntimeFrameOutput(frame?.output, frame)
-    if (isEmptyRuntimeOutput(frameOutput)) {
+    if (isEmptyRuntimeOutput(frameOutput) && frame.type !== 'result') {
       return
     }
     const frameCancelable = resolveRuntimeFrameCancelable(frame)
@@ -365,7 +365,9 @@ export function ShowStreamRequest({ item, store }: NodeItemProps) {
       if (frame.type === 'result') {
         return {
           ...current,
-          finalOutput: frameOutput,
+          finalOutput: isEmptyRuntimeOutput(frameOutput)
+            ? { text: current.text || valueText(frame?.msg) }
+            : frameOutput,
         }
       }
 

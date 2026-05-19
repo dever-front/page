@@ -5,7 +5,7 @@ export type AssistantReferenceFile = {
   name: string
   type: string
   size: number
-  kind: 'image' | 'text' | 'file'
+  kind: 'image' | 'video' | 'audio' | 'text' | 'file'
   text?: string
   data_url?: string
   url?: string
@@ -35,6 +35,12 @@ export function buildAssistantReferenceSummary(
       return file.data_url
         ? `${base}${location}\n这是一张参考图片，图片内容已随 task.reference_files 提供。`
         : `${base}${location}\n这是一张参考图片，当前只提供了文件元信息。`
+    }
+    if (file.kind === 'video') {
+      return `${base}${location}\n这是一段参考视频。`
+    }
+    if (file.kind === 'audio') {
+      return `${base}${location}\n这是一段参考音频。`
     }
     return `${base}${location}`
   })
@@ -120,6 +126,12 @@ export function resolveAssistantReferenceKind(
   if (type.startsWith('image/') || isImageName(name)) {
     return 'image'
   }
+  if (type.startsWith('video/') || isVideoName(name)) {
+    return 'video'
+  }
+  if (type.startsWith('audio/') || isAudioName(name)) {
+    return 'audio'
+  }
   if (
     type.startsWith('text/') ||
     type.includes('json') ||
@@ -136,6 +148,12 @@ export function assistantReferenceKindText(file: AssistantReferenceFile) {
   }
   if (file.kind === 'image') {
     return file.data_url ? '参考图片' : '图片资源'
+  }
+  if (file.kind === 'video') {
+    return '参考视频'
+  }
+  if (file.kind === 'audio') {
+    return '参考音频'
   }
   return file.url ? '资源文件' : '参考文件'
 }
@@ -177,6 +195,18 @@ function resolveAssistantReferenceName(url: string) {
 
 function isImageName(name: string) {
   return ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg'].some((suffix) =>
+    name.endsWith(suffix)
+  )
+}
+
+function isVideoName(name: string) {
+  return ['.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.m3u8'].some((suffix) =>
+    name.endsWith(suffix)
+  )
+}
+
+function isAudioName(name: string) {
+  return ['.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg', '.opus'].some((suffix) =>
     name.endsWith(suffix)
   )
 }

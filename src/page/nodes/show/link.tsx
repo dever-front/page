@@ -7,6 +7,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { getStoreValueByPath } from '@/lib/store'
+import { stripRouterBasePath } from '@/lib/router-path'
 import type { NodeItemProps } from '../../nodes'
 
 export function ShowLink({ item, value, runAction, store }: NodeItemProps) {
@@ -14,7 +15,7 @@ export function ShowLink({ item, value, runAction, store }: NodeItemProps) {
 
   const handleClick = async () => {
     if (item.meta?.to) {
-      navigate({ to: item.meta.to })
+      navigate({ to: stripRouterBasePath(item.meta.to) })
       return
     }
 

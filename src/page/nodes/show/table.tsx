@@ -40,6 +40,7 @@ import { InlineTip } from './tooltip'
 import { cn, formatDisplayValue } from '@/lib/utils'
 import { resolveLucideIcon } from '@/lib/icon'
 import { withBackNavigationSearch } from '@/lib/navigation'
+import { stripRouterBasePath } from '@/lib/router-path'
 import { runActions } from '@/lib/action'
 import { ActionButton } from './shared/action-button'
 import { getStoreValueByPath, useStorePathValue } from '@/lib/store'
@@ -357,7 +358,7 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
                             store={store}
                             onNavigate={(to, search, options) =>
                               navigate({
-                                to,
+                                to: stripRouterBasePath(to),
                                 search: withBackNavigationSearch(search, options?.withBack),
                               })
                             }

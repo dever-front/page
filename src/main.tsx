@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { handleServerError } from '@/lib/handle-server-error'
 import { resetFrontRuntimeCache } from '@/lib/request'
 import { parseRouterSearch, stringifyRouterSearch } from '@/lib/router-search'
+import { getRouterBasePath } from '@/lib/router-path'
 import { DirectionProvider } from './context/direction-provider'
 import { FontProvider } from './context/font-provider'
 import { ThemeProvider } from './context/theme-provider'
@@ -76,6 +77,7 @@ const queryClient = new QueryClient({
 // Create a new router instance
 const router = createRouter({
   routeTree,
+  basepath: getRouterBasePath(),
   context: { queryClient },
   defaultPreload: false,
   defaultPreloadStaleTime: 0,

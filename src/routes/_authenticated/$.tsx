@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { stringifyRouterSearch } from '@/lib/router-search'
+import { stripRouterBasePath } from '@/lib/router-path'
 import { Page } from '@/page/page'
 
 export const Route = createFileRoute('/_authenticated/$')({
@@ -11,6 +12,6 @@ function DynamicNestedPage() {
   const search = Route.useSearch()
   const query = stringifyRouterSearch(search as Record<string, unknown>)
 
-  const normalizedRoute = String(_splat ?? '').replace(/^\/+/, '')
+  const normalizedRoute = stripRouterBasePath(`/${_splat ?? ''}`).replace(/^\/+/, '')
   return <Page route={`/${normalizedRoute}${query}`} />
 }

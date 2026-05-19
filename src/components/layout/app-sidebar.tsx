@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocation } from '@tanstack/react-router'
 import { useLayout } from '@/context/layout-provider'
 import { useAuthStore } from '@/stores/auth-store'
+import { stripRouterBasePath } from '@/lib/router-path'
 import {
   Sidebar,
   SidebarContent,
@@ -30,7 +31,7 @@ export function AppSidebar({ remoteMenu = [] }: AppSidebarProps) {
   const { collapsible, variant } = useLayout()
   const href = useLocation({
     select: (location) =>
-      `${location.pathname || ''}${location.searchStr || ''}${location.hash || ''}`,
+      `${stripRouterBasePath(location.pathname || '')}${location.searchStr || ''}${location.hash || ''}`,
   })
   const user = useAuthStore((state) => state.auth.user)
   const primaryMenuStorageKey = useMemo(

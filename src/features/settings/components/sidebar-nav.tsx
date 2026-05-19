@@ -1,6 +1,7 @@
 import { useState, type JSX } from 'react'
 import { useLocation, useNavigate, Link } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
+import { stripRouterBasePath } from '@/lib/router-path'
 import { buttonVariants } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -21,8 +22,9 @@ type SidebarNavProps = React.HTMLAttributes<HTMLElement> & {
 
 export function SidebarNav({ className, items, ...props }: SidebarNavProps) {
   const { pathname } = useLocation()
+  const currentPath = stripRouterBasePath(pathname)
   const navigate = useNavigate()
-  const [val, setVal] = useState(pathname ?? '/settings')
+  const [val, setVal] = useState(currentPath || '/settings')
 
   const handleSelect = (e: string) => {
     setVal(e)
@@ -67,7 +69,7 @@ export function SidebarNav({ className, items, ...props }: SidebarNavProps) {
               to={item.href}
               className={cn(
                 buttonVariants({ variant: 'ghost' }),
-                pathname === item.href
+                currentPath === item.href
                   ? 'bg-muted hover:bg-accent'
                   : 'hover:bg-accent hover:underline',
                 'justify-start'
