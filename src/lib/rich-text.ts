@@ -126,6 +126,9 @@ function hasVisibleRichText(node: RichTextNode): boolean {
   if (node.type === richTextMediaNodeNames.audio) {
     return !!String(node.attrs?.src || '').trim()
   }
+  if (node.type === 'agentAbilityPlaceholder' || node.type === 'agentTaskPlaceholder') {
+    return true
+  }
   if (node.type === 'text') {
     return !!String(node.text || '').trim()
   }

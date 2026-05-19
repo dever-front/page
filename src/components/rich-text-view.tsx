@@ -98,6 +98,9 @@ function renderRichTextNode(node: RichTextNode | null | undefined, key: string):
       return <ol key={key}>{children}</ol>
     case 'paragraph':
       return <p key={key}>{children}</p>
+    case 'agentAbilityPlaceholder':
+    case 'agentTaskPlaceholder':
+      return renderRichTextPlaceholder(node, key)
     case 'table':
       return <table key={key}>{children}</table>
     case 'tableCell':
@@ -197,6 +200,58 @@ function renderRichTextAudio(node: RichTextNode, key: string) {
     return null
   }
   return <audio key={key} src={attrs.src} controls preload="none" style={attrs.style} />
+}
+
+function renderRichTextPlaceholder(node: RichTextNode, key: string) {
+  const attrs = node.attrs || {}
+  const status = String(attrs.status || 'pending')
+  const title = String(attrs.title || attrs.kind || '素材生成').trim()
+  const text = String(attrs.error || attrs.text || '').trim()
+  const progress = normalizePlaceholderProgress(attrs.progress)
+  const failed = status === 'failed'
+  const succeeded = status === 'succeeded'
+
+  return (
+    <div
+      key={key}
+      className={cn(
+        'my-4 rounded-lg border bg-muted/25 px-3 py-2',
+        failed && 'border-destructive/30 bg-destructive/10',
+        succeeded && 'border-emerald-500/25 bg-emerald-500/10'
+      )}
+    >
+      <div className='mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground'>
+        <span className='truncate'>
+          {title || '素材生成'}
+          {text ? `：${text}` : ''}
+        </span>
+        {progress != null ? (
+          <span className='shrink-0 tabular-nums'>{progress}%</span>
+        ) : null}
+      </div>
+      <div className='h-1.5 overflow-hidden rounded-full bg-muted'>
+        {progress != null ? (
+          <div
+            className={cn(
+              'h-full rounded-full transition-[width]',
+              failed ? 'bg-destructive' : succeeded ? 'bg-emerald-500' : 'bg-primary'
+            )}
+            style={{ width: `${progress}%` }}
+          />
+        ) : (
+          <div className='h-full w-1/3 animate-pulse rounded-full bg-primary/75' />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function normalizePlaceholderProgress(value: unknown) {
+  const progress = Number(value)
+  if (!Number.isFinite(progress)) {
+    return null
+  }
+  return Math.max(0, Math.min(100, Math.round(progress)))
 }
 
 function headingTag(node: RichTextNode) {

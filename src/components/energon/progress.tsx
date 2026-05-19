@@ -29,6 +29,9 @@ export function EnergonProgressBlock({
 }
 
 export function normalizeEnergonPercent(value: unknown) {
+  if (value == null || value === '') {
+    return null
+  }
   const percent = Number(value)
   if (!Number.isFinite(percent)) {
     return null

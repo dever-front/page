@@ -45,6 +45,13 @@ import {
 } from '@/components/energon/content-view'
 import type { NodeItemProps } from '../../nodes'
 import {
+  AgentResultCard,
+  AgentResultDrawer,
+  type AgentResultDetail,
+  type AgentResultOutput,
+  type AgentResultTask,
+} from './agent-result'
+import {
   AgentInteractionPanel,
   type AgentInteraction,
   type AgentInteractionSubmitResult,
@@ -82,13 +89,10 @@ type AgentMessage = {
   error?: string
   requestID?: string
   actionTiming?: StreamTiming
+  resultDetail?: AgentResultDetail
 }
 
-type AgentOutput = EnergonOutput & {
-  kind?: string
-  type?: string
-  content?: unknown
-  suggestions?: unknown
+type AgentOutput = AgentResultOutput & {
   interaction?: AgentInteraction
 }
 
@@ -126,6 +130,7 @@ export function ShowAgent({ item, store }: NodeItemProps) {
   const [interactionDialogOpen, setInteractionDialogOpen] = useState(false)
   const [interactionDialogMessageID, setInteractionDialogMessageID] =
     useState('')
+  const [resultDrawerMessageID, setResultDrawerMessageID] = useState('')
   const messageListRef = useRef<HTMLDivElement>(null)
   const lastAutoScrollResultKeyRef = useRef('')
   const finalSideEffectKeyRef = useRef('')
@@ -190,6 +195,26 @@ export function ShowAgent({ item, store }: NodeItemProps) {
       ) || pendingInteractionMessage
     )
   }, [interactionDialogMessageID, messages, pendingInteractionMessage])
+  const resultDrawerMessage = useMemo(() => {
+    if (!resultDrawerMessageID) {
+      return undefined
+    }
+    return messages.find(
+      (message) =>
+        message.id === resultDrawerMessageID && message.role === 'assistant'
+    )
+  }, [messages, resultDrawerMessageID])
+  const resultDrawerDetail = useMemo(
+    () => (resultDrawerMessage ? buildAgentResultDetail(resultDrawerMessage) : null),
+    [resultDrawerMessage]
+  )
+  const resultDrawerSuggestions = useMemo(
+    () =>
+      resultDrawerMessage
+        ? buildMessageSuggestions(resultDrawerMessage, Boolean(resultDrawerDetail))
+        : [],
+    [resultDrawerDetail, resultDrawerMessage]
+  )
 
   const canSend = useMemo(
     () => input.trim().length > 0 && agentKey.length > 0 && !running,
@@ -239,6 +264,7 @@ export function ShowAgent({ item, store }: NodeItemProps) {
     setLastStreamID('0-0')
     setInteractionDialogOpen(false)
     setInteractionDialogMessageID('')
+    setResultDrawerMessageID('')
   }, [initialInput])
 
   useEffect(() => {
@@ -298,6 +324,7 @@ export function ShowAgent({ item, store }: NodeItemProps) {
     if (!text || running) {
       return
     }
+    setResultDrawerMessageID('')
     await runAgent(
       { text },
       {
@@ -305,7 +332,9 @@ export function ShowAgent({ item, store }: NodeItemProps) {
         text,
         kind: 'chat',
       },
-      messages
+      messages,
+      '',
+      undefined
     )
   }
 
@@ -518,6 +547,9 @@ export function ShowAgent({ item, store }: NodeItemProps) {
       const frameInteraction = normalizeFrameInteraction(
         frameOutput.interaction
       )
+      if (frame?.type !== 'result' && isAgentResultRuntimeEvent(event)) {
+        return applyResultRuntimeEvent(message, frameOutput, frame)
+      }
       let actionTiming = message.actionTiming
       if (isStreamTimingStatusOutput(frameOutput)) {
         actionTiming = updateStreamTimingFromOutput(actionTiming, frameOutput)
@@ -537,11 +569,16 @@ export function ShowAgent({ item, store }: NodeItemProps) {
         }
         nextOutput.finalOutput = finalOutput
         const finalText = valueText(finalOutput.text) || nextOutput.text
+        const resultDetail = mergeMessageResultDetail(
+          message.resultDetail,
+          resultDetailFromFinalOutput(finalOutput)
+        )
         return {
           ...message,
           text: finalText,
           interaction: frameInteraction || message.interaction,
           output: nextOutput,
+          resultDetail,
           running: false,
           requestID: valueText(frame?.request_id) || message.requestID,
           actionTiming: finishStreamTiming(
@@ -674,6 +711,7 @@ export function ShowAgent({ item, store }: NodeItemProps) {
                   now={nowMs}
                   running={running}
                   onOpenInteraction={openInteractionDialog}
+                  onOpenResult={() => setResultDrawerMessageID(message.id)}
                   onSendSuggestion={(suggestion) =>
                     void sendSuggestion(suggestion)
                   }
@@ -696,6 +734,26 @@ export function ShowAgent({ item, store }: NodeItemProps) {
         disabled={running}
         onOpenChange={changeInteractionDialogOpen}
         onSubmit={(result) => void submitInteraction(result)}
+      />
+
+      <AgentResultDrawer
+        open={Boolean(resultDrawerMessage)}
+        detail={resultDrawerDetail}
+        running={running}
+        suggestions={
+          resultDrawerSuggestions.length > 0 ? (
+            <AgentSuggestionBar
+              suggestions={resultDrawerSuggestions}
+              disabled={running}
+              onSelect={(suggestion) => void sendSuggestion(suggestion)}
+            />
+          ) : null
+        }
+        onOpenChange={(open) => {
+          if (!open) {
+            setResultDrawerMessageID('')
+          }
+        }}
       />
 
       {error ? (
@@ -777,7 +835,10 @@ function buildLatestVisibleResultKey(messages: AgentMessage[]) {
     ) {
       continue
     }
-    if (hasContentViewOutput(buildContentViewOutput(message))) {
+    if (
+      buildAgentResultDetail(message) ||
+      hasContentViewOutput(buildContentViewOutput(message))
+    ) {
       return message.id
     }
   }
@@ -848,22 +909,32 @@ function AgentAssistantMessage({
   now,
   running,
   onOpenInteraction,
+  onOpenResult,
   onSendSuggestion,
 }: {
   message: AgentMessage
   now: number
   running: boolean
   onOpenInteraction: (messageID: string) => void
+  onOpenResult: () => void
   onSendSuggestion: (suggestion: AgentSuggestion) => void
 }) {
+  const resultDetail = buildAgentResultDetail(message)
+  const isResultCard = Boolean(resultDetail)
   const contentOutput = buildContentViewOutput(message)
-  const hasOutput = hasContentViewOutput(contentOutput)
+  const hasOutput = isResultCard || hasContentViewOutput(contentOutput)
   const suggestions = buildMessageSuggestions(message, hasOutput)
 
   return (
     <div className='space-y-2'>
       <AgentResultKindBadge message={message} hasOutput={hasOutput} />
-      {hasOutput ? (
+      {resultDetail ? (
+        <AgentResultCard
+          detail={resultDetail}
+          running={Boolean(message.running)}
+          onOpen={onOpenResult}
+        />
+      ) : hasOutput ? (
         <EnergonContentView
           output={contentOutput}
           streaming={false}
@@ -976,10 +1047,7 @@ function buildHistory(messages: AgentMessage[]) {
         row.data = message.data
       }
       if (message.output?.finalOutput) {
-        const output = normalizeAgentDisplayOutput(
-          message.output.finalOutput,
-          message.text
-        )
+        const output = historyResultOutput(message)
         if (!isNonResultOutput(output)) {
           row.output = output
         }
@@ -1009,7 +1077,243 @@ function historyMessageText(message: AgentMessage) {
   return message.text
 }
 
+function historyResultOutput(message: AgentMessage) {
+  const detail = buildAgentResultDetail(message)
+  if (detail?.result) {
+    return normalizeAgentDisplayOutput(detail.result, message.text)
+  }
+  return normalizeAgentDisplayOutput(
+    (message.output?.finalOutput || {}) as AgentOutput,
+    message.text
+  )
+}
+
+function isAgentResultRuntimeEvent(event: string) {
+  return event === 'result_detail' || event === 'result_task' || event === 'result_progress'
+}
+
+function applyResultRuntimeEvent(
+  message: AgentMessage,
+  output: AgentOutput,
+  frame: AgentFrame
+): AgentMessage {
+  const event = valueText(output.event).toLowerCase()
+  let detail = message.resultDetail
+  if (event === 'result_detail') {
+    detail = mergeMessageResultDetail(
+      detail,
+      resultDetailFromRuntimeOutput(output)
+    )
+  } else if (event === 'result_task') {
+    detail = updateResultDetailTask(
+      detail,
+      normalizeAgentResultTask(output),
+      valueText(output.result_id)
+    )
+  } else if (event === 'result_progress') {
+    detail = updateResultDetailProgress(
+      detail,
+      valueText(output.result_id),
+      valueText(output.text),
+      normalizeProgressValue(output.progress)
+    )
+  }
+  return {
+    ...message,
+    text: message.text || '内容已生成，点击查看结果。',
+    resultDetail: detail,
+    requestID: valueText(frame?.request_id) || message.requestID,
+  }
+}
+
+function buildAgentResultDetail(message: AgentMessage): AgentResultDetail | null {
+  const detail = mergeMessageResultDetail(
+    message.resultDetail,
+    resultDetailFromFinalOutput(message.output?.finalOutput)
+  )
+  if (!detail) {
+    return null
+  }
+  return detail.result || detail.tasks.length ? detail : null
+}
+
+function resultDetailFromRuntimeOutput(output?: AgentOutput): AgentResultDetail | undefined {
+  if (!output) {
+    return undefined
+  }
+  const result = isPlainObject(output.result)
+    ? normalizeAgentDisplayOutput(output.result as AgentOutput)
+    : undefined
+  const tasks = normalizeAgentResultTasks(output.tasks)
+  return {
+    id: valueText(output.result_id) || valueText(result?.result_id),
+    title: valueText(output.title || result?.title) || '最终结果',
+    result,
+    tasks,
+    progress: normalizeProgressValue(output.progress),
+    progressText: valueText(output.progress_text),
+  }
+}
+
+function resultDetailFromFinalOutput(output?: AgentOutput | null): AgentResultDetail | undefined {
+  if (!output) {
+    return undefined
+  }
+  const event = valueText(output.event).toLowerCase()
+  if (event !== 'result_card' && !isPlainObject(output.result)) {
+    return undefined
+  }
+  const result = isPlainObject(output.result)
+    ? normalizeAgentDisplayOutput(output.result as AgentOutput)
+    : normalizeAgentDisplayOutput(output)
+  return {
+    id: valueText(output.result_id || result.result_id),
+    title: valueText(output.title || result.title) || '最终结果',
+    result,
+    tasks: normalizeAgentResultTasks(output.tasks || result.tasks),
+    progress: normalizeProgressValue(output.progress),
+    progressText: valueText(output.progress_text),
+  }
+}
+
+function mergeMessageResultDetail(
+  current?: AgentResultDetail,
+  incoming?: AgentResultDetail
+): AgentResultDetail | undefined {
+  if (!incoming) {
+    return current
+  }
+  if (!current) {
+    return {
+      ...incoming,
+      tasks: sortAgentResultTasks(incoming.tasks),
+    }
+  }
+  return {
+    id: incoming.id || current.id,
+    title: incoming.title || current.title,
+    result: incoming.result || current.result,
+    tasks: mergeAgentResultTasks(current.tasks, incoming.tasks),
+    progress: incoming.progress ?? current.progress,
+    progressText: incoming.progressText || current.progressText,
+  }
+}
+
+function updateResultDetailTask(
+  current: AgentResultDetail | undefined,
+  task: AgentResultTask | null,
+  resultID: string
+): AgentResultDetail {
+  const base = current || emptyAgentResultDetail(resultID)
+  if (!task) {
+    return base
+  }
+  return {
+    ...base,
+    tasks: mergeAgentResultTasks(base.tasks, [task]),
+  }
+}
+
+function updateResultDetailProgress(
+  current: AgentResultDetail | undefined,
+  resultID: string,
+  text: string,
+  progress: number | null
+): AgentResultDetail {
+  const base = current || emptyAgentResultDetail(resultID)
+  return {
+    ...base,
+    progress,
+    progressText: text || base.progressText,
+  }
+}
+
+function emptyAgentResultDetail(resultID: string): AgentResultDetail {
+  return {
+    id: resultID,
+    title: '最终结果',
+    tasks: [],
+    progress: null,
+    progressText: '',
+  }
+}
+
+function mergeAgentResultTasks(
+  current: AgentResultTask[],
+  incoming: AgentResultTask[]
+) {
+  const byID = new Map<string, AgentResultTask>()
+  current.forEach((task) => byID.set(task.id, task))
+  incoming.forEach((task) => {
+    const previous = byID.get(task.id)
+    byID.set(task.id, previous ? { ...previous, ...task } : task)
+  })
+  return sortAgentResultTasks([...byID.values()])
+}
+
+function sortAgentResultTasks(tasks: AgentResultTask[]) {
+  return [...tasks].sort((a, b) => a.sort - b.sort)
+}
+
+function normalizeAgentResultTasks(value: unknown): AgentResultTask[] {
+  const values = Array.isArray(value) ? value : value == null ? [] : [value]
+  return values
+    .map(normalizeAgentResultTask)
+    .filter((task): task is AgentResultTask => task != null)
+    .sort((a, b) => a.sort - b.sort)
+}
+
+function normalizeAgentResultTask(value: unknown): AgentResultTask | null {
+  if (!isPlainObject(value)) {
+    return null
+  }
+  const id = valueText(value.id || value.task_id || value.taskId).trim()
+  const placeholderID = valueText(
+    value.placeholder_id || value.placeholderId || id
+  ).trim()
+  const normalizedID = id || placeholderID
+  if (!normalizedID) {
+    return null
+  }
+  const meta = isPlainObject(value.meta) ? value.meta : {}
+  const outputSource = isPlainObject(value.output)
+    ? value.output
+    : isPlainObject(meta.output)
+      ? meta.output
+      : undefined
+  const output = outputSource
+    ? normalizeAgentDisplayOutput(outputSource as AgentOutput)
+    : undefined
+  return {
+    id: normalizedID,
+    placeholderID,
+    title:
+      valueText(value.title || value.name || value.label || value.power).trim() ||
+      '素材任务',
+    kind: valueText(value.kind || value.media_type || value.mediaType).trim(),
+    power: valueText(value.power).trim(),
+    execution: valueText(value.execution || value.mode).trim() || 'async',
+    status: valueText(value.status || value.state).trim() || 'pending',
+    text: valueText(value.text || value.message).trim(),
+    error: valueText(value.error).trim(),
+    progress: normalizeProgressValue(value.progress ?? meta.progress ?? meta.percent),
+    output,
+    sort: Number(value.sort || 0),
+  }
+}
+
+function normalizeProgressValue(value: unknown) {
+  const progress = Number(value)
+  if (!Number.isFinite(progress)) {
+    return null
+  }
+  return Math.max(0, Math.min(100, Math.round(progress)))
+}
+
 function buildContentViewOutput(message: AgentMessage) {
+  if (buildAgentResultDetail(message)) {
+    return undefined
+  }
   if (message.running || message.interaction) {
     return undefined
   }
@@ -1100,9 +1404,7 @@ function normalizeAgentDisplayOutput(
   )
   if (protocol) {
     clearAgentResultOutputFields(next)
-    const content = isPlainObject(protocol.payload.content)
-      ? protocol.payload.content
-      : null
+    const content = normalizeAgentContentRecord(protocol.payload.content)
     if (content) {
       copyAgentResultOutputFields(next, content)
     }
@@ -1119,10 +1421,15 @@ function normalizeAgentDisplayOutput(
       )
     )
     next.suggestions = protocol.payload.suggestions
-    next.content = protocol.payload.content
+    next.content = content || protocol.payload.content
+    next.tasks = protocol.payload.tasks || content?.tasks
     return next
   }
 
+  const normalizedContent = normalizeAgentContentRecord(next.content)
+  if (normalizedContent) {
+    next.content = normalizedContent
+  }
   if (isPlainObject(next.content)) {
     copyAgentResultOutputFields(next, next.content)
   }
@@ -1130,6 +1437,14 @@ function normalizeAgentDisplayOutput(
     const text = agentResultText(next)
     if (text) {
       next.text = text
+    }
+  }
+  if (isGoMapTextDump(next.text)) {
+    const text = readableGoMapTextDump(next.text)
+    if (text) {
+      next.text = text
+    } else {
+      delete next.text
     }
   }
   return next
@@ -1317,6 +1632,7 @@ function isAgentResultPayload(
     kind === 'final_result' ||
     kind === 'tool_result' ||
     'content' in value ||
+    'tasks' in value ||
     'suggestions' in value ||
     hasAgentResultOutputField(value) ||
     (isPlainObject(value.content) && hasAgentResultOutputField(value.content))
@@ -1336,16 +1652,111 @@ function normalizeAgentOutputKind(value: string) {
 
 function agentResultText(value: unknown): string {
   if (!isPlainObject(value)) {
-    return valueText(value)
+    return typeof value === 'string' ? valueText(value) : ''
   }
   if (valueText(value.text)) {
     return valueText(value.text)
   }
   const content = value.content
   if (!isPlainObject(content)) {
-    return valueText(content)
+    return typeof content === 'string' ? valueText(content) : ''
   }
   return valueText(content.text)
+}
+
+function normalizeAgentContentRecord(
+  value: unknown
+): Record<string, unknown> | null {
+  if (isPlainObject(value)) {
+    return value
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return {
+      format: 'markdown',
+      text: value.trim(),
+    }
+  }
+  const nodes = normalizeAgentRichNodes(value)
+  if (nodes.length === 0) {
+    return null
+  }
+  const content: Record<string, unknown> = {
+    format: 'rich_json',
+    rich: {
+      type: 'doc',
+      content: nodes,
+    },
+  }
+  const text = richNodesText(nodes)
+  if (text) {
+    content.text = text
+  }
+  return content
+}
+
+function normalizeAgentRichNodes(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item) => {
+    if (typeof item === 'string' && item.trim()) {
+      return [paragraphNode(item.trim())]
+    }
+    if (!isPlainObject(item)) {
+      return []
+    }
+    const type = valueText(item.type)
+    if (type === 'text') {
+      const text = valueText(item.text).trim()
+      return text ? [paragraphNode(text)] : []
+    }
+    return [item]
+  })
+}
+
+function paragraphNode(text: string): Record<string, unknown> {
+  return {
+    type: 'paragraph',
+    content: [{ type: 'text', text }],
+  }
+}
+
+function richNodesText(nodes: Record<string, unknown>[]) {
+  const values: string[] = []
+  nodes.forEach((node) => collectRichNodeText(node, values))
+  return values.join('\n\n').trim()
+}
+
+function collectRichNodeText(value: unknown, values: string[]) {
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectRichNodeText(item, values))
+    return
+  }
+  if (!isPlainObject(value)) {
+    return
+  }
+  if (valueText(value.type) === 'text') {
+    const text = valueText(value.text).trim()
+    if (text) {
+      values.push(text)
+    }
+    return
+  }
+  collectRichNodeText(value.content, values)
+}
+
+function isGoMapTextDump(value: unknown) {
+  const text = valueText(value).trim()
+  return /^\[?map\[/.test(text) && text.includes('type:text')
+}
+
+function readableGoMapTextDump(value: unknown) {
+  const text = valueText(value).trim()
+  const matches = [...text.matchAll(/map\[[^\]]*?text:([^\]]*?)(?:\s+type:text|\])/g)]
+  return matches
+    .map((match) => match[1]?.trim() || '')
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 function copyAgentResultOutputFields(
