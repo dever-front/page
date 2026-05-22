@@ -24,6 +24,8 @@ export type AgentResultOutput = EnergonOutput & {
   content?: unknown
   suggestions?: unknown
   result_id?: unknown
+  result_mode?: unknown
+  display_mode?: unknown
   result?: unknown
   tasks?: unknown
   progress_text?: unknown
@@ -47,6 +49,7 @@ export type AgentResultTask = {
 export type AgentResultDetail = {
   id: string
   title: string
+  mode: string
   result?: AgentResultOutput
   tasks: AgentResultTask[]
   progress: number | null

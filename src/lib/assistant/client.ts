@@ -99,15 +99,29 @@ function buildAssistantHistoryRow(message: AssistantMessage) {
 }
 
 function assistantFinalText(output: Record<string, unknown>) {
+  const nestedResult = output.result
+  if (nestedResult && typeof nestedResult === 'object' && !Array.isArray(nestedResult)) {
+    const nestedText = assistantFinalText(nestedResult as Record<string, unknown>)
+    if (nestedText) {
+      return nestedText
+    }
+  }
+
   const text = streamValueText(output.text)
   if (text) {
-    return extractAgentResultText(text)
+    return isAssistantResultShellText(text) ? '' : extractAgentResultText(text)
   }
   const content = output.content
   if (content && typeof content === 'object' && !Array.isArray(content)) {
-    return streamValueText((content as Record<string, unknown>).text)
+    const contentText = streamValueText((content as Record<string, unknown>).text)
+    return isAssistantResultShellText(contentText) ? '' : contentText
   }
   return ''
+}
+
+function isAssistantResultShellText(text: string) {
+  const value = text.trim()
+  return value === '内容已生成，点击查看结果。' || value === '内容已生成'
 }
 
 function extractAgentResultText(text: string) {

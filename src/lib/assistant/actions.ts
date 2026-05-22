@@ -56,18 +56,28 @@ export type AssistantActionApplyOptions = {
   navigate: (target: { to: string; search?: Record<string, unknown> }) => unknown
 }
 
-const FRONT_ACTION_PATTERN = /```front-action\s*([\s\S]*?)```/g
+const ACTION_CODE_BLOCK_PATTERN = /```([a-zA-Z0-9_-]*)\s*([\s\S]*?)```/g
 const OPEN_FORM_TIMEOUT_MS = 6000
 
 export function extractAssistantFrontActions(text: string): AssistantActionParseResult {
   const actions: AssistantFrontAction[] = []
-  const cleanText = String(text || '').replace(FRONT_ACTION_PATTERN, (_, raw) => {
-    const action = parseAssistantFrontAction(raw)
-    if (action) {
-      actions.push(action)
+  const cleanText = String(text || '').replace(
+    ACTION_CODE_BLOCK_PATTERN,
+    (source, lang, raw) => {
+      const language = String(lang || '').trim().toLowerCase()
+      if (language !== 'front-action' && language !== 'json') {
+        return source
+      }
+
+      const action = parseAssistantFrontAction(raw)
+      if (action) {
+        actions.push(action)
+        return ''
+      }
+
+      return language === 'front-action' ? '' : source
     }
-    return ''
-  }).trim()
+  ).trim()
 
   return { cleanText, actions }
 }

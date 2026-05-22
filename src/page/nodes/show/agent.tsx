@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
 } from 'react'
 import {
+  ExternalLink,
   Loader2,
   MessageSquarePlus,
   RotateCcw,
@@ -47,6 +48,7 @@ import type { NodeItemProps } from '../../nodes'
 import {
   AgentResultCard,
   AgentResultDrawer,
+  applyResultTaskPlaceholders,
   type AgentResultDetail,
   type AgentResultOutput,
   type AgentResultTask,
@@ -920,7 +922,7 @@ function AgentAssistantMessage({
   onSendSuggestion: (suggestion: AgentSuggestion) => void
 }) {
   const resultDetail = buildAgentResultDetail(message)
-  const isResultCard = Boolean(resultDetail)
+  const isResultCard = shouldDisplayResultCard(resultDetail)
   const contentOutput = buildContentViewOutput(message)
   const hasOutput = isResultCard || hasContentViewOutput(contentOutput)
   const suggestions = buildMessageSuggestions(message, hasOutput)
@@ -928,7 +930,7 @@ function AgentAssistantMessage({
   return (
     <div className='space-y-2'>
       <AgentResultKindBadge message={message} hasOutput={hasOutput} />
-      {resultDetail ? (
+      {isResultCard && resultDetail ? (
         <AgentResultCard
           detail={resultDetail}
           running={Boolean(message.running)}
@@ -940,6 +942,9 @@ function AgentAssistantMessage({
           streaming={false}
           emptyText='等待智能体返回。'
         />
+      ) : null}
+      {resultDetail && !isResultCard ? (
+        <AgentInlineResultActions onOpen={onOpenResult} />
       ) : null}
       <StreamTimingBadge timing={message.actionTiming} now={now} />
       {message.error ? (
@@ -976,6 +981,23 @@ function AgentAssistantMessage({
           {message.requestID}
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function AgentInlineResultActions({ onOpen }: { onOpen: () => void }) {
+  return (
+    <div className='flex justify-end'>
+      <Button
+        type='button'
+        size='sm'
+        variant='outline'
+        className='h-7 px-2 text-xs'
+        onClick={onOpen}
+      >
+        查看详情
+        <ExternalLink className='size-3.5' />
+      </Button>
     </div>
   )
 }
@@ -1148,6 +1170,9 @@ function resultDetailFromRuntimeOutput(output?: AgentOutput): AgentResultDetail 
   return {
     id: valueText(output.result_id) || valueText(result?.result_id),
     title: valueText(output.title || result?.title) || '最终结果',
+    mode: normalizeAgentResultMode(
+      output.result_mode || output.display_mode || result?.result_mode
+    ),
     result,
     tasks,
     progress: normalizeProgressValue(output.progress),
@@ -1160,7 +1185,17 @@ function resultDetailFromFinalOutput(output?: AgentOutput | null): AgentResultDe
     return undefined
   }
   const event = valueText(output.event).toLowerCase()
-  if (event !== 'result_card' && !isPlainObject(output.result)) {
+  const mode = normalizeAgentResultMode(
+    output.result_mode || output.display_mode
+  )
+  if (event !== 'result_card' && mode === 'inline') {
+    return undefined
+  }
+  if (
+    event !== 'result_card' &&
+    !isPlainObject(output.result) &&
+    !valueText(output.result_mode || output.display_mode)
+  ) {
     return undefined
   }
   const result = isPlainObject(output.result)
@@ -1169,6 +1204,12 @@ function resultDetailFromFinalOutput(output?: AgentOutput | null): AgentResultDe
   return {
     id: valueText(output.result_id || result.result_id),
     title: valueText(output.title || result.title) || '最终结果',
+    mode:
+      event === 'result_card'
+        ? 'artifact'
+        : normalizeAgentResultMode(
+            output.result_mode || output.display_mode || result.result_mode
+          ),
     result,
     tasks: normalizeAgentResultTasks(output.tasks || result.tasks),
     progress: normalizeProgressValue(output.progress),
@@ -1186,12 +1227,14 @@ function mergeMessageResultDetail(
   if (!current) {
     return {
       ...incoming,
+      mode: incoming.mode || 'artifact',
       tasks: sortAgentResultTasks(incoming.tasks),
     }
   }
   return {
     id: incoming.id || current.id,
     title: incoming.title || current.title,
+    mode: incoming.mode || current.mode,
     result: incoming.result || current.result,
     tasks: mergeAgentResultTasks(current.tasks, incoming.tasks),
     progress: incoming.progress ?? current.progress,
@@ -1232,6 +1275,7 @@ function emptyAgentResultDetail(resultID: string): AgentResultDetail {
   return {
     id: resultID,
     title: '最终结果',
+    mode: 'artifact',
     tasks: [],
     progress: null,
     progressText: '',
@@ -1311,8 +1355,14 @@ function normalizeProgressValue(value: unknown) {
 }
 
 function buildContentViewOutput(message: AgentMessage) {
-  if (buildAgentResultDetail(message)) {
-    return undefined
+  const detail = buildAgentResultDetail(message)
+  if (detail) {
+    if (!shouldDisplayInlineResult(detail)) {
+      return undefined
+    }
+    return detail.result
+      ? applyResultTaskPlaceholders(detail.result, detail.tasks)
+      : undefined
   }
   if (message.running || message.interaction) {
     return undefined
@@ -1339,6 +1389,23 @@ function buildContentViewOutput(message: AgentMessage) {
     items.push(normalizeAgentDisplayOutput({ text: message.output.text }))
   }
   return items
+}
+
+function shouldDisplayResultCard(detail?: AgentResultDetail | null) {
+  return Boolean(detail && resultDisplayMode(detail) === 'artifact')
+}
+
+function shouldDisplayInlineResult(detail?: AgentResultDetail | null) {
+  return Boolean(detail && resultDisplayMode(detail) === 'inline')
+}
+
+function resultDisplayMode(detail: AgentResultDetail) {
+  return normalizeAgentResultMode(detail.mode)
+}
+
+function normalizeAgentResultMode(value: unknown) {
+  const mode = valueText(value).trim().toLowerCase()
+  return mode === 'inline' ? 'inline' : 'artifact'
 }
 
 function buildMessageSuggestions(

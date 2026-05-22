@@ -678,12 +678,24 @@ function filterPatchValues(
 
 function cleanFieldText(text: string) {
   const content = String(text || '').trim()
-  if (!content) {
+  if (!content || isResultShellText(content) || hasActionLikeCodeBlock(content)) {
     return ''
   }
 
   const codeBlock = content.match(/^```[a-zA-Z0-9_-]*\s*([\s\S]*?)```$/)
-  return (codeBlock ? codeBlock[1] : content).trim()
+  const value = (codeBlock ? codeBlock[1] : content).trim()
+  return isResultShellText(value) ? '' : value
+}
+
+function isResultShellText(text: string) {
+  const value = text.trim()
+  return value === '内容已生成，点击查看结果。' || value === '内容已生成'
+}
+
+function hasActionLikeCodeBlock(text: string) {
+  return /```(?:front-action|json)\s*[\s\S]*"type"\s*:\s*"(?:fill_form|patch_form|open_page|open_form)"[\s\S]*```/i.test(
+    text
+  )
 }
 
 function sameFieldPath(left: string, right: string) {

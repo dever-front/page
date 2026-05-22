@@ -149,6 +149,11 @@ export const nodeRegistry: Record<string, LazyNodeComponent> = {
       default: mod.ShowAgent,
     }))
   ),
+  'show-brain-workspace': lazyNode(() =>
+    import('@/page/nodes/show/brain-workspace').then((mod) => ({
+      default: mod.ShowBrainWorkspace,
+    }))
+  ),
   'nav-tab': lazyNode(() =>
     import('@/page/nodes/nav/tab').then((mod) => ({ default: mod.NavTab }))
   ),
