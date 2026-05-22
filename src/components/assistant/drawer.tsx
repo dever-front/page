@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Bot, ClipboardList, Loader2, Send, Sparkles, Square } from 'lucide-react'
+import { Bot, Loader2, Send, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EnergonContentView } from '@/components/energon/content-view'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -43,10 +43,7 @@ import {
   type AssistantReferenceFile,
 } from '@/lib/assistant/reference'
 import { loadAssistantPermissionContextSafe } from '@/lib/assistant/permission'
-import {
-  buildAssistantFormFillTask,
-  mergeAssistantTaskReferences,
-} from '@/lib/assistant/task'
+import { mergeAssistantTaskReferences } from '@/lib/assistant/task'
 import { stripRouterBasePath } from '@/lib/router-path'
 import {
   cancelStreamTiming,
@@ -400,31 +397,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
     }
   }
 
-  const fillCurrentForm = () => {
-    void send({
-      text: '请根据当前表单上下文生成并填写当前表单；已有内容可以在保持业务语义的前提下优化重写。',
-      task: buildAssistantFormFillTask({ mode: 'form', overwrite: true }),
-      clearInput: false,
-    })
-  }
-
-  const parseInputToForm = () => {
-    const sourceText = input.trim()
-    if (!sourceText) {
-      return
-    }
-
-    void send({
-      text: `请解析下面内容并填入当前表单：\n${sourceText}`,
-      task: buildAssistantFormFillTask({
-        mode: 'paste',
-        sourceText,
-        overwrite: true,
-      }),
-      clearInput: true,
-    })
-  }
-
   const applyAction = async (
     messageID: string,
     index: number,
@@ -612,7 +584,7 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
                         void send()
                       }
                     }}
-                    placeholder="输入需求，或粘贴一大段内容让我拆成表单字段..."
+                    placeholder="输入需求、修改要求，或粘贴材料让我处理当前页面..."
                     className="min-h-20 resize-none"
                     disabled={running}
                   />
@@ -623,32 +595,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
                       onReferencesChange={setReferences}
                       onMessage={setReferenceMessage}
                     />
-                    {pageContext?.form?.fields.length ? (
-                      <>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1.5"
-                          onClick={fillCurrentForm}
-                          disabled={running}
-                        >
-                          <Sparkles className="size-3.5" />
-                          AI 填写当前表单
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1.5"
-                          onClick={parseInputToForm}
-                          disabled={running || !input.trim()}
-                        >
-                          <ClipboardList className="size-3.5" />
-                          解析填表
-                        </Button>
-                      </>
-                    ) : null}
                   </div>
                 </div>
                 <Button
