@@ -3,21 +3,21 @@
  * 使用 shadcn/ui Table 组件
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { DotsHorizontalIcon } from '@radix-ui/react-icons'
 import { useNavigate } from '@tanstack/react-router'
+import { ChevronRight, X } from 'lucide-react'
 import { useStore } from 'zustand'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
+import { runActions } from '@/lib/action'
+import { resolveLucideIcon } from '@/lib/icon'
+import { withBackNavigationSearch } from '@/lib/navigation'
+import { getByPath } from '@/lib/path'
+import { stripRouterBasePath } from '@/lib/router-path'
+import type { Column } from '@/lib/schema'
+import { getStoreValueByPath, useStorePathValue } from '@/lib/store'
+import { cn, formatDisplayValue } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Separator } from '@/components/ui/separator'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,36 +26,30 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { DotsHorizontalIcon } from '@radix-ui/react-icons'
-import { ChevronRight, X } from 'lucide-react'
+import { Separator } from '@/components/ui/separator'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import type { NodeItemProps } from '../../nodes'
-import type { Column } from '@/lib/schema'
-import { getByPath } from '@/lib/path'
-import { ShowSelect } from './select'
-import { ShowStatus } from './status'
-import { ShowTag } from './tag'
-import { ShowDate } from './date'
-import { ShowRich } from './rich'
-import { InlineTip } from './tooltip'
-import { cn, formatDisplayValue } from '@/lib/utils'
-import { resolveLucideIcon } from '@/lib/icon'
-import { withBackNavigationSearch } from '@/lib/navigation'
-import { stripRouterBasePath } from '@/lib/router-path'
-import { runActions } from '@/lib/action'
-import { ActionButton } from './shared/action-button'
-import { getStoreValueByPath, useStorePathValue } from '@/lib/store'
 import { MediaAudio } from '../media/audio'
+import { MediaFileList } from '../media/file-list'
 import { MediaImage } from '../media/image'
 import { MediaVideo } from '../media/video'
-import { MediaFileList } from '../media/file-list'
-import {
-  resolveColumnAlign,
-  resolveColumnContentClassName,
-  resolveColumnHeaderClassName,
-  resolveFixedColumnLayouts,
-  resolveFixedColumnProps,
-} from './table/layout'
-import { resolveColumnOptionList } from './table/options'
+import { ShowDate } from './date'
+import { ShowRich } from './rich'
+import { ShowSelect } from './select'
+import { ActionButton } from './shared/action-button'
+import { ShowStatus } from './status'
 import {
   EditableFormCell,
   EditableShowCell,
@@ -64,6 +58,16 @@ import {
   buildInlineChangeAction,
   canUseInlineEdit,
 } from './table/inline-edit'
+import {
+  resolveColumnAlign,
+  resolveColumnContentClassName,
+  resolveColumnHeaderClassName,
+  resolveFixedColumnLayouts,
+  resolveFixedColumnProps,
+} from './table/layout'
+import { resolveColumnOptionList } from './table/options'
+import { ShowTag } from './tag'
+import { InlineTip } from './tooltip'
 
 export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
   const navigate = useNavigate()
@@ -77,17 +81,28 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
   const isRemote = item.meta?.remote === true
   const searchKeyword = useTableStoreValue(store, item.meta?.searchPath)
   const extraFilters = useTableFilters(store, item.meta?.filters)
-  const currentPage = Number(useTableStoreValue(store, item.meta?.pagePath) ?? 1)
-  const pageSize = Number(useTableStoreValue(store, item.meta?.pageSizePath) ?? 10)
-  const totalValue = Number(useTableStoreValue(store, item.meta?.totalPath) ?? data.length)
+  const currentPage = Number(
+    useTableStoreValue(store, item.meta?.pagePath) ?? 1
+  )
+  const pageSize = Number(
+    useTableStoreValue(store, item.meta?.pageSizePath) ?? 10
+  )
+  const totalValue = Number(
+    useTableStoreValue(store, item.meta?.totalPath) ?? data.length
+  )
   const treeMode = item.meta?.tree === true
   const treeParentKey = String(item.meta?.parentKey || 'parent_id')
   const treeLabelField = String(item.meta?.treeLabelField || 'name')
   const selectable = !!item.meta?.selectable
-  const bulkActions = Array.isArray(item.meta?.bulkActions) ? item.meta.bulkActions : []
+  const bulkActions = Array.isArray(item.meta?.bulkActions)
+    ? item.meta.bulkActions
+    : []
   const [selectedRowKeys, setSelectedRowKeys] = useState<Array<string>>([])
   const [collapsedRowKeys, setCollapsedRowKeys] = useState<Array<string>>([])
-  const selectedRowKeySet = useMemo(() => new Set(selectedRowKeys), [selectedRowKeys])
+  const selectedRowKeySet = useMemo(
+    () => new Set(selectedRowKeys),
+    [selectedRowKeys]
+  )
   const selectedRows = useMemo(
     () => data.filter((row) => selectedRowKeySet.has(String(row[rowKey]))),
     [data, rowKey, selectedRowKeySet]
@@ -105,14 +120,18 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
       return data
     }
 
-    const keyword = String(searchKeyword ?? '').trim().toLowerCase()
+    const keyword = String(searchKeyword ?? '')
+      .trim()
+      .toLowerCase()
 
     const searchableColumns = columns.filter((col) => col.value)
     return data.filter((row) => {
       const matchesKeyword =
         !keyword ||
         searchableColumns.some((col) =>
-          String(getByPath(row, col.value as string) ?? '').toLowerCase().includes(keyword)
+          String(getByPath(row, col.value as string) ?? '')
+            .toLowerCase()
+            .includes(keyword)
         )
 
       const matchesFilters = extraFilters.every((filter) => {
@@ -233,31 +252,45 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
       }))
     }
 
-    return buildVisibleTreeRows(pagedData, rowKey, treeParentKey, collapsedRowKeys)
+    return buildVisibleTreeRows(
+      pagedData,
+      rowKey,
+      treeParentKey,
+      collapsedRowKeys
+    )
   }, [collapsedRowKeys, pagedData, rowKey, treeMode, treeParentKey])
 
   if (columns.length === 0) {
-    return <div className="p-4 text-sm text-muted-foreground">No columns configured.</div>
+    return (
+      <div className='p-4 text-sm text-muted-foreground'>
+        No columns configured.
+      </div>
+    )
   }
 
   return (
-    <div className="w-full">
-      <div className="overflow-auto">
+    <div className='w-full'>
+      <div className='overflow-auto'>
         <Table>
           <TableHeader>
             <TableRow>
               {selectable && (
-                <TableHead className="w-12 bg-background px-4">
+                <TableHead className='w-12 bg-background px-4'>
                   <Checkbox
                     checked={allPageSelected}
-                    onCheckedChange={(checked) => toggleAllPageRows(checked === true)}
-                    aria-label="全选当前页"
+                    onCheckedChange={(checked) =>
+                      toggleAllPageRows(checked === true)
+                    }
+                    aria-label='全选当前页'
                   />
                 </TableHead>
               )}
               {columns.map((col, idx) => {
                 const align = resolveColumnAlign(col)
-                const fixedColumnProps = resolveFixedColumnProps(fixedColumnLayouts[idx], 'head')
+                const fixedColumnProps = resolveFixedColumnProps(
+                  fixedColumnLayouts[idx],
+                  'head'
+                )
 
                 return (
                   <TableHead
@@ -289,86 +322,95 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
               <TableRow>
                 <TableCell
                   colSpan={columns.length + (selectable ? 1 : 0)}
-                  className="h-24 text-center text-muted-foreground"
+                  className='h-24 text-center text-muted-foreground'
                 >
                   暂无数据
                 </TableCell>
               </TableRow>
             ) : (
-              visibleRows.map(({ row, depth, hasChildren, expanded }, rowIdx) => (
-                <TableRow
-                  key={String(row[rowKey] ?? rowIdx)}
-                  data-state={selectedRowKeySet.has(String(row[rowKey])) ? 'selected' : undefined}
-                  className="group/row h-12"
-                >
-                  {selectable && (
-                    <TableCell className="h-12 px-4">
-                      <Checkbox
-                        checked={selectedRowKeySet.has(String(row[rowKey]))}
-                        onCheckedChange={(checked) =>
-                          toggleRow(String(row[rowKey]), checked === true)
-                        }
-                        aria-label={`选择 ${getByPath(row, 'username') ?? row[rowKey] ?? rowIdx}`}
-                      />
-                    </TableCell>
-                  )}
-                  {columns.map((col, colIdx) => {
-                    const align = resolveColumnAlign(col)
-                    const fixedColumnProps = resolveFixedColumnProps(
-                      fixedColumnLayouts[colIdx],
-                      'body'
-                    )
-
-                    return (
-                      <TableCell
-                        key={colIdx}
-                        className={cn(
-                          'h-12 bg-background group-hover/row:bg-muted group-data-[state=selected]/row:bg-muted',
-                          fixedColumnProps.className,
-                          col.className
-                        )}
-                        style={fixedColumnProps.style}
-                      >
-                        <div
-                          className={cn(
-                            'flex min-w-0 items-center',
-                            resolveColumnContentClassName(align)
-                          )}
-                        >
-                          <CellRenderer
-                            column={col}
-                            value={col.value ? getByPath(row, col.value) : ''}
-                            row={row}
-                            rowIndex={rowIdx}
-                            rowKey={rowKey}
-                            tableValuePath={String(item.value || '')}
-                            treeMeta={
-                              treeMode &&
-                              col.value === treeLabelField
-                                ? {
-                                    depth,
-                                    hasChildren,
-                                    expanded,
-                                    onToggle: () => toggleTreeRow(String(row[rowKey])),
-                                  }
-                                : undefined
-                            }
-                            tableMeta={item.meta}
-                            onAction={handleAction}
-                            store={store}
-                            onNavigate={(to, search, options) =>
-                              navigate({
-                                to: stripRouterBasePath(to),
-                                search: withBackNavigationSearch(search, options?.withBack),
-                              })
-                            }
-                          />
-                        </div>
+              visibleRows.map(
+                ({ row, depth, hasChildren, expanded }, rowIdx) => (
+                  <TableRow
+                    key={String(row[rowKey] ?? rowIdx)}
+                    data-state={
+                      selectedRowKeySet.has(String(row[rowKey]))
+                        ? 'selected'
+                        : undefined
+                    }
+                    className='group/row h-12'
+                  >
+                    {selectable && (
+                      <TableCell className='h-12 px-4'>
+                        <Checkbox
+                          checked={selectedRowKeySet.has(String(row[rowKey]))}
+                          onCheckedChange={(checked) =>
+                            toggleRow(String(row[rowKey]), checked === true)
+                          }
+                          aria-label={`选择 ${getByPath(row, 'username') ?? row[rowKey] ?? rowIdx}`}
+                        />
                       </TableCell>
-                    )
-                  })}
-                </TableRow>
-              ))
+                    )}
+                    {columns.map((col, colIdx) => {
+                      const align = resolveColumnAlign(col)
+                      const fixedColumnProps = resolveFixedColumnProps(
+                        fixedColumnLayouts[colIdx],
+                        'body'
+                      )
+
+                      return (
+                        <TableCell
+                          key={colIdx}
+                          className={cn(
+                            'h-12 bg-background group-hover/row:bg-muted group-data-[state=selected]/row:bg-muted',
+                            fixedColumnProps.className,
+                            col.className
+                          )}
+                          style={fixedColumnProps.style}
+                        >
+                          <div
+                            className={cn(
+                              'flex min-w-0 items-center',
+                              resolveColumnContentClassName(align)
+                            )}
+                          >
+                            <CellRenderer
+                              column={col}
+                              value={col.value ? getByPath(row, col.value) : ''}
+                              row={row}
+                              rowIndex={rowIdx}
+                              rowKey={rowKey}
+                              tableValuePath={String(item.value || '')}
+                              treeMeta={
+                                treeMode && col.value === treeLabelField
+                                  ? {
+                                      depth,
+                                      hasChildren,
+                                      expanded,
+                                      onToggle: () =>
+                                        toggleTreeRow(String(row[rowKey])),
+                                    }
+                                  : undefined
+                              }
+                              tableMeta={item.meta}
+                              onAction={handleAction}
+                              store={store}
+                              onNavigate={(to, search, options) =>
+                                navigate({
+                                  to: stripRouterBasePath(to),
+                                  search: withBackNavigationSearch(
+                                    search,
+                                    options?.withBack
+                                  ),
+                                })
+                              }
+                            />
+                          </div>
+                        </TableCell>
+                      )
+                    })}
+                  </TableRow>
+                )
+              )
             )}
           </TableBody>
         </Table>
@@ -378,68 +420,68 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
         !item.meta?.externalPagination &&
         totalPages > 1 &&
         total > pageSize && (
-        <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-          <span>
-            {total === 0
-              ? 'No results'
-              : `${startRow}–${endRow} of ${total} row${total === 1 ? '' : 's'}`}
-          </span>
-          <div className="flex items-center gap-2">
-            {selectable && selectedRowKeys.length > 0 && (
-              <span className="mr-2 text-xs text-foreground">
-                已选 {selectedRowKeys.length} 项
-              </span>
-            )}
-            <span className="mr-2 text-xs text-muted-foreground">
-              第 {safePage} / {totalPages} 页
+          <div className='flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground'>
+            <span>
+              {total === 0
+                ? 'No results'
+                : `${startRow}–${endRow} of ${total} row${total === 1 ? '' : 's'}`}
             </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={safePage <= 1}
-              onClick={() => setPage(safePage - 1)}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={safePage >= totalPages}
-              onClick={() => setPage(safePage + 1)}
-            >
-              Next
-            </Button>
+            <div className='flex items-center gap-2'>
+              {selectable && selectedRowKeys.length > 0 && (
+                <span className='mr-2 text-xs text-foreground'>
+                  已选 {selectedRowKeys.length} 项
+                </span>
+              )}
+              <span className='mr-2 text-xs text-muted-foreground'>
+                第 {safePage} / {totalPages} 页
+              </span>
+              <Button
+                variant='outline'
+                size='sm'
+                disabled={safePage <= 1}
+                onClick={() => setPage(safePage - 1)}
+              >
+                Previous
+              </Button>
+              <Button
+                variant='outline'
+                size='sm'
+                disabled={safePage >= totalPages}
+                onClick={() => setPage(safePage + 1)}
+              >
+                Next
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
       {selectable && selectedRowKeys.length > 0 && bulkActions.length > 0 && (
-        <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
-          <div className="pointer-events-auto flex items-center gap-2 rounded-xl border bg-background/95 p-2 shadow-xl backdrop-blur-lg supports-backdrop-filter:bg-background/60">
+        <div className='pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2'>
+          <div className='pointer-events-auto flex items-center gap-2 rounded-xl border bg-background/95 p-2 shadow-xl backdrop-blur-lg supports-backdrop-filter:bg-background/60'>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="outline"
-                  size="icon"
-                  className="size-7 rounded-full"
+                  variant='outline'
+                  size='icon'
+                  className='size-7 rounded-full'
                   onClick={clearSelection}
                 >
-                  <X className="size-4" />
-                  <span className="sr-only">清空已选项</span>
+                  <X className='size-4' />
+                  <span className='sr-only'>清空已选项</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent sideOffset={8}>清空已选项</TooltipContent>
             </Tooltip>
 
-            <Separator orientation="vertical" className="h-5" />
+            <Separator orientation='vertical' className='h-5' />
 
-            <div className="flex items-center gap-1 text-sm text-foreground">
-              <Badge variant="default" className="min-w-8 rounded-lg px-2">
+            <div className='flex items-center gap-1 text-sm text-foreground'>
+              <Badge variant='default' className='min-w-8 rounded-lg px-2'>
                 {selectedRowKeys.length}
               </Badge>
               <span>项已选中</span>
             </div>
 
-            <Separator orientation="vertical" className="h-5" />
+            <Separator orientation='vertical' className='h-5' />
 
             {bulkActions.map((actionConfig: any, index: number) => {
               const Icon = resolveLucideIcon(actionConfig?.icon)
@@ -452,16 +494,22 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
                   className={cn(actionConfig?.className ?? 'size-9 rounded-xl')}
                   onClick={() => handleBulkAction(actionConfig)}
                 >
-                  {Icon ? <Icon className="size-4" /> : null}
-                  {actionConfig?.label ? <span>{actionConfig.label}</span> : null}
+                  {Icon ? <Icon className='size-4' /> : null}
+                  {actionConfig?.label ? (
+                    <span>{actionConfig.label}</span>
+                  ) : null}
                 </Button>
               )
 
               if (actionConfig?.description) {
                 return (
-                  <Tooltip key={actionConfig.id ?? `${item.id}-bulk-action-${index}`}>
+                  <Tooltip
+                    key={actionConfig.id ?? `${item.id}-bulk-action-${index}`}
+                  >
                     <TooltipTrigger asChild>{button}</TooltipTrigger>
-                    <TooltipContent sideOffset={8}>{actionConfig.description}</TooltipContent>
+                    <TooltipContent sideOffset={8}>
+                      {actionConfig.description}
+                    </TooltipContent>
                   </Tooltip>
                 )
               }
@@ -540,7 +588,9 @@ function CellRenderer({
   ) => void
 }) {
   const type = column.type || 'show-base'
-  const buttonGroup = Array.isArray(column.meta?.buttons) ? column.meta.buttons : null
+  const buttonGroup = Array.isArray(column.meta?.buttons)
+    ? column.meta.buttons
+    : null
   const displayValue = resolveColumnDisplayValue(store, column, value, type)
   const formattedValue = resolveFormattedCellValue(displayValue, row, column)
   const editorType =
@@ -571,7 +621,7 @@ function CellRenderer({
         record={row}
         context={{ row, rowIndex }}
         defaultVariant={type === 'show-button' ? 'default' : 'ghost'}
-        defaultSize="sm"
+        defaultSize='sm'
       />
     )
   }
@@ -628,7 +678,7 @@ function CellRenderer({
           setValue={() => {}}
           runAction={onAction}
           store={store}
-          layoutId=""
+          layoutId=''
         />
       )
 
@@ -705,16 +755,16 @@ function CellRenderer({
       const Icon = resolveLucideIcon(iconName)
 
       if (!iconName) {
-        return <span className="text-sm text-muted-foreground">-</span>
+        return <span className='text-sm text-muted-foreground'>-</span>
       }
 
       if (!Icon) {
-        return <span className="text-sm">{iconName}</span>
+        return <span className='text-sm'>{iconName}</span>
       }
 
       return (
-        <span className="inline-flex size-8 items-center justify-center rounded-md border bg-muted/20 text-foreground">
-          <Icon className="size-4" />
+        <span className='inline-flex size-8 items-center justify-center rounded-md border bg-muted/20 text-foreground'>
+          <Icon className='size-4' />
         </span>
       )
     }
@@ -781,14 +831,14 @@ function CellRenderer({
           />
         )
       }
-      return <span className="text-sm">{formatCellText(formattedValue)}</span>
+      return <span className='text-sm'>{formatCellText(formattedValue)}</span>
 
     case 'form-input':
     case 'form-number':
     case 'form-select':
     case 'form-switch':
       if (!canInlineEdit) {
-        return <span className="text-sm">{formatCellText(formattedValue)}</span>
+        return <span className='text-sm'>{formatCellText(formattedValue)}</span>
       }
 
       return (
@@ -809,7 +859,8 @@ function CellRenderer({
     case 'show-status':
     case 'show-select': {
       const inlineChangeAction = inlineAction
-      const editable = column.meta?.editable !== false && !!inlineChangeAction && canInlineEdit
+      const editable =
+        column.meta?.editable !== false && !!inlineChangeAction && canInlineEdit
       const SelectComponent = type === 'show-status' ? ShowStatus : ShowSelect
 
       return (
@@ -829,7 +880,7 @@ function CellRenderer({
           setValue={() => {}}
           runAction={onAction}
           store={store}
-          layoutId=""
+          layoutId=''
         />
       )
     }
@@ -838,39 +889,51 @@ function CellRenderer({
     case 'show-button':
       if (buttonGroup?.length) {
         return (
-          <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+          <div className='flex items-center justify-end gap-2 whitespace-nowrap'>
             {buttonGroup.map((buttonMeta: any, index: number) =>
-              renderActionButton(buttonMeta, buttonMeta.id ?? `${column.name || 'action'}-${index}`)
+              renderActionButton(
+                buttonMeta,
+                buttonMeta.id ?? `${column.name || 'action'}-${index}`
+              )
             )}
           </div>
         )
       }
 
-      if (Array.isArray(column.meta?.menuItems) && column.meta.menuItems.length > 0) {
+      if (
+        Array.isArray(column.meta?.menuItems) &&
+        column.meta.menuItems.length > 0
+      ) {
         return (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <Button
-                variant="ghost"
-                className="flex h-8 w-8 p-0 data-[state=open]:bg-muted"
+                variant='ghost'
+                className='flex h-8 w-8 p-0 data-[state=open]:bg-muted'
               >
-                <DotsHorizontalIcon className="h-4 w-4" />
-                <span className="sr-only">Open menu</span>
+                <DotsHorizontalIcon className='h-4 w-4' />
+                <span className='sr-only'>Open menu</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[160px]">
+            <DropdownMenuContent align='end' className='w-[160px]'>
               {column.meta.menuItems.map((menuItem: any, index: number) => {
                 const actionButton = (
                   <DropdownMenuItem
                     key={menuItem.label || index}
-                    variant={menuItem.variant === 'destructive' ? 'destructive' : 'default'}
+                    variant={
+                      menuItem.variant === 'destructive'
+                        ? 'destructive'
+                        : 'default'
+                    }
                     onClick={() => {
                       if (menuItem.modalStateKey && menuItem.formTarget) {
                         store.getState().setData(menuItem.formTarget, {
                           ...row,
                           ...(menuItem.formDefaults || {}),
                         })
-                        store.getState().setPageState(menuItem.modalStateKey, true)
+                        store
+                          .getState()
+                          .setPageState(menuItem.modalStateKey, true)
                         return
                       }
 
@@ -884,7 +947,10 @@ function CellRenderer({
                           searchValue == null
                             ? undefined
                             : { [searchParam]: String(searchValue) },
-                          { withBack: menuItem.withBack ?? menuItem.meta?.withBack }
+                          {
+                            withBack:
+                              menuItem.withBack ?? menuItem.meta?.withBack,
+                          }
                         )
                         return
                       }
@@ -895,7 +961,9 @@ function CellRenderer({
                       <DropdownMenuShortcut>
                         {(() => {
                           const ShortcutIcon = resolveLucideIcon(menuItem.icon)
-                          return ShortcutIcon ? <ShortcutIcon size={16} /> : null
+                          return ShortcutIcon ? (
+                            <ShortcutIcon size={16} />
+                          ) : null
                         })()}
                       </DropdownMenuShortcut>
                     ) : null}
@@ -921,7 +989,10 @@ function CellRenderer({
       if (column.meta?.to && (column.meta?.open || 'path') === 'modal') {
         return (
           <Button
-            variant={column.meta?.variant || (type === 'show-button' ? 'default' : 'ghost')}
+            variant={
+              column.meta?.variant ||
+              (type === 'show-button' ? 'default' : 'ghost')
+            }
             size={column.meta?.size || 'sm'}
             onClick={() => {
               if (column.meta?.dataTarget) {
@@ -930,8 +1001,15 @@ function CellRenderer({
                   ...(column.meta?.dataDefaults || {}),
                 })
               }
-              store.getState().setPageState(column.meta?.routeKey || 'dialog.route', column.meta.to)
-              store.getState().setPageState(column.meta?.stateKey || 'dialog.open', true)
+              store
+                .getState()
+                .setPageState(
+                  column.meta?.routeKey || 'dialog.route',
+                  column.meta.to
+                )
+              store
+                .getState()
+                .setPageState(column.meta?.stateKey || 'dialog.open', true)
             }}
           >
             {column.meta?.label || column.name || String(displayValue ?? '')}
@@ -947,12 +1025,17 @@ function CellRenderer({
 
         return (
           <Button
-            variant={column.meta?.variant || (type === 'show-button' ? 'default' : 'ghost')}
+            variant={
+              column.meta?.variant ||
+              (type === 'show-button' ? 'default' : 'ghost')
+            }
             size={column.meta?.size || 'sm'}
             onClick={() =>
               onNavigate(
                 column.meta.to,
-                searchValue == null ? undefined : { [searchParam]: String(searchValue) },
+                searchValue == null
+                  ? undefined
+                  : { [searchParam]: String(searchValue) },
                 { withBack: column.meta?.withBack }
               )
             }
@@ -965,13 +1048,14 @@ function CellRenderer({
       return renderActionButton(
         {
           ...column.meta,
-          label: column.meta?.label || column.name || String(displayValue ?? ''),
+          label:
+            column.meta?.label || column.name || String(displayValue ?? ''),
           action: column.action,
         },
         column.name || String(displayValue ?? '')
       )
     default:
-      return <span className="text-sm">{formatCellText(formattedValue)}</span>
+      return <span className='text-sm'>{formatCellText(formattedValue)}</span>
   }
 }
 
@@ -981,7 +1065,9 @@ function usesArrayInlineAction(
   visited = new Set<string>()
 ): boolean {
   if (Array.isArray(action)) {
-    return action.some((current) => usesArrayInlineAction(current, actionMap, visited))
+    return action.some((current) =>
+      usesArrayInlineAction(current, actionMap, visited)
+    )
   }
 
   if (typeof action === 'string') {
@@ -996,7 +1082,11 @@ function usesArrayInlineAction(
     return false
   }
 
-  return String(action.type || '').trim().toLowerCase() === 'array'
+  return (
+    String(action.type || '')
+      .trim()
+      .toLowerCase() === 'array'
+  )
 }
 
 function TreeCellContent({
@@ -1014,21 +1104,26 @@ function TreeCellContent({
 }) {
   return (
     <div
-      className="flex items-center gap-2"
+      className='flex items-center gap-2'
       style={{ paddingLeft: `${depth * 22}px` }}
     >
       {hasChildren ? (
         <button
-          type="button"
+          type='button'
           onClick={onToggle}
-          className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground"
+          className='inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground'
         >
-          <ChevronRight className={cn('size-4 transition-transform', expanded && 'rotate-90')} />
+          <ChevronRight
+            className={cn(
+              'size-4 transition-transform',
+              expanded && 'rotate-90'
+            )}
+          />
         </button>
       ) : (
-        <span className="inline-flex size-6" />
+        <span className='inline-flex size-6' />
       )}
-      <span className="truncate text-sm">{formatCellText(value)}</span>
+      <span className='truncate text-sm'>{formatCellText(value)}</span>
     </div>
   )
 }
@@ -1055,7 +1150,9 @@ function buildVisibleTreeRows(
     if (!key) return
     const parentValue = row?.[parentKey]
     const parentKeyValue =
-      parentValue == null || String(parentValue) === '' || String(parentValue) === '0'
+      parentValue == null ||
+      String(parentValue) === '' ||
+      String(parentValue) === '0'
         ? ''
         : String(parentValue)
 
@@ -1123,7 +1220,9 @@ function resolveColumnDisplayValue(
     return value
   }
 
-  const matched = optionList.find((item: any) => String(item?.id ?? '') === String(value))
+  const matched = optionList.find(
+    (item: any) => String(item?.id ?? '') === String(value)
+  )
   if (!matched) {
     return value
   }
@@ -1135,10 +1234,19 @@ function resolveColumnDisplayValue(
   return matched.label ?? matched.value ?? value
 }
 
-function resolveFormattedCellValue(displayValue: unknown, row: any, column: Column) {
+function resolveFormattedCellValue(
+  displayValue: unknown,
+  row: any,
+  column: Column
+) {
   const meta = column.meta
   if (!meta) {
     return displayValue
+  }
+
+  const template = String(meta.template || '').trim()
+  if (template) {
+    return resolveTableTemplateText(template, displayValue, row)
   }
 
   const cases = Array.isArray(meta.cases) ? meta.cases : []
@@ -1159,7 +1267,9 @@ function resolveFormattedCellValue(displayValue: unknown, row: any, column: Colu
     }
   }
 
-  const format = String(meta.format || '').trim().toLowerCase()
+  const format = String(meta.format || '')
+    .trim()
+    .toLowerCase()
   if (format && format !== 'count') {
     return formatDisplayValue(displayValue, format)
   }
@@ -1169,9 +1279,9 @@ function resolveFormattedCellValue(displayValue: unknown, row: any, column: Colu
   }
 
   const count = resolveDisplayCount(displayValue)
-  const template = String(meta.countText || '').trim()
-  if (template) {
-    return template.replaceAll('{count}', String(count))
+  const countTemplate = String(meta.countText || '').trim()
+  if (countTemplate) {
+    return countTemplate.replaceAll('{count}', String(count))
   }
 
   const unit = String(meta.countUnit || '').trim()
@@ -1180,6 +1290,43 @@ function resolveFormattedCellValue(displayValue: unknown, row: any, column: Colu
   }
 
   return String(count)
+}
+
+function resolveTableTemplateText(template: string, value: unknown, row: any) {
+  return template
+    .replace(/\{([^{}]+)\}/g, (_, rawKey: string) => {
+      const key = String(rawKey || '').trim()
+      if (!key) {
+        return ''
+      }
+      if (key === 'value') {
+        return stringifyTableTemplateValue(value)
+      }
+      if (key.startsWith('row.')) {
+        return stringifyTableTemplateValue(getByPath(row, key.slice(4)))
+      }
+      return stringifyTableTemplateValue(getByPath(row, key))
+    })
+    .replace(/\s+\/\s+$/g, '')
+    .replace(/^\s+\/\s+/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+function stringifyTableTemplateValue(value: unknown) {
+  if (value == null) {
+    return ''
+  }
+  if (typeof value === 'object') {
+    for (const key of ['label', 'value', 'name', 'id']) {
+      const current = (value as Record<string, unknown>)[key]
+      if (current != null && current !== '') {
+        return String(current)
+      }
+    }
+    return ''
+  }
+  return String(value)
 }
 
 function resolveDisplayCount(value: unknown) {
@@ -1209,7 +1356,10 @@ function formatCellText(value: unknown) {
   }
 
   if (Array.isArray(value)) {
-    return value.map((current) => formatCellText(current)).filter(Boolean).join(' / ')
+    return value
+      .map((current) => formatCellText(current))
+      .filter(Boolean)
+      .join(' / ')
   }
 
   if (typeof value === 'object') {

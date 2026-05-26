@@ -9,7 +9,7 @@ import {
   AgentInteractionPanel,
   type AgentInteraction,
   type AgentInteractionSubmitResult,
-} from '@/page/nodes/show/agent-interaction-panel'
+} from '@/components/agent/interaction-panel'
 import { streamValueText } from '@/lib/stream'
 
 type AssistantInteractionDialogProps = {

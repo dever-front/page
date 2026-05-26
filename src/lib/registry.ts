@@ -3,7 +3,7 @@
  * layout 组件和 node 组件的统一注册
  * 所有组件都必须通过注册表使用
  */
-import { lazy, type ComponentType, type LazyExoticComponent } from 'react'
+import { type ComponentType } from 'react'
 import { Aside } from '@/page/layout/aside'
 import { Col } from '@/page/layout/col'
 // ========== Layout 组件注册 ==========
@@ -14,8 +14,11 @@ import { Header } from '@/page/layout/header'
 import { Main } from '@/page/layout/main'
 import { Row } from '@/page/layout/row'
 import type { LayoutComponentProps } from '@/page/layout/types'
-import type { NodeItemProps } from '@/page/nodes'
 import type { PageSchemaType } from '@/lib/schema'
+import { lazyNode, mergePluginNodes } from '@/lib/plugin/types'
+import type { LazyNodeComponent } from '@/lib/plugin/types'
+import { sourcePlugins } from '@/lib/plugin/source-plugins'
+import { getRuntimePluginNodes } from '@/lib/plugin/runtime'
 
 export const layoutRegistry: Record<
   string,
@@ -32,28 +35,7 @@ export const layoutRegistry: Record<
 
 // ========== Node 组件注册 ==========
 
-type LazyNodeLoader = () => Promise<{ default: ComponentType<NodeItemProps> }>
-type LazyNodeComponent = LazyExoticComponent<ComponentType<NodeItemProps>> & {
-  preload: () => Promise<unknown>
-}
-
-function lazyNode(loader: LazyNodeLoader): LazyNodeComponent {
-  let preloadPromise: ReturnType<LazyNodeLoader> | null = null
-  const load = () => {
-    if (!preloadPromise) {
-      preloadPromise = loader().catch((error) => {
-        preloadPromise = null
-        throw error
-      })
-    }
-    return preloadPromise
-  }
-  const component = lazy(load) as LazyNodeComponent
-  component.preload = load
-  return component
-}
-
-export const nodeRegistry: Record<string, LazyNodeComponent> = {
+const coreNodeRegistry: Record<string, LazyNodeComponent> = {
   // Show
   'show-base': lazyNode(() =>
     import('@/page/nodes/show/base').then((mod) => ({ default: mod.ShowBase }))
@@ -137,21 +119,6 @@ export const nodeRegistry: Record<string, LazyNodeComponent> = {
   'show-resource-browser': lazyNode(() =>
     import('@/page/nodes/show/resource').then((mod) => ({
       default: mod.ShowResource,
-    }))
-  ),
-  'show-stream-request': lazyNode(() =>
-    import('@/page/nodes/show/stream-request').then((mod) => ({
-      default: mod.ShowStreamRequest,
-    }))
-  ),
-  'show-agent': lazyNode(() =>
-    import('@/page/nodes/show/agent').then((mod) => ({
-      default: mod.ShowAgent,
-    }))
-  ),
-  'show-brain-workspace': lazyNode(() =>
-    import('@/page/nodes/show/brain-workspace').then((mod) => ({
-      default: mod.ShowBrainWorkspace,
     }))
   ),
   'nav-tab': lazyNode(() =>
@@ -282,6 +249,12 @@ export const nodeRegistry: Record<string, LazyNodeComponent> = {
       default: mod.FeedbackDrawer,
     }))
   ),
+}
+
+export const nodeRegistry: Record<string, LazyNodeComponent> = {
+  ...coreNodeRegistry,
+  ...mergePluginNodes(sourcePlugins),
+  ...getRuntimePluginNodes(),
 }
 
 export function preloadNodeComponents(schema: PageSchemaType) {

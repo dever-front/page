@@ -23,7 +23,7 @@ import {
   updateStreamTimingFromOutput,
   useStreamClock,
   type StreamTiming,
-} from '@/page/nodes/show/shared/stream-timing'
+} from '@/components/stream-timing'
 import type { AssistantStatusHandler } from '@/lib/assistant/client'
 import type { AssistantReferenceFile } from '@/lib/assistant/reference'
 import {

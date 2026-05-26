@@ -2,6 +2,9 @@
 @import 'tw-animate-css';
 @import './theme.css';
 
+@source '../../../backend/package/**/*.{ts,tsx,js,jsx,json}';
+@source '../../../backend/module/**/*.{ts,tsx,js,jsx,json}';
+
 @custom-variant dark (&:is(.dark *));
 
 @layer base {

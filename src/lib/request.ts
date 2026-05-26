@@ -192,6 +192,23 @@ function applyClientPageHeader(headers: Record<string, string>) {
   return headers
 }
 
+export function buildRuntimeRequestHeaders(options?: {
+  accept?: string
+  contentType?: string | false
+}) {
+  const headers: Record<string, string> = {}
+  const contentType = options?.contentType ?? 'application/json'
+  if (contentType !== false) {
+    headers['Content-Type'] = contentType
+  }
+  if (options?.accept) {
+    headers.Accept = options.accept
+  }
+  applyAccessTokenHeader(headers)
+  applyClientPageHeader(headers)
+  return headers
+}
+
 function appendQueryString(url: string, params?: any) {
   if (!params || typeof params !== 'object') {
     return url
@@ -229,12 +246,9 @@ export async function requestRaw(
   const isGetMethod = normalizedMethod === 'get'
   const isFormData =
     typeof FormData !== 'undefined' && params instanceof FormData
-  const headers: Record<string, string> = {}
-  if (!isFormData) {
-    headers['Content-Type'] = 'application/json'
-  }
-  applyAccessTokenHeader(headers)
-  applyClientPageHeader(headers)
+  const headers = buildRuntimeRequestHeaders({
+    contentType: isFormData ? false : 'application/json',
+  })
   const options: RequestInit = {
     method: fetchMethod,
     headers,

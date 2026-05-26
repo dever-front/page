@@ -1,6 +1,11 @@
 export function findFloatingLayerContainer(element: HTMLElement | null) {
   return (
-    element?.closest<HTMLElement>('[data-slot="dialog-content"], [data-slot="sheet-content"]') ||
+    element?.closest<HTMLElement>(
+      '[data-slot="dialog-layer"], [data-slot="sheet-layer"]'
+    ) ||
+    element?.closest<HTMLElement>(
+      '[data-slot="dialog-content"], [data-slot="sheet-content"]'
+    ) ||
     null
   )
 }
@@ -12,7 +17,10 @@ export function isAssistantLayerEvent(event: Event) {
 }
 
 export function isAssistantLayerProp(props: Record<string, unknown>) {
-  return props['data-assistant-layer'] === true || props['data-assistant-layer'] === 'true'
+  return (
+    props['data-assistant-layer'] === true ||
+    props['data-assistant-layer'] === 'true'
+  )
 }
 
 export function preventCloseFromExternalAssistantLayer(

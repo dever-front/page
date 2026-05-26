@@ -10,6 +10,7 @@ import { RichTextView } from '@/components/rich-text-view'
 import { Badge } from '@/components/ui/badge'
 import { EnergonMediaView } from '@/components/energon/media-view'
 import { EnergonProgressBlock, normalizeEnergonPercent } from '@/components/energon/progress'
+import { normalizeAgentResultOutputValue } from '@/lib/agent-result-protocol'
 import type { ResourceUploadRule } from '@/lib/resource'
 import { cn } from '@/lib/utils'
 
@@ -87,7 +88,13 @@ export function normalizeEnergonOutput(value: any): EnergonOutput[] {
     return []
   }
   const values = Array.isArray(value) ? value : [value]
-  return values.map(normalizeOutput).filter((item) => !isEmptyOutput(item))
+  return values
+    .flatMap((item) => {
+      const normalized = normalizeAgentResultOutputValue(item)
+      return Array.isArray(normalized) ? normalized : [normalized]
+    })
+    .map(normalizeOutput)
+    .filter((item) => !isEmptyOutput(item))
 }
 
 function normalizeOutput(value: any): EnergonOutput {

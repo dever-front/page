@@ -24,5 +24,6 @@ window.appConfig = {
     routerMode: 'history',
     basePath,
     host: apiHost,
+    plugins: [`${basePath}/plugins/bot/manifest.json`],
   },
 }

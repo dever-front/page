@@ -180,7 +180,7 @@ function NodeFallback({ item }: { item: Item }) {
     )
   }
 
-  if (item.type === 'show-chart' || item.type === 'show-agent') {
+  if (item.type === 'show-chart') {
     return <Skeleton className="h-64 w-full rounded-xl" />
   }
 
@@ -314,6 +314,9 @@ function resolveSearchItemClassName(item: Item) {
         ? 'min-w-[16rem]'
         : 'min-w-[12rem]'
     case 'form-date':
+      if (item.meta?.searchWidth === 'select') {
+        return 'min-w-[12rem]'
+      }
       return 'min-w-[10rem]'
     default:
       return undefined

@@ -32,7 +32,7 @@ import {
   updateStreamTimingFromOutput,
   useStreamClock,
   type StreamTiming,
-} from '@/page/nodes/show/shared/stream-timing'
+} from '@/components/stream-timing'
 import type { AgentStreamStatus } from '@/lib/agent/runner'
 import { AssistantInteractionDialog } from './interaction-dialog'
 import { AssistantTaskPopover } from './task-popover'

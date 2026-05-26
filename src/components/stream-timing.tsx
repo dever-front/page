@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 
-export type StreamTimingStatus = 'running' | 'done' | 'failed' | 'canceled'
+export type StreamTimingStatus =
+  | 'running'
+  | 'waiting'
+  | 'done'
+  | 'failed'
+  | 'canceled'
 
 export type StreamTiming = {
   startedAt: number
@@ -9,6 +14,14 @@ export type StreamTiming = {
   status: StreamTimingStatus
   label?: string
   percent?: number | null
+}
+
+export type RuntimeStreamTimingInput = {
+  status?: unknown
+  startedAt?: unknown
+  finishedAt?: unknown
+  label?: string
+  percent?: unknown
 }
 
 export function useStreamClock(active: boolean, intervalMs = 250) {
@@ -30,6 +43,10 @@ export function useStreamClock(active: boolean, intervalMs = 250) {
   return now
 }
 
+export function isStreamTimingRunning(timing?: StreamTiming) {
+  return timing?.status === 'running'
+}
+
 export function createStreamTiming(
   label = '等待生成结果',
   percent?: unknown
@@ -39,6 +56,28 @@ export function createStreamTiming(
     status: 'running',
     label,
     percent: normalizeStreamPercent(percent),
+  }
+}
+
+export function createRuntimeStreamTiming({
+  status,
+  startedAt,
+  finishedAt,
+  label,
+  percent,
+}: RuntimeStreamTimingInput): StreamTiming | undefined {
+  const normalizedStartedAt = normalizeStreamTimestamp(startedAt)
+  if (!normalizedStartedAt) {
+    return undefined
+  }
+
+  const normalizedFinishedAt = normalizeStreamTimestamp(finishedAt)
+  return {
+    startedAt: normalizedStartedAt,
+    finishedAt: normalizedFinishedAt || undefined,
+    status: streamTimingStatusFromRuntimeStatus(status),
+    label: streamTimingText(label) || undefined,
+    percent: streamTimingPercentFromOutput(percent),
   }
 }
 
@@ -54,7 +93,9 @@ export function updateStreamTiming(
   const current = timing || createStreamTiming(nextLabel || undefined)
   return {
     ...current,
-    startedAt: timing ? current.startedAt : nextStartedAt ?? current.startedAt,
+    startedAt: timing
+      ? current.startedAt
+      : (nextStartedAt ?? current.startedAt),
     label: nextLabel || current.label,
     percent: nextPercent ?? current.percent,
     status: current.status === 'failed' ? 'failed' : 'running',
@@ -77,11 +118,61 @@ export function updateStreamTimingFromOutput(
   )
 }
 
+export function streamTimingStatusFromRuntimeStatus(
+  status: unknown
+): StreamTimingStatus {
+  const current = streamTimingText(status).toLowerCase()
+  switch (current) {
+    case 'fail':
+    case 'failed':
+    case 'error':
+    case '失败':
+    case '已失败':
+      return 'failed'
+    case 'canceled':
+    case 'cancelled':
+    case 'cancel':
+    case '取消':
+    case '已取消':
+      return 'canceled'
+    case 'success':
+    case 'done':
+    case 'succeeded':
+    case 'finished':
+    case '成功':
+    case '完成':
+    case '已完成':
+      return 'done'
+    case 'waiting':
+    case '等待':
+    case '等待人工':
+    case '等待反馈':
+      return 'waiting'
+    default:
+      return 'running'
+  }
+}
+
+export function streamTimingPercentFromOutput(...values: unknown[]) {
+  for (const value of values) {
+    const percent = normalizeNestedStreamPercent(value)
+    if (percent != null) {
+      return percent
+    }
+  }
+  return null
+}
+
 export function isStreamTimingStatusOutput(output: unknown) {
   const row = normalizeStreamTimingRecord(output)
   const meta = normalizeStreamTimingRecord(row.meta)
   const event = streamTimingText(row.event).toLowerCase()
-  if (event === 'progress' || event === 'start' || event === 'status' || event === 'warning') {
+  if (
+    event === 'progress' ||
+    event === 'start' ||
+    event === 'status' ||
+    event === 'warning'
+  ) {
     return true
   }
   const action = streamTimingText(meta.action).toLowerCase()
@@ -125,28 +216,35 @@ export function StreamTimingBadge({
   className,
 }: {
   timing?: StreamTiming
-  now: number
+  now?: number
   className?: string
 }) {
+  const active = timing?.status === 'running'
+  const liveNow = useStreamClock(active)
+
   if (!timing) {
     return null
   }
 
-  const finishedAt = timing.finishedAt || now
+  const currentNow = active ? liveNow : (now ?? Date.now())
+  const finishedAt = timing.finishedAt || currentNow
   const duration = Math.max(0, finishedAt - timing.startedAt)
-  const isRunning = timing.status === 'running'
+  const isRunning = active
+  const isWaiting = timing.status === 'waiting'
   const label = streamTimingStatusLabel(timing.status)
   const percent = normalizeStreamPercent(timing.percent)
 
   return (
     <div
       className={cn(
-        'inline-flex max-w-full items-center gap-2 whitespace-nowrap rounded-full border px-3 py-1 text-xs',
+        'inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1 text-xs whitespace-nowrap',
         isRunning
           ? 'border-primary/20 bg-primary/5 text-foreground'
-          : timing.status === 'failed'
-            ? 'border-destructive/25 bg-destructive/5 text-destructive'
-            : 'border-muted bg-background/70 text-muted-foreground',
+          : isWaiting
+            ? 'border-amber-200 bg-amber-50 text-amber-700'
+            : timing.status === 'failed'
+              ? 'border-destructive/25 bg-destructive/5 text-destructive'
+              : 'border-muted bg-background/70 text-muted-foreground',
         className
       )}
       title={timing.label || undefined}
@@ -156,18 +254,24 @@ export function StreamTimingBadge({
           'size-2 shrink-0 rounded-full',
           isRunning
             ? 'bg-primary'
-            : timing.status === 'failed'
-              ? 'bg-destructive'
-              : 'bg-muted-foreground'
+            : isWaiting
+              ? 'bg-amber-500'
+              : timing.status === 'failed'
+                ? 'bg-destructive'
+                : 'bg-muted-foreground'
         )}
       />
-      <span className="shrink-0 font-medium">{label}</span>
-      <span className="shrink-0 tabular-nums">{formatStreamDuration(duration)}</span>
+      <span className='shrink-0 font-medium'>{label}</span>
+      <span className='shrink-0 tabular-nums'>
+        {formatStreamDuration(duration)}
+      </span>
       {isRunning && percent != null ? (
-        <span className="shrink-0 text-muted-foreground tabular-nums">{percent}%</span>
+        <span className='shrink-0 text-muted-foreground tabular-nums'>
+          {percent}%
+        </span>
       ) : null}
       {timing.label ? (
-        <span className="min-w-0 max-w-56 truncate text-muted-foreground">
+        <span className='max-w-56 min-w-0 truncate text-muted-foreground'>
           {timing.label}
         </span>
       ) : null}
@@ -177,6 +281,8 @@ export function StreamTimingBadge({
 
 function streamTimingStatusLabel(status: StreamTimingStatus) {
   switch (status) {
+    case 'waiting':
+      return '等待反馈'
     case 'failed':
       return '已失败'
     case 'canceled':
@@ -214,6 +320,23 @@ function normalizeStreamPercent(value: unknown) {
     return null
   }
   return Math.max(0, Math.min(100, Math.round(percent)))
+}
+
+function normalizeNestedStreamPercent(value: unknown): number | null {
+  const direct = normalizeStreamPercent(value)
+  if (direct != null) {
+    return direct
+  }
+  const row = normalizeStreamTimingRecord(value)
+  if (!Object.keys(row).length) {
+    return null
+  }
+  return (
+    normalizeNestedStreamPercent(row.progress) ??
+    normalizeNestedStreamPercent(row.percent) ??
+    normalizeNestedStreamPercent(row.meta) ??
+    normalizeNestedStreamPercent(row.output)
+  )
 }
 
 function normalizeStreamTimestamp(value: unknown) {

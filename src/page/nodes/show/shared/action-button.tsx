@@ -1,22 +1,80 @@
+import { useState, type ComponentProps } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { runActionsWithResult } from '@/lib/action'
+import { toastActionResult } from '@/lib/action-toast'
 import { matchConditionValue } from '@/lib/condition'
-import { runActions } from '@/lib/action'
 import { resolveLucideIcon } from '@/lib/icon'
 import { withBackNavigationSearch } from '@/lib/navigation'
 import { getByPath } from '@/lib/path'
 import { stripRouterBasePath } from '@/lib/router-path'
-import { cn } from '@/lib/utils'
+import type { ActionConfig } from '@/lib/schema'
 import type { PageStore } from '@/lib/store'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 
 type ActionButtonProps = {
-  buttonMeta: Record<string, any>
+  buttonMeta: ActionButtonMeta
   store: PageStore
-  record?: Record<string, any>
-  context?: Record<string, any>
-  defaultVariant?: string
-  defaultSize?: string
+  record?: ActionButtonRecord
+  context?: ActionButtonContext
+  defaultVariant?: ButtonVariant
+  defaultSize?: ButtonSize
+}
+
+type ButtonVariant = ComponentProps<typeof Button>['variant']
+type ButtonSize = ComponentProps<typeof Button>['size']
+type ActionButtonRecord = Record<string, unknown>
+type ActionButtonContext = Record<string, unknown>
+type ActionButtonAction = string | ActionConfig
+
+type ActionButtonMeta = {
+  action?: {
+    click?: ActionButtonAction | ActionButtonAction[]
+  }
+  className?: string
+  confirm?: unknown
+  description?: string
+  disabled?: boolean
+  errorMessage?: unknown
+  hiddenCondition?: unknown
+  hiddenWhen?: unknown
+  icon?: string
+  label?: string
+  meta?: {
+    confirm?: unknown
+    hiddenCondition?: unknown
+    hiddenWhen?: unknown
+    showCondition?: unknown
+    showWhen?: unknown
+    withBack?: unknown
+  }
+  name?: string
+  open?: string
+  routeKey?: string
+  searchField?: string
+  searchParam?: string
+  showCondition?: unknown
+  showWhen?: unknown
+  size?: ButtonSize
+  stateKey?: string
+  successMessage?: unknown
+  to?: string
+  variant?: ButtonVariant
+  withBack?: unknown
+}
+
+type ActionButtonConfirmMeta = {
+  title?: string
+  description?: string
+  confirmText?: string
+  cancelText?: string
+  destructive?: boolean
 }
 
 export function ActionButton({
@@ -28,6 +86,8 @@ export function ActionButton({
   defaultSize = 'sm',
 }: ActionButtonProps) {
   const navigate = useNavigate()
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const actionContext = context ?? (record ? { row: record } : undefined)
 
   if (isActionButtonHidden(buttonMeta, record, actionContext)) {
@@ -38,46 +98,46 @@ export function ActionButton({
   const hasIcon = !!Icon
   const buttonLabel = buttonMeta?.label || buttonMeta?.name
   const hasLabel = !!buttonLabel
+  const confirmMeta = resolveActionButtonConfirm(buttonMeta)
+
+  const executeAction = async () => {
+    if (submitting) {
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const success = await runButtonAction(
+        buttonMeta,
+        store,
+        record,
+        actionContext,
+        navigate
+      )
+      if (success) {
+        setConfirmOpen(false)
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const handleClick = async () => {
-    if (buttonMeta?.to && (buttonMeta?.open || 'path') === 'modal') {
-      store.getState().setPageState(buttonMeta?.routeKey || 'dialog.route', buttonMeta.to)
-      store.getState().setPageState(buttonMeta?.stateKey || 'dialog.open', true)
+    if (submitting) {
       return
     }
 
-    if (buttonMeta?.to && (buttonMeta?.open || 'path') === 'drawer') {
-      store.getState().setPageState(buttonMeta?.routeKey || 'drawer.route', buttonMeta.to)
-      store.getState().setPageState(buttonMeta?.stateKey || 'drawer.open', true)
+    if (confirmMeta) {
+      setConfirmOpen(true)
       return
     }
 
-    if (buttonMeta?.to) {
-      const searchParam = String(buttonMeta?.searchParam || 'id').trim() || 'id'
-      const searchValue = resolveRecordSearchValue(record, buttonMeta?.searchField)
-      const search =
-        searchValue == null
-          ? undefined
-          : { [searchParam]: String(searchValue) }
-
-      navigate({
-        to: stripRouterBasePath(buttonMeta.to),
-        search: withBackNavigationSearch(
-          search,
-          buttonMeta?.withBack ?? buttonMeta?.meta?.withBack
-        ),
-      })
-      return
-    }
-
-    if (buttonMeta?.action?.click) {
-      await runActions(store, buttonMeta.action.click, actionContext)
-    }
+    await executeAction()
   }
 
   const button = (
     <Button
-      type="button"
+      type='button'
       variant={buttonMeta?.variant || defaultVariant}
       size={hasIcon && !hasLabel ? undefined : buttonMeta?.size || defaultSize}
       className={cn(
@@ -85,30 +145,134 @@ export function ActionButton({
         buttonMeta?.className
       )}
       onClick={() => void handleClick()}
+      disabled={submitting || !!buttonMeta?.disabled}
     >
-      {Icon ? <Icon className="size-4" /> : null}
+      {Icon ? <Icon className='size-4' /> : null}
       {hasLabel ? <span>{buttonLabel}</span> : null}
     </Button>
   )
 
-  if (buttonMeta?.description) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>{button}</TooltipTrigger>
-        <TooltipContent sideOffset={8}>{buttonMeta.description}</TooltipContent>
-      </Tooltip>
-    )
+  const wrappedButton = buttonMeta?.description ? (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent sideOffset={8}>{buttonMeta.description}</TooltipContent>
+    </Tooltip>
+  ) : (
+    button
+  )
+
+  return (
+    <>
+      {wrappedButton}
+      {confirmMeta ? (
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={(open) => {
+            if (submitting) {
+              return
+            }
+            setConfirmOpen(open)
+          }}
+          title={confirmMeta.title || buttonMeta?.name || '确认操作'}
+          desc={confirmMeta.description || '确定要执行此操作吗？'}
+          confirmText={
+            submitting ? '处理中...' : confirmMeta.confirmText || '确定'
+          }
+          cancelBtnText={confirmMeta.cancelText || '取消'}
+          destructive={confirmMeta.destructive}
+          isLoading={submitting}
+          handleConfirm={() => void executeAction()}
+        />
+      ) : null}
+    </>
+  )
+}
+
+async function runButtonAction(
+  buttonMeta: ActionButtonMeta,
+  store: PageStore,
+  record: ActionButtonRecord | undefined,
+  actionContext: ActionButtonContext | undefined,
+  navigate: ReturnType<typeof useNavigate>
+) {
+  if (buttonMeta?.to && (buttonMeta?.open || 'path') === 'modal') {
+    store
+      .getState()
+      .setPageState(buttonMeta?.routeKey || 'dialog.route', buttonMeta.to)
+    store.getState().setPageState(buttonMeta?.stateKey || 'dialog.open', true)
+    return true
   }
 
-  return button
+  if (buttonMeta?.to && (buttonMeta?.open || 'path') === 'drawer') {
+    store
+      .getState()
+      .setPageState(buttonMeta?.routeKey || 'drawer.route', buttonMeta.to)
+    store.getState().setPageState(buttonMeta?.stateKey || 'drawer.open', true)
+    return true
+  }
+
+  if (buttonMeta?.to) {
+    const searchParam = String(buttonMeta?.searchParam || 'id').trim() || 'id'
+    const searchValue = resolveRecordSearchValue(
+      record,
+      buttonMeta?.searchField
+    )
+    const search =
+      searchValue == null ? undefined : { [searchParam]: String(searchValue) }
+
+    navigate({
+      to: stripRouterBasePath(buttonMeta.to),
+      search: withBackNavigationSearch(
+        search,
+        buttonMeta?.withBack ?? buttonMeta?.meta?.withBack
+      ),
+    })
+    return true
+  }
+
+  if (buttonMeta?.action?.click) {
+    const result = await runActionsWithResult(
+      store,
+      buttonMeta.action.click,
+      actionContext
+    )
+    if (
+      !result.success ||
+      buttonMeta?.successMessage ||
+      buttonMeta?.errorMessage
+    ) {
+      toastActionResult(result, {
+        successMessage: buttonMeta?.successMessage,
+        errorMessage: buttonMeta?.errorMessage,
+        defaultSuccessMessage: '',
+        defaultErrorMessage: '操作失败',
+      })
+    }
+    return result.success
+  }
+
+  return true
+}
+
+function resolveActionButtonConfirm(buttonMeta: ActionButtonMeta) {
+  const confirm = buttonMeta?.confirm ?? buttonMeta?.meta?.confirm
+  if (confirm === true) {
+    return {}
+  }
+  if (confirm && typeof confirm === 'object' && !Array.isArray(confirm)) {
+    return confirm as ActionButtonConfirmMeta
+  }
+  return null
 }
 
 function isActionButtonHidden(
-  buttonMeta: Record<string, any>,
-  record?: Record<string, any>,
-  context?: Record<string, any>
+  buttonMeta: ActionButtonMeta,
+  record?: ActionButtonRecord,
+  context?: ActionButtonContext
 ) {
-  const showWhen = readConditionList(buttonMeta?.showWhen ?? buttonMeta?.meta?.showWhen)
+  const showWhen = readConditionList(
+    buttonMeta?.showWhen ?? buttonMeta?.meta?.showWhen
+  )
   if (
     showWhen.length > 0 &&
     !matchButtonConditions(
@@ -121,7 +285,9 @@ function isActionButtonHidden(
     return true
   }
 
-  const hiddenWhen = readConditionList(buttonMeta?.hiddenWhen ?? buttonMeta?.meta?.hiddenWhen)
+  const hiddenWhen = readConditionList(
+    buttonMeta?.hiddenWhen ?? buttonMeta?.meta?.hiddenWhen
+  )
   return matchButtonConditions(
     hiddenWhen,
     buttonMeta?.hiddenCondition ?? buttonMeta?.meta?.hiddenCondition,
@@ -137,15 +303,15 @@ function readConditionList(value: unknown) {
   return isConditionRecord(value) ? [value] : []
 }
 
-function isConditionRecord(value: unknown): value is Record<string, any> {
+function isConditionRecord(value: unknown): value is ActionButtonRecord {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
 function matchButtonConditions(
-  conditions: Record<string, any>[],
+  conditions: ActionButtonRecord[],
   conditionMode: unknown,
-  record?: Record<string, any>,
-  context?: Record<string, any>
+  record?: ActionButtonRecord,
+  context?: ActionButtonContext
 ) {
   if (conditions.length === 0) {
     return false
@@ -154,13 +320,15 @@ function matchButtonConditions(
   const results = conditions.map((condition) =>
     matchButtonCondition(condition, record, context)
   )
-  return conditionMode === 'any' ? results.some(Boolean) : results.every(Boolean)
+  return conditionMode === 'any'
+    ? results.some(Boolean)
+    : results.every(Boolean)
 }
 
 function matchButtonCondition(
-  condition: Record<string, any>,
-  record?: Record<string, any>,
-  context?: Record<string, any>
+  condition: ActionButtonRecord,
+  record?: ActionButtonRecord,
+  context?: ActionButtonContext
 ) {
   const path = String(condition.path || '').trim()
   const current = resolveButtonConditionValue(path, record, context)
@@ -173,8 +341,8 @@ function matchButtonCondition(
 
 function resolveButtonConditionValue(
   path: string,
-  record?: Record<string, any>,
-  context?: Record<string, any>
+  record?: ActionButtonRecord,
+  context?: ActionButtonContext
 ) {
   if (!path) {
     return undefined
@@ -197,7 +365,7 @@ function resolveButtonConditionValue(
 }
 
 function resolveRecordSearchValue(
-  record?: Record<string, any>,
+  record?: ActionButtonRecord,
   searchField?: string
 ) {
   if (!record) {

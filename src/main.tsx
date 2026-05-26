@@ -1,4 +1,5 @@
 import { StrictMode } from 'react'
+import * as React from 'react'
 import ReactDOM from 'react-dom/client'
 import { AxiosError } from 'axios'
 import {
@@ -12,6 +13,7 @@ import { getSiteConfig } from '@/config/app-config'
 import { useAuthStore } from '@/stores/auth-store'
 import { handleServerError } from '@/lib/handle-server-error'
 import { resetFrontRuntimeCache } from '@/lib/request'
+import { loadRuntimeFrontPlugins } from '@/lib/plugin/runtime'
 import { parseRouterSearch, stringifyRouterSearch } from '@/lib/router-search'
 import { getRouterBasePath } from '@/lib/router-path'
 import { DirectionProvider } from './context/direction-provider'
@@ -93,6 +95,7 @@ declare module '@tanstack/react-router' {
 }
 
 const CONSOLE_BRAND_FLAG = '__dever_front_console_brand__'
+const REACT_GLOBAL_FLAG = 'React'
 
 function printConsoleBrand() {
   if (typeof window === 'undefined') {
@@ -120,18 +123,21 @@ function printConsoleBrand() {
 const rootElement = document.getElementById('root')!
 if (!rootElement.innerHTML) {
   printConsoleBrand()
-  const root = ReactDOM.createRoot(rootElement)
-  root.render(
-    <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <FontProvider>
-            <DirectionProvider>
-              <RouterProvider router={router} />
-            </DirectionProvider>
-          </FontProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
-    </StrictMode>
-  )
+  ;(window as any)[REACT_GLOBAL_FLAG] = React
+  void loadRuntimeFrontPlugins().finally(() => {
+    const root = ReactDOM.createRoot(rootElement)
+    root.render(
+      <StrictMode>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider>
+            <FontProvider>
+              <DirectionProvider>
+                <RouterProvider router={router} />
+              </DirectionProvider>
+            </FontProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </StrictMode>
+    )
+  })
 }

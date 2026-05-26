@@ -5,10 +5,10 @@
  */
 import { createContext, useContext } from 'react'
 import { createStore, type StoreApi, useStore } from 'zustand'
-import type { PageSchemaType, ActionConfig, Item, ValidateRule } from './schema'
-import { getByPath, setByPath, resolvePath } from './path'
 import { isItemCurrentlyHidden, matchConditionValue } from './condition'
 import { resolveNavigationRouteState } from './navigation'
+import { getByPath, setByPath, resolvePath } from './path'
+import type { PageSchemaType, ActionConfig, Item, ValidateRule } from './schema'
 
 // ========== Store 类型 ==========
 
@@ -115,15 +115,24 @@ export function createPageStore(
         return true
       }
 
-      const parentSnapshot = getParentScopeSnapshot(get().parentStore as PageStore | null)
+      const parentSnapshot = getParentScopeSnapshot(
+        get().parentStore as PageStore | null
+      )
 
-      if (isItemCurrentlyHidden(item, get().data, get().state, parentSnapshot)) {
+      if (
+        isItemCurrentlyHidden(item, get().data, get().state, parentSnapshot)
+      ) {
         get().clearError(item.id)
         return true
       }
 
       const value = item.value ? get().getValueByPath(item.value) : undefined
-      const message = getValidationMessage(item, item.validate, value, get().getValueByPath)
+      const message = getValidationMessage(
+        item,
+        item.validate,
+        value,
+        get().getValueByPath
+      )
 
       if (message) {
         get().setError(item.id, message)
@@ -136,7 +145,9 @@ export function createPageStore(
 
     validateForm: () => {
       const items = Object.values(get().schema.nodes ?? {}).flat()
-      const parentSnapshot = getParentScopeSnapshot(get().parentStore as PageStore | null)
+      const parentSnapshot = getParentScopeSnapshot(
+        get().parentStore as PageStore | null
+      )
       let valid = true
 
       for (const item of items) {
@@ -144,7 +155,9 @@ export function createPageStore(
           continue
         }
 
-        if (isItemCurrentlyHidden(item, get().data, get().state, parentSnapshot)) {
+        if (
+          isItemCurrentlyHidden(item, get().data, get().state, parentSnapshot)
+        ) {
           if (item.id) {
             get().clearError(item.id)
           }
@@ -182,7 +195,9 @@ function buildInitialPageState(schema: PageSchemaType, pagePath: string) {
   const state = structuredClone(schema.state ?? {})
   const routeState = resolveNavigationRouteState(pagePath)
   const existingRoute =
-    state.route && typeof state.route === 'object' && !Array.isArray(state.route)
+    state.route &&
+    typeof state.route === 'object' &&
+    !Array.isArray(state.route)
       ? state.route
       : {}
 
@@ -202,7 +217,9 @@ export const PageStoreContext = createContext<PageStore | null>(null)
 export function usePageStore(): PageStore {
   const store = useContext(PageStoreContext)
   if (!store) {
-    throw new Error('usePageStore must be used within a PageStoreContext.Provider')
+    throw new Error(
+      'usePageStore must be used within a PageStoreContext.Provider'
+    )
   }
   return store
 }
@@ -210,7 +227,9 @@ export function usePageStore(): PageStore {
 /**
  * 自定义 hook: 从 store 中选取值
  */
-export function usePageStoreValue<T>(selector: (state: PageStoreState) => T): T {
+export function usePageStoreValue<T>(
+  selector: (state: PageStoreState) => T
+): T {
   const store = usePageStore()
   // 直接从 store 获取值（需要配合 zustand 的 useStore）
   return selector(store.getState())
@@ -331,8 +350,15 @@ function validateRule(
         return rule.message || '该字段不能为空。'
       }
       if (item.type === 'form-cascader') {
+        if (normalized === 0 || normalized === '0') {
+          return rule.message || '该字段不能为空。'
+        }
         const requiredLevels = resolveCascaderRequiredLevels(item)
-        if (requiredLevels > 0 && Array.isArray(normalized) && normalized.length < requiredLevels) {
+        if (
+          requiredLevels > 0 &&
+          Array.isArray(normalized) &&
+          normalized.length < requiredLevels
+        ) {
           return rule.message || '该字段不能为空。'
         }
       }
@@ -374,7 +400,8 @@ function validateRule(
 
     case 'sameAs':
       if (!rule.target) return ''
-      return String(normalized ?? '') === String(getValueByPath(rule.target) ?? '')
+      return String(normalized ?? '') ===
+        String(getValueByPath(rule.target) ?? '')
         ? ''
         : rule.message || '两次输入不一致。'
 
@@ -389,7 +416,10 @@ function resolveCascaderRequiredLevels(item: Item) {
     return explicit
   }
 
-  if (Array.isArray(item.meta?.placeholder) && item.meta.placeholder.length > 0) {
+  if (
+    Array.isArray(item.meta?.placeholder) &&
+    item.meta.placeholder.length > 0
+  ) {
     return item.meta.placeholder.length
   }
 
@@ -405,7 +435,9 @@ function shouldRunRule(
   }
 
   const condition = rule.condition === 'any' ? 'any' : 'all'
-  const results = rule.when.map((item) => matchRuleCondition(item, getValueByPath))
+  const results = rule.when.map((item) =>
+    matchRuleCondition(item, getValueByPath)
+  )
 
   return condition === 'any' ? results.some(Boolean) : results.every(Boolean)
 }
@@ -415,5 +447,9 @@ function matchRuleCondition(
   getValueByPath: (path: string) => unknown
 ) {
   const current = getValueByPath(condition.path)
-  return matchConditionValue(current, condition.operator ?? 'equals', condition.value)
+  return matchConditionValue(
+    current,
+    condition.operator ?? 'equals',
+    condition.value
+  )
 }

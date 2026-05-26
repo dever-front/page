@@ -1,14 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from 'zustand'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { SearchableOptionPicker } from '@/components/searchable-option-picker'
-import {
   applyOptionFilters,
   buildOptionRegistrySignature,
   collectOptionFilterDependencies,
@@ -17,6 +9,14 @@ import { getByPath, resolvePath } from '@/lib/path'
 import { inferRelationPath } from '@/lib/relation-field'
 import { request } from '@/lib/request'
 import { cn } from '@/lib/utils'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { SearchableOptionPicker } from '@/components/searchable-option-picker'
 import type { NodeItemProps } from '../../nodes'
 
 type CascaderOption = {
@@ -34,7 +34,14 @@ const remoteOptionCache = new Map<string, RemoteOptionCacheEntry>()
 const remoteOptionPendingCache = new Map<string, Promise<CascaderOption[]>>()
 const remoteOptionCacheTtl = 10 * 1000
 
-export function FormCascader({ item, value, setValue, store, error, row }: NodeItemProps) {
+export function FormCascader({
+  item,
+  value,
+  setValue,
+  store,
+  error,
+  row,
+}: NodeItemProps) {
   const api = String(item.meta?.api || '').trim()
   const leafValueMode = resolveLeafValueMode(item.meta)
   const [leafPathValues, setLeafPathValues] = useState<any[]>([])
@@ -47,7 +54,10 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
     [selectedValues]
   )
   const placeholders = useMemo(
-    () => (Array.isArray(item.meta?.placeholder) ? item.meta.placeholder.map(String) : []),
+    () =>
+      Array.isArray(item.meta?.placeholder)
+        ? item.meta.placeholder.map(String)
+        : [],
     [item.meta?.placeholder]
   )
   const levelSearchPlaceholders = useMemo(() => {
@@ -57,7 +67,9 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
     return []
   }, [item.meta?.searchPlaceholder])
   const sharedSearchPlaceholder = String(
-    Array.isArray(item.meta?.searchPlaceholder) ? '' : item.meta?.searchPlaceholder || ''
+    Array.isArray(item.meta?.searchPlaceholder)
+      ? ''
+      : item.meta?.searchPlaceholder || ''
   ).trim()
   const labelTarget = String(item.meta?.labelTarget || '').trim()
   const searchable = item.meta?.searchable !== false
@@ -84,7 +96,10 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
             buildOptionRegistrySignature(state.optionRegistry[id])
           ),
         }),
-      [optionFilterDependencies.pathValues, optionFilterDependencies.sourceNodeIds]
+      [
+        optionFilterDependencies.pathValues,
+        optionFilterDependencies.sourceNodeIds,
+      ]
     )
   )
   const displayLevels = useMemo(
@@ -105,12 +120,15 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
 
   const buildParams = useCallback(
     (parentId: any, level: number) => {
-      const childLevel = level > 0 && String(item.meta?.childUse || '').trim() !== ''
+      const childLevel =
+        level > 0 && String(item.meta?.childUse || '').trim() !== ''
       const use = childLevel
         ? String(item.meta?.childUse || '').trim()
         : String(item.meta?.use || '').trim()
       const parentField = childLevel
-        ? String(item.meta?.childParentField || item.meta?.parentField || 'parent_id').trim()
+        ? String(
+            item.meta?.childParentField || item.meta?.parentField || 'parent_id'
+          ).trim()
         : String(item.meta?.parentField || 'parent_id').trim()
       const params: Record<string, any> = {
         type: String(item.meta?.type || 'model').trim() || 'model',
@@ -155,7 +173,8 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
 
   const fetchLevelOptions = useCallback(
     async (parentId: any, level: number) => {
-      const childLevel = level > 0 && String(item.meta?.childUse || '').trim() !== ''
+      const childLevel =
+        level > 0 && String(item.meta?.childUse || '').trim() !== ''
       const params = buildParams(parentId, level)
       const cacheKey = buildRemoteOptionCacheKey(api, params)
       const cached = getCachedRemoteOptions(cacheKey)
@@ -206,13 +225,15 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
     async function resolveLeafPath() {
       const leafValue = String(value ?? '').trim()
       const childUse = String(item.meta?.childUse || '').trim()
-      const childParentField = String(item.meta?.childParentField || item.meta?.parentField || '').trim()
-      if (!leafValue) {
+      const childParentField = String(
+        item.meta?.childParentField || item.meta?.parentField || ''
+      ).trim()
+      if (isEmptyCascaderValue(leafValue)) {
         if (keepParentOnEmptyRef.current) {
           keepParentOnEmptyRef.current = false
           return
         }
-        setLeafPathValues([])
+        setLeafPathValues(resolveDefaultParentValues(item.meta))
         return
       }
       if (!api || !childUse || !childParentField) {
@@ -240,7 +261,9 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
         return
       }
 
-      const selected = result.data.find((current: any) => String(current?.id) === leafValue) || result.data[0]
+      const selected =
+        result.data.find((current: any) => String(current?.id) === leafValue) ||
+        result.data[0]
       const parentId = selected?.[childParentField]
       setLeafPathValues(parentId ? [parentId, selected.id] : [selected.id])
     }
@@ -253,6 +276,8 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
     api,
     item.meta?.childParentField,
     item.meta?.childUse,
+    item.meta?.defaultParentId,
+    item.meta?.defaultParentValue,
     item.meta?.labelField,
     item.meta?.parentField,
     item.meta?.type,
@@ -268,7 +293,9 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
         return
       }
       const current = store.getState().getValueByPath(labelTarget)
-      const currentItems = Array.isArray(current) ? current.map((item) => String(item)) : []
+      const currentItems = Array.isArray(current)
+        ? current.map((item) => String(item))
+        : []
       if (isSameLabelValues(currentItems, items)) {
         return
       }
@@ -331,7 +358,10 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
       const nextLabels = labels.length > 0 ? labels : fallbackLabels
       setLevels(nextLevels)
       syncSelectedLabels(nextLabels)
-      if (nextLevels[0]?.length && !isSameCascaderValues(selectedValues, validValues)) {
+      if (
+        nextLevels[0]?.length &&
+        !isSameCascaderValues(selectedValues, validValues)
+      ) {
         if (leafValueMode) {
           setLeafPathValues(validValues)
         } else {
@@ -368,7 +398,7 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
       {displayLevels.length === 0 ? (
         <div
           className={cn(
-            'flex h-10 min-w-[10rem] w-[14rem] max-w-full items-center rounded-md border border-input bg-background px-3 text-sm text-muted-foreground shadow-xs',
+            'flex h-10 w-[14rem] max-w-full min-w-[10rem] items-center rounded-md border border-input bg-background px-3 text-sm text-muted-foreground shadow-xs',
             item.meta?.controlClassName
           )}
         >
@@ -386,11 +416,16 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
 
         const currentValue = selectedValues[level]
         const placeholder =
-          placeholders[level] || (level === 0 ? item.placeholder || '请选择' : `请选择第 ${level + 1} 级`)
+          placeholders[level] ||
+          (level === 0
+            ? item.placeholder || '请选择'
+            : `请选择第 ${level + 1} 级`)
         const searchPlaceholder =
           levelSearchPlaceholders[level] ||
           sharedSearchPlaceholder ||
-          (placeholders[level] ? `输入${placeholders[level]}筛选...` : '输入关键词筛选...')
+          (placeholders[level]
+            ? `输入${placeholders[level]}筛选...`
+            : '输入关键词筛选...')
 
         if (searchable) {
           return (
@@ -400,26 +435,34 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
               options={options}
               placeholder={loadingLevel === level ? '正在加载...' : placeholder}
               searchPlaceholder={searchPlaceholder}
-              emptyText="未找到匹配选项"
+              emptyText='未找到匹配选项'
               disabled={!!item.meta?.disabled}
               error={!!error}
               className={cn(
-                'min-w-[10rem] w-[14rem] max-w-full',
+                'w-[14rem] max-w-full min-w-[10rem]',
                 item.meta?.controlClassName
               )}
               onChange={(nextValue) => {
-                const nextSelectedValue = Array.isArray(nextValue) ? nextValue[0] : nextValue
+                const nextSelectedValue = Array.isArray(nextValue)
+                  ? nextValue[0]
+                  : nextValue
                 const selected = options.find(
                   (current) => String(current.id) === String(nextSelectedValue)
                 )
                 if (!selected) {
                   return
                 }
-                const nextValues = [...selectedValues.slice(0, level), selected.id]
+                const nextValues = [
+                  ...selectedValues.slice(0, level),
+                  selected.id,
+                ]
                 if (leafValueMode) {
                   setLeafPathValues(nextValues)
-                  keepParentOnEmptyRef.current = level === 0 && selected.leaf !== true
-                  setValue(level === 0 && selected.leaf !== true ? '' : selected.id)
+                  keepParentOnEmptyRef.current =
+                    level === 0 && selected.leaf !== true
+                  setValue(
+                    level === 0 && selected.leaf !== true ? '' : selected.id
+                  )
                   return
                 }
                 setValue(nextValues)
@@ -434,15 +477,23 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
             value={currentValue != null ? String(currentValue) : ''}
             disabled={!!item.meta?.disabled}
             onValueChange={(nextValue) => {
-              const selected = options.find((current) => String(current.id) === nextValue)
+              const selected = options.find(
+                (current) => String(current.id) === nextValue
+              )
               if (!selected) {
                 return
               }
-              const nextValues = [...selectedValues.slice(0, level), selected.id]
+              const nextValues = [
+                ...selectedValues.slice(0, level),
+                selected.id,
+              ]
               if (leafValueMode) {
                 setLeafPathValues(nextValues)
-                keepParentOnEmptyRef.current = level === 0 && selected.leaf !== true
-                setValue(level === 0 && selected.leaf !== true ? '' : selected.id)
+                keepParentOnEmptyRef.current =
+                  level === 0 && selected.leaf !== true
+                setValue(
+                  level === 0 && selected.leaf !== true ? '' : selected.id
+                )
                 return
               }
               setValue(nextValues)
@@ -451,12 +502,17 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
             <SelectTrigger
               aria-invalid={!!error}
               className={cn(
-                'min-w-[10rem] w-[14rem] max-w-full',
-                error && 'border-destructive ring-destructive/20 focus-visible:ring-destructive/30',
+                'w-[14rem] max-w-full min-w-[10rem]',
+                error &&
+                  'border-destructive ring-destructive/20 focus-visible:ring-destructive/30',
                 item.meta?.controlClassName
               )}
             >
-              <SelectValue placeholder={loadingLevel === level ? '正在加载...' : placeholder} />
+              <SelectValue
+                placeholder={
+                  loadingLevel === level ? '正在加载...' : placeholder
+                }
+              />
             </SelectTrigger>
             <SelectContent>
               {options.map((current) => (
@@ -474,12 +530,27 @@ export function FormCascader({ item, value, setValue, store, error, row }: NodeI
 
 function normalizeCascaderValues(value: any) {
   if (Array.isArray(value)) {
-    return value.filter((current) => current != null && current !== '')
+    return value.filter((current) => !isEmptyCascaderValue(current))
   }
-  if (value == null || value === '') {
+  if (isEmptyCascaderValue(value)) {
     return []
   }
   return [value]
+}
+
+function resolveDefaultParentValues(meta: Record<string, any> | undefined) {
+  const rawValue = meta?.defaultParentValue ?? meta?.defaultParentId
+  if (Array.isArray(rawValue)) {
+    return rawValue.filter((current) => !isEmptyCascaderValue(current))
+  }
+  if (isEmptyCascaderValue(rawValue)) {
+    return []
+  }
+  return [rawValue]
+}
+
+function isEmptyCascaderValue(value: any) {
+  return value == null || value === '' || value === 0 || value === '0'
 }
 
 function buildRemoteOptionCacheKey(api: string, params: Record<string, any>) {
@@ -505,7 +576,10 @@ function setCachedRemoteOptions(cacheKey: string, options: CascaderOption[]) {
   })
 }
 
-function normalizeRemoteOptions(rows: any[], childLevel: boolean): CascaderOption[] {
+function normalizeRemoteOptions(
+  rows: any[],
+  childLevel: boolean
+): CascaderOption[] {
   return rows.map((current: any) => ({
     ...current,
     id: current?.id,
@@ -518,7 +592,10 @@ function normalizeRemoteOptions(rows: any[], childLevel: boolean): CascaderOptio
   }))
 }
 
-function resolveRowRelation(row: Record<string, any> | undefined, valuePath?: string) {
+function resolveRowRelation(
+  row: Record<string, any> | undefined,
+  valuePath?: string
+) {
   if (!row) {
     return undefined
   }
@@ -534,7 +611,9 @@ function resolveRowRelation(row: Record<string, any> | undefined, valuePath?: st
 }
 
 function resolveLeafValueMode(meta: Record<string, any> | undefined) {
-  const mode = String(meta?.valueMode || meta?.saveMode || '').trim().toLowerCase()
+  const mode = String(meta?.valueMode || meta?.saveMode || '')
+    .trim()
+    .toLowerCase()
   return mode === 'leaf' || mode === 'last'
 }
 
@@ -551,7 +630,9 @@ function isSameCascaderValues(left: any[], right: any[]) {
   if (left.length !== right.length) {
     return false
   }
-  return left.every((current, index) => String(current) === String(right[index]))
+  return left.every(
+    (current, index) => String(current) === String(right[index])
+  )
 }
 
 function isSameLabelValues(left: string[], right: string[]) {
@@ -561,13 +642,15 @@ function isSameLabelValues(left: string[], right: string[]) {
   return left.every((current, index) => current === right[index])
 }
 
-function resolveFallbackLabels(store: NodeItemProps['store'], item: NodeItemProps['item'], labelTarget: string) {
+function resolveFallbackLabels(
+  store: NodeItemProps['store'],
+  item: NodeItemProps['item'],
+  labelTarget: string
+) {
   if (labelTarget) {
     const current = store.getState().getValueByPath(labelTarget)
     if (Array.isArray(current) && current.length > 0) {
-      return current
-        .map((entry) => String(entry ?? '').trim())
-        .filter(Boolean)
+      return current.map((entry) => String(entry ?? '').trim()).filter(Boolean)
     }
   }
 

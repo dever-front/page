@@ -2,6 +2,7 @@ import path from 'path'
 import { type PluginOption, defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
+import { deverFrontSourcePlugins } from './vite-plugin-dever-front'
 
 // https://vite.dev/config/
 export default defineConfig(async () => {
@@ -12,6 +13,7 @@ export default defineConfig(async () => {
     process.env.VITE_FORCE_POLLING === '1' ||
     process.env.CHOKIDAR_USEPOLLING === 'true'
   const pollingInterval = Number(process.env.VITE_POLLING_INTERVAL ?? 800)
+  const projectRoot = path.resolve(__dirname, '..')
 
   const plugins: PluginOption[] = []
 
@@ -26,7 +28,7 @@ export default defineConfig(async () => {
     )
   }
 
-  plugins.push(react(), tailwindcss())
+  plugins.push(deverFrontSourcePlugins({ projectRoot }), react(), tailwindcss())
 
   return {
     base: frontBase,
@@ -55,6 +57,9 @@ export default defineConfig(async () => {
       host: '0.0.0.0',
       port: 5173,
       allowedHosts: true,
+      fs: {
+        allow: [path.resolve(__dirname), path.resolve(projectRoot, 'backend')],
+      },
       watch: {
         ignored: [
           '**/.git/**',

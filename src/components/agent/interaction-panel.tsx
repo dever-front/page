@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Send } from 'lucide-react'
+import type {
+  AgentInteraction,
+  AgentInteractionSubmitResult,
+} from '@/lib/agent/types'
 import { request } from '@/lib/request'
 import { streamValueText as valueText } from '@/lib/stream'
 import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
@@ -21,10 +25,6 @@ import {
   type PowerParam,
   type PowerParamOption,
 } from './stream-request-params'
-import type {
-  AgentInteraction,
-  AgentInteractionSubmitResult,
-} from '@/lib/agent/types'
 
 export type {
   AgentInteraction,
@@ -248,7 +248,9 @@ function AgentInteractionParamForm({
     }))
   }
 
-  const buildSubmitResult = useCallback((): AgentInteractionSubmitResult | string => {
+  const buildSubmitResult = useCallback(():
+    | AgentInteractionSubmitResult
+    | string => {
     const validationError = validateMainParams(params, paramValues)
     if (validationError) {
       return validationError
@@ -614,11 +616,50 @@ function normalizeInteractionField(
     default_value: normalizeDefaultValue(field),
     placeholder: normalizeText(field.placeholder),
     required: Boolean(field.required),
-    upload_rule_id: normalizeID(field.upload_rule_id ?? field.uploadRuleId),
+    upload_rule_id:
+      normalizeID(field.upload_rule_id ?? field.uploadRuleId) ||
+      defaultInteractionUploadRuleID(type, field),
     max_files: Number(field.max_files || 0),
     sort: Number(field.sort || index + 1),
     options,
   }
+}
+
+function defaultInteractionUploadRuleID(
+  type: string,
+  field: Record<string, unknown>
+) {
+  if (type !== 'file' && type !== 'files') {
+    return undefined
+  }
+  const text = normalizeText(
+    [
+      field.type,
+      field.key,
+      field.name,
+      field.label,
+      field.placeholder,
+      field.accept,
+    ]
+      .filter(Boolean)
+      .join(' ')
+  ).toLowerCase()
+  if (/image|图片|截图|封面|海报|照片/.test(text)) {
+    return 1
+  }
+  if (/video|视频|短视频|影片|素材片段/.test(text)) {
+    return 2
+  }
+  if (/audio|音频|语音|声音|配音/.test(text)) {
+    return 3
+  }
+  if (/pdf/.test(text)) {
+    return 5
+  }
+  if (/office|word|excel|ppt|doc|docx|xls|xlsx|pptx/.test(text)) {
+    return 4
+  }
+  return 6
 }
 
 function resolveInteractionControlType(

@@ -56,7 +56,7 @@ import {
   useStreamClock,
   type StreamTimingStatus,
   type StreamTiming,
-} from '@/page/nodes/show/shared/stream-timing'
+} from '@/components/stream-timing'
 import { AssistantActionCard } from './action-card'
 import {
   AssistantReferenceList,

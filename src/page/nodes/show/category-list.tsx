@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { DragEvent, HTMLAttributes, KeyboardEvent } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { GripVertical } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { runActionsWithResult } from '@/lib/action'
 import { cn } from '@/lib/utils'
 import { getByPath, resolvePath, setByPath } from '@/lib/path'
 import { getCurrentRouterPathname } from '@/lib/router-path'
@@ -43,14 +46,21 @@ export function ShowCategoryList({
   const clearLabel = String(item.meta?.clearLabel || '全部').trim() || '全部'
   const allowUncategorized = item.meta?.uncategorized === true
   const uncategorizedLabel = String(item.meta?.uncategorizedLabel || '未分类').trim() || '未分类'
+  const selectable = item.meta?.selectable !== false
   const remote = item.meta?.remote === true
   const defaultFirst = item.meta?.defaultFirst === true
+  const sortable = item.meta?.sortable === true
+  const sortField = String(item.meta?.sortField || 'sort').trim() || 'sort'
+  const sortChangeAction = item.meta?.sortChangeAction
   const statusField = String(item.meta?.statusField || '').trim()
   const statusOptions = useMemo(() => buildCategoryStatusOptions(item.meta), [item.meta])
   const statusChangeAction = item.meta?.statusChangeAction
   const statusDisplay = String(item.meta?.statusDisplay || 'select').trim() || 'select'
   const statusMeta = isPlainObject(item.meta?.statusMeta) ? item.meta.statusMeta : {}
-  const hasVisibleRows = categories.length > 0 || allowClear || allowUncategorized
+  const showClearRow = selectable && allowClear
+  const showUncategorizedRow = selectable && allowUncategorized
+  const hasVisibleRows = categories.length > 0 || showClearRow || showUncategorizedRow
+  const [dragCategoryID, setDragCategoryID] = useState('')
   const categorySignature = useMemo(
     () =>
       JSON.stringify(
@@ -71,6 +81,10 @@ export function ShowCategoryList({
 
   const applyCategorySelection = useCallback(
     (nextValue: unknown, options?: { replace?: boolean }) => {
+      if (!selectable) {
+        return
+      }
+
       const normalizedValue = normalizeCategoryValue(nextValue)
       const assignValue = normalizedValue || ''
       setValue(assignValue)
@@ -89,7 +103,7 @@ export function ShowCategoryList({
         }),
       })
     },
-    [navigate, queryKey, remote, setValue]
+    [navigate, queryKey, remote, selectable, setValue]
   )
 
   useEffect(() => {
@@ -97,7 +111,7 @@ export function ShowCategoryList({
   }, [resolvedCategories])
 
   useEffect(() => {
-    if (!defaultFirst || categories.length === 0) {
+    if (!selectable || !defaultFirst || categories.length === 0) {
       return
     }
 
@@ -106,7 +120,14 @@ export function ShowCategoryList({
     }
 
     void applyCategorySelection(firstCategoryID, { replace: true })
-  }, [applyCategorySelection, categorySignature, defaultFirst, firstCategoryID, hasCurrentCategory])
+  }, [
+    applyCategorySelection,
+    categorySignature,
+    defaultFirst,
+    firstCategoryID,
+    hasCurrentCategory,
+    selectable,
+  ])
 
   const handleStatusSaved = useCallback(
     (category: Record<string, any>, nextValue: string | number) => {
@@ -125,6 +146,49 @@ export function ShowCategoryList({
       )
     },
     [statusField]
+  )
+
+  const handleCategoryDrop = useCallback(
+    async (targetCategoryID: string) => {
+      if (
+        !sortable ||
+        !sortChangeAction ||
+        !dragCategoryID ||
+        dragCategoryID === targetCategoryID
+      ) {
+        setDragCategoryID('')
+        return
+      }
+
+      const reorderedCategories = reorderCategories(categories, dragCategoryID, targetCategoryID)
+      if (reorderedCategories === categories) {
+        setDragCategoryID('')
+        return
+      }
+
+      const sortedCategories = assignCategorySortValues(
+        reorderedCategories,
+        categories,
+        sortField
+      )
+      const sortUpdates = resolveCategorySortUpdates(categories, sortedCategories, sortField)
+      setCategories(sortedCategories)
+      setDragCategoryID('')
+
+      for (const update of sortUpdates) {
+        const result = await runActionsWithResult(store, sortChangeAction, {
+          row: update.row,
+          value: update.value,
+          sort: update.value,
+        })
+
+        if (!result.success) {
+          setCategories(categories)
+          return
+        }
+      }
+    },
+    [categories, dragCategoryID, sortChangeAction, sortField, sortable, store]
   )
 
   return (
@@ -156,7 +220,7 @@ export function ShowCategoryList({
             <div className="px-2 py-6 text-center text-sm text-muted-foreground">{emptyText}</div>
           ) : null}
 
-          {allowClear ? (
+          {showClearRow ? (
             <div
               role="button"
               tabIndex={0}
@@ -187,7 +251,7 @@ export function ShowCategoryList({
             </div>
           ) : null}
 
-          {allowUncategorized ? (
+          {showUncategorizedRow ? (
             <div
               role="button"
               tabIndex={0}
@@ -231,28 +295,59 @@ export function ShowCategoryList({
             const handleActivate = () => {
               void applyCategorySelection(category.id)
             }
+            const interactionProps: HTMLAttributes<HTMLDivElement> = selectable
+              ? {
+                  role: 'button',
+                  tabIndex: 0,
+                  'aria-pressed': active,
+                  onClick: handleActivate,
+                  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') {
+                      return
+                    }
+                    event.preventDefault()
+                    handleActivate()
+                  },
+                }
+              : {}
+            const dragProps: HTMLAttributes<HTMLDivElement> = sortable
+              ? {
+                  draggable: true,
+                  onDragStart: (event: DragEvent<HTMLDivElement>) => {
+                    event.dataTransfer.effectAllowed = 'move'
+                    setDragCategoryID(categoryID)
+                  },
+                  onDragOver: (event: DragEvent<HTMLDivElement>) => {
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = 'move'
+                  },
+                  onDrop: (event: DragEvent<HTMLDivElement>) => {
+                    event.preventDefault()
+                    void handleCategoryDrop(categoryID)
+                  },
+                  onDragEnd: () => setDragCategoryID(''),
+                }
+              : {}
 
             return (
               <div
                 key={categoryID || categoryLabel}
-                role="button"
-                tabIndex={0}
-                aria-pressed={active}
+                {...interactionProps}
+                {...dragProps}
                 className={cn(
                   'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
-                  active
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
+                  selectable
+                    ? active
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
+                    : 'text-foreground',
+                  sortable ? 'cursor-grab active:cursor-grabbing' : null,
+                  dragCategoryID === categoryID ? 'opacity-50' : null
                 )}
-                onClick={handleActivate}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter' && event.key !== ' ') {
-                    return
-                  }
-                  event.preventDefault()
-                  handleActivate()
-                }}
               >
+                {sortable ? (
+                  <GripVertical className="size-4 shrink-0 text-muted-foreground" />
+                ) : null}
                 <span className="min-w-0 flex-1 truncate font-medium">{categoryLabel}</span>
                 {categoryCount != null ? (
                   <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
@@ -345,6 +440,66 @@ function resolveCategoryLabel(category: Record<string, any>, labelField: string)
 
 function normalizeCategoryValue(value: unknown) {
   return String(value ?? '').trim()
+}
+
+function reorderCategories(
+  categories: Array<Record<string, any>>,
+  sourceID: string,
+  targetID: string
+) {
+  const sourceIndex = categories.findIndex(
+    (category) => normalizeCategoryValue(category.id) === sourceID
+  )
+  const targetIndex = categories.findIndex(
+    (category) => normalizeCategoryValue(category.id) === targetID
+  )
+
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+    return categories
+  }
+
+  const nextCategories = [...categories]
+  const [sourceCategory] = nextCategories.splice(sourceIndex, 1)
+  nextCategories.splice(targetIndex, 0, sourceCategory)
+  return nextCategories
+}
+
+function assignCategorySortValues(
+  nextCategories: Array<Record<string, any>>,
+  previousCategories: Array<Record<string, any>>,
+  sortField: string
+) {
+  const sortValues = previousCategories.map((category, index) =>
+    normalizeCategorySortValue(getByPath(category, sortField), index)
+  )
+
+  return nextCategories.map((category, index) =>
+    setByPath(category, sortField, sortValues[index] ?? (index + 1) * 10)
+  )
+}
+
+function resolveCategorySortUpdates(
+  previousCategories: Array<Record<string, any>>,
+  nextCategories: Array<Record<string, any>>,
+  sortField: string
+) {
+  const previousSortByID = new Map<string, unknown>()
+  for (const category of previousCategories) {
+    previousSortByID.set(normalizeCategoryValue(category.id), getByPath(category, sortField))
+  }
+
+  return nextCategories
+    .map((category) => ({
+      row: category,
+      value: getByPath(category, sortField),
+      previousValue: previousSortByID.get(normalizeCategoryValue(category.id)),
+    }))
+    .filter((update) => String(update.value ?? '') !== String(update.previousValue ?? ''))
+}
+
+function normalizeCategorySortValue(value: unknown, index: number) {
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : (index + 1) * 10
 }
 
 function resolveCategoryStatusValue(

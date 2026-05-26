@@ -443,10 +443,10 @@ function SingleOptionControl({
             <Label
               key={optionID}
               htmlFor={`${param.id}-${optionID}`}
-              className="flex cursor-pointer items-center gap-2.5 font-normal"
+              className="flex min-w-0 cursor-pointer items-start gap-2.5 font-normal"
             >
               <RadioGroupItem value={optionValue} id={`${param.id}-${optionID}`} />
-              <span>{option.value}</span>
+              <span className="min-w-0 break-words leading-5">{option.value}</span>
             </Label>
           )
         })}
@@ -537,7 +537,7 @@ function MultiOptionControl({
           <label
             key={optionID}
             className={cn(
-              'flex cursor-pointer items-center gap-2 text-sm',
+              'flex min-w-0 cursor-pointer items-start gap-2 text-sm',
               surface === 'toolbar' && 'rounded-md px-1 py-1.5 hover:bg-muted/60'
             )}
           >
@@ -552,7 +552,14 @@ function MultiOptionControl({
                 onChange(selected.filter((current) => !isSelectedOptionValue(option, [current])))
               }}
             />
-            <span className="min-w-0 flex-1 truncate">{option.value}</span>
+            <span
+              className={cn(
+                'min-w-0 flex-1 break-words',
+                surface === 'toolbar' && 'truncate'
+              )}
+            >
+              {option.value}
+            </span>
           </label>
         )
       })}

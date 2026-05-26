@@ -1,9 +1,4 @@
-import {
-  useRef,
-  useState,
-  type ChangeEvent,
-  type ReactNode,
-} from 'react'
+import { useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import {
   FileText,
   FolderOpen,
@@ -14,6 +9,15 @@ import {
   Volume2,
   X,
 } from 'lucide-react'
+import {
+  assistantReferenceKindText,
+  formatAssistantReferenceSize,
+  readAssistantReferenceFile,
+  uploadItemToAssistantReferenceFile,
+  type AssistantReferenceFile,
+} from '@/lib/assistant/reference'
+import type { UploadFileItem } from '@/lib/upload'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -22,15 +26,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ResourcePickerDialogLazy } from '@/components/resource/lazy-dialogs'
-import { cn } from '@/lib/utils'
-import type { UploadFileItem } from '@/lib/upload'
-import {
-  assistantReferenceKindText,
-  formatAssistantReferenceSize,
-  readAssistantReferenceFile,
-  uploadItemToAssistantReferenceFile,
-  type AssistantReferenceFile,
-} from '@/lib/assistant/reference'
 
 type AssistantReferencePickerProps = {
   references: AssistantReferenceFile[]
@@ -102,36 +97,36 @@ export function AssistantReferencePicker({
     <>
       <input
         ref={fileInputRef}
-        type="file"
+        type='file'
         multiple
-        className="hidden"
-        accept="image/*,text/*,.txt,.md,.json,.csv,.pdf,.doc,.docx,.xlsx"
+        className='hidden'
+        accept='image/*,video/*,audio/*,text/*,.txt,.md,.json,.csv,.pdf,.doc,.docx,.xlsx'
         onChange={(event) => void handleFileChange(event)}
       />
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
           <Button
-            type="button"
-            variant="outline"
-            size="sm"
+            type='button'
+            variant='outline'
+            size='sm'
             className={cn('h-8 gap-1.5', buttonClassName)}
             disabled={disabled || full}
           >
-            <Paperclip className="size-3.5" />
+            <Paperclip className='size-3.5' />
             {buttonLabel}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          data-assistant-layer="true"
-          align="start"
-          className="z-[100] w-36"
+          data-assistant-layer='true'
+          align='start'
+          className='z-[100] w-36'
         >
           <DropdownMenuItem
             onSelect={() => {
               fileInputRef.current?.click()
             }}
           >
-            <Upload className="size-4" />
+            <Upload className='size-4' />
             上传文件
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -139,7 +134,7 @@ export function AssistantReferencePicker({
               setResourceOpen(true)
             }}
           >
-            <FolderOpen className="size-4" />
+            <FolderOpen className='size-4' />
             资源库
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -147,12 +142,12 @@ export function AssistantReferencePicker({
 
       <ResourcePickerDialogLazy
         open={resourceOpen}
-        title="参考资料资源库"
-        description="从历史资源中选择文件作为本轮 AI 参考。"
-        initialScope="all"
+        title='参考资料资源库'
+        description='从历史资源中选择文件作为本轮 AI 参考。'
+        initialScope='all'
         multiple
         maxSelection={Math.max(1, maxFiles - references.length)}
-        emptyText="暂无可用资源。"
+        emptyText='暂无可用资源。'
         allowUpload={false}
         assistantLayer
         onOpenChange={setResourceOpen}
@@ -172,7 +167,7 @@ export function AssistantReferenceList({
   }
 
   return (
-    <div className="space-y-2">
+    <div className='space-y-2'>
       {references.map((file, index) => (
         <ReferenceFileRow
           key={`${file.name}-${file.size}-${index}`}
@@ -195,24 +190,25 @@ function ReferenceFileRow({
   onRemove: () => void
 }) {
   return (
-    <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-2">
+    <div className='flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-2'>
       {referenceIcon(file)}
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-medium">{file.name}</div>
-        <div className="text-[11px] text-muted-foreground">
-          {assistantReferenceKindText(file)} · {formatAssistantReferenceSize(file.size)}
+      <div className='min-w-0 flex-1'>
+        <div className='truncate text-xs font-medium'>{file.name}</div>
+        <div className='text-[11px] text-muted-foreground'>
+          {assistantReferenceKindText(file)} ·{' '}
+          {formatAssistantReferenceSize(file.size)}
         </div>
       </div>
       <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="size-7 shrink-0"
+        type='button'
+        variant='ghost'
+        size='icon'
+        className='size-7 shrink-0'
         disabled={disabled}
         onClick={onRemove}
       >
-        <X className="size-3.5" />
-        <span className="sr-only">移除参考资料</span>
+        <X className='size-3.5' />
+        <span className='sr-only'>移除参考资料</span>
       </Button>
     </div>
   )
@@ -220,13 +216,13 @@ function ReferenceFileRow({
 
 function referenceIcon(file: AssistantReferenceFile): ReactNode {
   if (file.kind === 'image') {
-    return <ImageIcon className="size-4 shrink-0 text-muted-foreground" />
+    return <ImageIcon className='size-4 shrink-0 text-muted-foreground' />
   }
   if (file.kind === 'video') {
-    return <Video className="size-4 shrink-0 text-muted-foreground" />
+    return <Video className='size-4 shrink-0 text-muted-foreground' />
   }
   if (file.kind === 'audio') {
-    return <Volume2 className="size-4 shrink-0 text-muted-foreground" />
+    return <Volume2 className='size-4 shrink-0 text-muted-foreground' />
   }
-  return <FileText className="size-4 shrink-0 text-muted-foreground" />
+  return <FileText className='size-4 shrink-0 text-muted-foreground' />
 }

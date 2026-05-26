@@ -1,6 +1,8 @@
 import { requestRaw } from '@/lib/request'
+import { RUN_EVENT } from '@/lib/run-events'
 import {
   assertRuntimeStreamFrameSuccess,
+  readRuntimeStreamEvents,
   readRuntimeStreamFrame,
   streamValueText,
   type RuntimeStreamFrame,
@@ -20,6 +22,7 @@ export type RuntimeStreamOptions<TOutput = Record<string, unknown>> = {
   stopOnAbort?: boolean
   body: Record<string, unknown>
   blockMs?: number
+  transport?: 'sse' | 'poll'
   useStartFrameStreamID?: boolean
   signal?: AbortSignal
   missingRequestIDMessage?: string
@@ -36,6 +39,22 @@ export type RuntimeStreamResult<TOutput = Record<string, unknown>> = {
   textOutput: string
 }
 
+export type RuntimeStreamWatchOptions<TOutput = Record<string, unknown>> = {
+  streamApi: string
+  requestID: string
+  lastID?: string
+  blockMs?: number
+  transport?: 'sse' | 'poll'
+  signal?: AbortSignal
+  stopOnResult?: boolean
+  onFrame?: (frame: RuntimeStreamFrame<TOutput>) => boolean | void
+}
+
+export type RuntimeStreamWatchResult = {
+  lastID: string
+  completed: boolean
+}
+
 export async function runRuntimeStream<TOutput = Record<string, unknown>>({
   requestApi,
   streamApi,
@@ -43,6 +62,7 @@ export async function runRuntimeStream<TOutput = Record<string, unknown>>({
   stopOnAbort = true,
   body,
   blockMs = 1000,
+  transport = 'sse',
   useStartFrameStreamID = false,
   signal,
   missingRequestIDMessage = '流式请求缺少 request_id。',
@@ -80,7 +100,7 @@ export async function runRuntimeStream<TOutput = Record<string, unknown>>({
     if (event === 'delta' || (!event && frameText && frame.type !== 'result')) {
       textOutput += frameText
       onDelta?.(frameText, status)
-    } else if (['start', 'progress', 'status', 'warning'].includes(event)) {
+    } else if (isRuntimeStatusEvent(event)) {
       onStatus?.(frameText, status)
     }
 
@@ -95,32 +115,102 @@ export async function runRuntimeStream<TOutput = Record<string, unknown>>({
     return { requestID, finalOutput, textOutput }
   }
 
-  while (!signal?.aborted) {
-    const frame = await readRuntimeStreamFrame<TOutput>(
-      streamApi,
-      requestID,
-      lastID,
-      blockMs
-    )
-    if (signal?.aborted) {
-      break
-    }
-    const streamID = streamValueText(frame?.stream_id)
-    if (streamID) {
-      lastID = streamID
-    }
+  const watchResult = await watchRuntimeStream<TOutput>({
+    streamApi,
+    requestID,
+    lastID,
+    blockMs,
+    transport,
+    signal,
+    stopOnResult: true,
+    onFrame: (frame) => {
+      applyFrame(frame)
+    },
+  })
 
-    assertRuntimeStreamFrameSuccess(frame)
-    applyFrame(frame)
-    if (frame?.type === 'result') {
-      return { requestID, finalOutput, textOutput }
-    }
+  if (watchResult.completed) {
+    return { requestID, finalOutput, textOutput }
   }
 
   if (stopApi && stopOnAbort) {
     await stopRuntimeStream(requestID, stopApi)
   }
   return { requestID, finalOutput, textOutput }
+}
+
+function isRuntimeStatusEvent(event: string) {
+  return [
+    'start',
+    'progress',
+    'status',
+    'warning',
+    RUN_EVENT.runStarted,
+    RUN_EVENT.runFinished,
+    RUN_EVENT.thinkStarted,
+    RUN_EVENT.thinkFinished,
+    RUN_EVENT.nodeStarted,
+    RUN_EVENT.nodeOutput,
+    RUN_EVENT.nodeFinished,
+    RUN_EVENT.edgeActive,
+    RUN_EVENT.waiting,
+  ].includes(event)
+}
+
+export async function watchRuntimeStream<TOutput = Record<string, unknown>>({
+  streamApi,
+  requestID,
+  lastID = '0-0',
+  blockMs = 1000,
+  transport = 'sse',
+  signal,
+  stopOnResult = true,
+  onFrame,
+}: RuntimeStreamWatchOptions<TOutput>): Promise<RuntimeStreamWatchResult> {
+  let cursor = lastID || '0-0'
+  let completed = false
+
+  const consumeFrame = (frame: RuntimeStreamFrame<TOutput>) => {
+    if (signal?.aborted) {
+      return false
+    }
+    const streamID = streamValueText(frame?.stream_id)
+    if (streamID) {
+      cursor = streamID
+    }
+    assertRuntimeStreamFrameSuccess(frame)
+    if (onFrame?.(frame) === false) {
+      return false
+    }
+    if (stopOnResult && frame?.type === 'result') {
+      completed = true
+      return false
+    }
+  }
+
+  if (transport === 'sse') {
+    await readRuntimeStreamEvents<TOutput>(
+      streamApi,
+      requestID,
+      cursor,
+      blockMs,
+      consumeFrame,
+      signal
+    )
+    return { lastID: cursor, completed }
+  }
+
+  while (!signal?.aborted) {
+    const frame = await readRuntimeStreamFrame<TOutput>(
+      streamApi,
+      requestID,
+      cursor,
+      blockMs
+    )
+    if (consumeFrame(frame) === false) {
+      break
+    }
+  }
+  return { lastID: cursor, completed }
 }
 
 export async function stopRuntimeStream(requestID: string, stopApi: string) {
