@@ -47,6 +47,7 @@ import {
   resolveEditorUploadLabel,
   type EditorMediaKind,
 } from './editor/media'
+import { editorTableExtensions } from './editor/table'
 
 type ToolbarItem = {
   icon: typeof Bold
@@ -65,13 +66,20 @@ const EDITOR_MEDIA_CONTROLS: Array<{
   { kind: 'audio', icon: Music4, label: '音频' },
 ]
 
-export function FormEditor({ item, value, setValue, error, store }: NodeItemProps) {
+export function FormEditor({
+  item,
+  value,
+  setValue,
+  error,
+  store,
+  assistantAdornment,
+}: NodeItemProps) {
   const placeholder = String(item.placeholder || '请输入内容')
   const disabled = !!item.meta?.disabled
   const minHeight = Number(item.meta?.minHeight || 220)
   const maxHeight = Math.max(Number(item.meta?.maxHeight || 560), minHeight + 120)
   const contentMaxHeight = Math.max(maxHeight - 56, minHeight)
-  const initialDoc = useMemo(() => parseRichTextDoc(value) || emptyRichTextDoc(), [value])
+  const initialDoc = useMemo(() => parseEditorDoc(value), [value])
   const rawUploadRules = useMemo(
     () => normalizeResourceUploadRules(item.meta?.uploadRules),
     [item.meta?.uploadRules]
@@ -112,6 +120,7 @@ export function FormEditor({ item, value, setValue, error, store }: NodeItemProp
           'before:pointer-events-none before:absolute before:left-0 before:top-0 before:text-muted-foreground/70 before:content-[attr(data-placeholder)]',
       }),
       ...editorMediaExtensions,
+      ...editorTableExtensions,
     ],
     [placeholder]
   )
@@ -123,8 +132,22 @@ export function FormEditor({ item, value, setValue, error, store }: NodeItemProp
     editorProps: {
       attributes: {
         class:
-          'tiptap-editor relative text-sm leading-7 outline-none [&_audio]:my-4 [&_audio]:block [&_audio]:w-full [&_audio]:max-w-md [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_img]:my-4 [&_img]:block [&_img]:max-w-full [&_img]:rounded-lg [&_li]:ml-4 [&_ol]:list-decimal [&_p]:min-h-6 [&_ul]:list-disc [&_video]:my-4 [&_video]:block [&_video]:max-w-full [&_video]:rounded-lg [&_video]:bg-black/90',
+          'tiptap-editor relative text-sm leading-7 outline-none [&_audio]:my-4 [&_audio]:block [&_audio]:w-full [&_audio]:max-w-md [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_img]:my-4 [&_img]:block [&_img]:max-w-full [&_img]:rounded-lg [&_li]:ml-4 [&_ol]:list-decimal [&_p]:min-h-6 [&_table]:my-4 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:bg-muted/50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_ul]:list-disc [&_video]:my-4 [&_video]:block [&_video]:max-w-full [&_video]:rounded-lg [&_video]:bg-black/90',
         style: `min-height:${minHeight}px`,
+      },
+      handlePaste: (_view, event) => {
+        if (disabled || event.clipboardData?.getData('text/html')?.trim()) {
+          return false
+        }
+
+        const files = clipboardImageFiles(event.clipboardData)
+        if (files.length === 0) {
+          return false
+        }
+
+        event.preventDefault()
+        void uploadPastedImages(files)
+        return true
       },
     },
     content: initialDoc,
@@ -144,7 +167,7 @@ export function FormEditor({ item, value, setValue, error, store }: NodeItemProp
     if (!editor) {
       return
     }
-    const nextDoc = parseRichTextDoc(value) || emptyRichTextDoc()
+    const nextDoc = parseEditorDoc(value)
     const nextValue = serializeRichTextDoc(nextDoc)
     const currentValue = serializeRichTextDoc(editor.getJSON())
     if (inputValue(value) !== nextValue) {
@@ -252,6 +275,40 @@ export function FormEditor({ item, value, setValue, error, store }: NodeItemProp
 
     if (hasInserted) {
       setUploadMessage('')
+    }
+  }
+
+  async function uploadPastedImages(files: File[]) {
+    const uploadRule = uploadRuleMap.get('image')
+    if (!editor || !uploadRule || files.length === 0) {
+      setUploadMessage('未配置图片上传规则。')
+      return
+    }
+
+    setUploadingKind('image')
+    setUploadMessage('')
+    setProgressText('')
+
+    try {
+      for (const current of files) {
+        const uploaded = await uploadFileByRule(uploadRule.ruleId, current, {
+          kind: uploadRule.kind,
+          bizKey: uploadRule.bizKey,
+          bizName: uploadRule.bizName,
+          categoryId: uploadRule.categoryId,
+          onProgress: (loaded, total) => {
+            const percent = Math.min(100, Math.round((loaded / Math.max(total, 1)) * 100))
+            setProgressText(`${current.name || '剪贴板图片'} ${percent}%`)
+          },
+        })
+
+        insertMediaItems('image', [uploaded])
+      }
+    } catch (uploadError) {
+      setUploadMessage(uploadError instanceof Error ? uploadError.message : '图片粘贴上传失败')
+    } finally {
+      setUploadingKind('')
+      setProgressText('')
     }
   }
 
@@ -383,6 +440,7 @@ export function FormEditor({ item, value, setValue, error, store }: NodeItemProp
           <Eraser className="size-3.5" />
           <span className="sr-only">清除格式</span>
         </Button>
+        {assistantAdornment ? <div className="ms-auto">{assistantAdornment}</div> : null}
       </div>
       {progressText || uploadMessage ? (
         <div className="space-y-1 border-b border-border/70 bg-muted/15 px-4 py-2">
@@ -449,6 +507,42 @@ function inputValue(value: unknown) {
     return ''
   }
   return typeof value === 'string' ? value.trim() : JSON.stringify(value) || ''
+}
+
+function parseEditorDoc(value: unknown) {
+  const doc = parseRichTextDoc(value)
+  if (doc) {
+    return doc
+  }
+
+  const text = inputValue(value)
+  if (!text) {
+    return emptyRichTextDoc()
+  }
+
+  return {
+    type: 'doc',
+    content: text.split(/\r?\n/).map((line) => ({
+      type: 'paragraph',
+      content: line ? [{ type: 'text', text: line }] : undefined,
+    })),
+  }
+}
+
+function clipboardImageFiles(data: DataTransfer | null) {
+  if (!data) {
+    return []
+  }
+
+  const files = Array.from(data.files || []).filter((file) => file.type.startsWith('image/'))
+  if (files.length > 0) {
+    return files
+  }
+
+  return Array.from(data.items || [])
+    .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => file != null)
 }
 
 function EditorMediaMenuButton({

@@ -533,8 +533,20 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
                       {message.interaction ? (
                         <AssistantInteractionNotice
                           answered={Boolean(message.interactionAnswered)}
+                          summary={summarizeSubmittedInteraction(
+                            message.interactionData
+                          )}
                           disabled={running && !message.interactionAnswered}
                           onOpen={() => openInteractionDialog(message.id)}
+                        />
+                      ) : null}
+                      {message.role === 'assistant' && !message.interaction ? (
+                        <AssistantSuggestionChoices
+                          content={message.content}
+                          disabled={running}
+                          onSelect={(choice) =>
+                            void send({ text: choice.prompt })
+                          }
                         />
                       ) : null}
                     </div>
@@ -709,16 +721,22 @@ function AssistantMessageContent({
 
 function AssistantInteractionNotice({
   answered,
+  summary,
   disabled,
   onOpen,
 }: {
   answered: boolean
+  summary?: string
   disabled?: boolean
   onOpen: () => void
 }) {
   return (
     <div className="mt-2 flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-2 py-1.5 text-xs text-muted-foreground">
-      <span>{answered ? '交互信息已提交。' : '需要补充交互信息。'}</span>
+      <span className="min-w-0 truncate">
+        {answered
+          ? `已提交${summary ? `：${summary}` : '。'}`
+          : '需要补充交互信息。'}
+      </span>
       <Button
         type="button"
         size="sm"
@@ -731,6 +749,91 @@ function AssistantInteractionNotice({
       </Button>
     </div>
   )
+}
+
+type AssistantSuggestionChoice = {
+  title: string
+  detail: string
+  prompt: string
+}
+
+function AssistantSuggestionChoices({
+  content,
+  disabled,
+  onSelect,
+}: {
+  content: string
+  disabled?: boolean
+  onSelect: (choice: AssistantSuggestionChoice) => void
+}) {
+  const choices = extractAssistantSuggestions(content)
+  if (choices.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {choices.map((choice) => (
+        <Button
+          key={`${choice.title}-${choice.detail}`}
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="h-auto max-w-full justify-start whitespace-normal rounded-full px-3 py-1.5 text-left text-xs font-normal"
+          disabled={disabled}
+          title={choice.detail}
+          onClick={() => onSelect(choice)}
+        >
+          {choice.title}
+        </Button>
+      ))}
+    </div>
+  )
+}
+
+function extractAssistantSuggestions(content: string): AssistantSuggestionChoice[] {
+  const text = String(content || '')
+  const headingIndex = text.search(/下一步建议|Suggestions/i)
+  if (headingIndex < 0) {
+    return []
+  }
+  const lines = text.slice(headingIndex).split(/\r?\n/)
+  const choices: AssistantSuggestionChoice[] = []
+  for (const line of lines) {
+    const match = line.match(
+      /^\s*(?:[-*]|\d+[.、)])\s*(?:\*\*)?([^：:\n*]+?)(?:\*\*)?\s*[：:]\s*(.+?)\s*$/
+    )
+    if (!match) {
+      continue
+    }
+    const title = match[1].replace(/\*\*/g, '').trim()
+    const detail = match[2].replace(/\*\*/g, '').trim()
+    if (!title || !detail) {
+      continue
+    }
+    choices.push({
+      title,
+      detail,
+      prompt: `请执行下一步建议：${title}。${detail}`,
+    })
+    if (choices.length >= 4) {
+      break
+    }
+  }
+  return choices
+}
+
+function summarizeSubmittedInteraction(data?: Record<string, unknown>) {
+  if (!data) {
+    return ''
+  }
+  for (const value of Object.values(data)) {
+    const text = String(value ?? '').trim()
+    if (text && text !== '[object Object]') {
+      return text.length > 28 ? `${text.slice(0, 28)}...` : text
+    }
+  }
+  return ''
 }
 
 function createMessageID() {

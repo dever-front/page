@@ -25,6 +25,7 @@ import { FormInput } from './input'
 import { FormRadio } from './radio'
 import { FormSelect } from './select'
 import { FormTextarea } from './textarea'
+import { FormEditor } from './editor'
 import type { NodeItemProps } from '../../nodes'
 
 const typeEditorFieldRegistry = {
@@ -32,6 +33,7 @@ const typeEditorFieldRegistry = {
   'form-radio': FormRadio,
   'form-select': FormSelect,
   'form-textarea': FormTextarea,
+  'form-editor': FormEditor,
 } as const
 
 type TypeOption = OptionItem & Record<string, any>
@@ -512,10 +514,17 @@ function isTypeEditorFieldGeneratable(field: TypeEditorFieldItem) {
   if (field.meta?.assistant === false || field.meta?.aiGenerate === false) {
     return false
   }
-  return field.type === 'form-input' || field.type === 'form-textarea'
+  return (
+    field.type === 'form-input' ||
+    field.type === 'form-textarea' ||
+    field.type === 'form-editor'
+  )
 }
 
 function resolveTypeEditorAssistantButtonClass(field: TypeEditorFieldItem) {
+  if (field.type === 'form-editor') {
+    return 'h-7 w-7 rounded-md'
+  }
   if (field.type === 'form-textarea') {
     return 'absolute right-2 top-2 bg-background/80'
   }
