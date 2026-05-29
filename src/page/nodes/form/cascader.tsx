@@ -30,9 +30,16 @@ type RemoteOptionCacheEntry = {
   expiresAt: number
 }
 
+type SelectedLeafPathCacheEntry = {
+  values: any[]
+  expiresAt: number
+}
+
 const remoteOptionCache = new Map<string, RemoteOptionCacheEntry>()
 const remoteOptionPendingCache = new Map<string, Promise<CascaderOption[]>>()
-const remoteOptionCacheTtl = 10 * 1000
+const selectedLeafPathCache = new Map<string, SelectedLeafPathCacheEntry>()
+const selectedLeafPathPendingCache = new Map<string, Promise<any[] | undefined>>()
+const remoteOptionCacheTtl = 5 * 60 * 1000
 
 export function FormCascader({
   item,
@@ -73,6 +80,19 @@ export function FormCascader({
   ).trim()
   const labelTarget = String(item.meta?.labelTarget || '').trim()
   const searchable = item.meta?.searchable !== false
+  const childParentField = useMemo(
+    () =>
+      String(item.meta?.childParentField || item.meta?.parentField || '').trim(),
+    [item.meta?.childParentField, item.meta?.parentField]
+  )
+  const rowRelation = useMemo(
+    () => resolveRowRelation(row, item.value),
+    [item.value, row]
+  )
+  const rowRelationParentId = childParentField
+    ? rowRelation?.[childParentField]
+    : undefined
+  const rowRelationLeafId = rowRelation?.id
   const fallbackLabels = useMemo(
     () => resolveFallbackLabels(store, item, labelTarget),
     [item, labelTarget, store]
@@ -225,9 +245,6 @@ export function FormCascader({
     async function resolveLeafPath() {
       const leafValue = String(value ?? '').trim()
       const childUse = String(item.meta?.childUse || '').trim()
-      const childParentField = String(
-        item.meta?.childParentField || item.meta?.parentField || ''
-      ).trim()
       if (isEmptyCascaderValue(leafValue)) {
         if (keepParentOnEmptyRef.current) {
           keepParentOnEmptyRef.current = false
@@ -240,32 +257,32 @@ export function FormCascader({
         setLeafPathValues([])
         return
       }
-      const rowRelation = resolveRowRelation(row, item.value)
-      const rowParentId = rowRelation?.[childParentField]
-      const rowLeafId = rowRelation?.id ?? leafValue
+      const rowParentId = rowRelationParentId
+      const rowLeafId = rowRelationLeafId ?? leafValue
       if (rowParentId && String(rowLeafId) === leafValue) {
         setLeafPathValues([rowParentId, rowLeafId])
         return
       }
 
-      const result = await request(api, 'get', {
-        type: String(item.meta?.type || 'model').trim() || 'model',
-        use: childUse,
-        selected: leafValue,
-        valueField: String(item.meta?.valueField || 'id').trim() || 'id',
-        labelField: String(item.meta?.labelField || 'name').trim() || 'name',
-        extraFields: childParentField,
-        pageSize: 1,
-      })
-      if (cancelled || result.code !== 0 || !Array.isArray(result.data)) {
+      const leafPath = await fetchSelectedLeafPath(
+        api,
+        {
+          type: String(item.meta?.type || 'model').trim() || 'model',
+          use: childUse,
+          selected: leafValue,
+          valueField: String(item.meta?.valueField || 'id').trim() || 'id',
+          labelField: String(item.meta?.labelField || 'name').trim() || 'name',
+          extraFields: childParentField,
+          pageSize: 1,
+        },
+        childParentField,
+        leafValue
+      )
+      if (cancelled || !leafPath) {
         return
       }
 
-      const selected =
-        result.data.find((current: any) => String(current?.id) === leafValue) ||
-        result.data[0]
-      const parentId = selected?.[childParentField]
-      setLeafPathValues(parentId ? [parentId, selected.id] : [selected.id])
+      setLeafPathValues(leafPath)
     }
 
     void resolveLeafPath()
@@ -274,16 +291,16 @@ export function FormCascader({
     }
   }, [
     api,
-    item.meta?.childParentField,
+    childParentField,
     item.meta?.childUse,
     item.meta?.defaultParentId,
     item.meta?.defaultParentValue,
     item.meta?.labelField,
-    item.meta?.parentField,
     item.meta?.type,
     item.meta?.valueField,
     leafValueMode,
-    row,
+    rowRelationLeafId,
+    rowRelationParentId,
     value,
   ])
 
@@ -572,6 +589,76 @@ function getCachedRemoteOptions(cacheKey: string) {
 function setCachedRemoteOptions(cacheKey: string, options: CascaderOption[]) {
   remoteOptionCache.set(cacheKey, {
     options,
+    expiresAt: Date.now() + remoteOptionCacheTtl,
+  })
+}
+
+async function fetchSelectedLeafPath(
+  api: string,
+  params: Record<string, any>,
+  childParentField: string,
+  leafValue: string
+) {
+  const cacheKey = buildSelectedLeafPathCacheKey(api, params)
+  const cached = getCachedSelectedLeafPath(cacheKey)
+  if (cached) {
+    return cached
+  }
+
+  const pending = selectedLeafPathPendingCache.get(cacheKey)
+  if (pending) {
+    return pending
+  }
+
+  const nextRequest = request(api, 'get', params)
+    .then((result) => {
+      if (result.code !== 0 || !Array.isArray(result.data)) {
+        return undefined
+      }
+
+      const selected =
+        result.data.find((current: any) => String(current?.id) === leafValue) ||
+        result.data[0]
+      if (!selected) {
+        return undefined
+      }
+
+      const selectedId = selected.id ?? leafValue
+      const parentId = selected?.[childParentField]
+      const nextPath = parentId ? [parentId, selectedId] : [selectedId]
+      setCachedSelectedLeafPath(cacheKey, nextPath)
+      return nextPath
+    })
+    .finally(() => {
+      selectedLeafPathPendingCache.delete(cacheKey)
+    })
+
+  selectedLeafPathPendingCache.set(cacheKey, nextRequest)
+  return nextRequest
+}
+
+function buildSelectedLeafPathCacheKey(
+  api: string,
+  params: Record<string, any>
+) {
+  return `${api}?selectedPath:${JSON.stringify(params)}`
+}
+
+function getCachedSelectedLeafPath(cacheKey: string) {
+  const cached = selectedLeafPathCache.get(cacheKey)
+  if (!cached) {
+    return undefined
+  }
+  if (cached.expiresAt <= Date.now()) {
+    selectedLeafPathCache.delete(cacheKey)
+    return undefined
+  }
+  return cached.values
+}
+
+function setCachedSelectedLeafPath(cacheKey: string, values: any[]) {
+  selectedLeafPathCache.set(cacheKey, {
+    values,
     expiresAt: Date.now() + remoteOptionCacheTtl,
   })
 }

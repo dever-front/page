@@ -14,7 +14,14 @@ import {
 import { collectOptionParamPaths, resolveOptionParams } from '@/lib/option-params'
 import { resolveSelectCreateOptionReloadPath } from '@/lib/select-create-option'
 
+type RemoteOptionResultCacheEntry = {
+  options: OptionItem[]
+  expiresAt: number
+}
+
 const remoteOptionPromiseCache = new Map<string, Promise<OptionItem[] | undefined>>()
+const remoteOptionResultCache = new Map<string, RemoteOptionResultCacheEntry>()
+const remoteOptionResultCacheTtl = 5 * 60 * 1000
 
 export type ResolvedNodeOption = {
   option?: OptionItem[]
@@ -84,15 +91,21 @@ export function useNodeOption(
       [reloadPaths]
     )
   )
+  const rowOptionParamPaths = useMemo(
+    () =>
+      collectOptionParamPaths(item?.meta?.optionParams).filter((path) =>
+        path.startsWith('row.')
+      ),
+    [item?.meta?.optionParams]
+  )
   const rowReloadKey = useMemo(
     () =>
       JSON.stringify(
-        collectOptionParamPaths(item?.meta?.optionParams)
-          .filter((path) => path.startsWith('row.'))
-          .map((path) => getByPath(row, path.slice(4)))
+        rowOptionParamPaths.map((path) => getByPath(row, path.slice(4)))
       ),
-    [item?.meta?.optionParams, row]
+    [row, rowOptionParamPaths]
   )
+  const optionRequestRow = rowOptionParamPaths.length > 0 ? row : undefined
   const remoteCacheKey = useMemo(
     () => (remoteUrl ? `${resetVersion}:${remoteUrl}:${reloadKey}:${parentReloadKey}:${rowReloadKey}` : ''),
     [parentReloadKey, reloadKey, remoteUrl, resetVersion, rowReloadKey]
@@ -145,15 +158,25 @@ export function useNodeOption(
     }
 
     const remoteRequestKey = buildRemoteOptionRequestKey(remoteCacheKey, keyword, selectedValue)
+    activeRemoteKeyRef.current = remoteRequestKey
     if (Array.isArray(remoteOption) && loadedRemoteKeyRef.current === remoteRequestKey) {
       return remoteOption
+    }
+
+    const cachedRemoteOption = getCachedRemoteOptionResult(remoteRequestKey)
+    if (cachedRemoteOption) {
+      setRemoteOption(cachedRemoteOption)
+      loadedRemoteKeyRef.current = remoteRequestKey
+      pendingRef.current = null
+      pendingKeyRef.current = ''
+      setOptionLoading(false)
+      return cachedRemoteOption
     }
 
     if (pendingRef.current && pendingKeyRef.current === remoteRequestKey) {
       return pendingRef.current
     }
     const sharedPending = remoteOptionPromiseCache.get(remoteRequestKey)
-    activeRemoteKeyRef.current = remoteRequestKey
     if (sharedPending) {
       pendingKeyRef.current = remoteRequestKey
       pendingRef.current = sharedPending
@@ -183,12 +206,24 @@ export function useNodeOption(
 
     setOptionLoading(true)
     pendingKeyRef.current = remoteRequestKey
-    const pending = request(buildRemoteOptionURL(remoteUrl, keyword, selectedValue, item, store, row))
+    const pending = request(
+      buildRemoteOptionURL(
+        remoteUrl,
+        keyword,
+        selectedValue,
+        item,
+        store,
+        optionRequestRow
+      )
+    )
       .then((result) => {
         const nextOption =
           result.code === 0 && Array.isArray(result.data)
             ? (result.data as OptionItem[])
             : undefined
+        if (Array.isArray(nextOption)) {
+          setCachedRemoteOptionResult(remoteRequestKey, nextOption)
+        }
         if (
           remoteCacheKeyRef.current === remoteCacheKey &&
           activeRemoteKeyRef.current === remoteRequestKey
@@ -213,7 +248,7 @@ export function useNodeOption(
     pendingRef.current = pending
     remoteOptionPromiseCache.set(remoteRequestKey, pending)
     return pending
-  }, [item, pathOption, remoteCacheKey, remoteOption, remoteUrl, row, staticOption, store])
+  }, [item, optionRequestRow, pathOption, remoteCacheKey, remoteOption, remoteUrl, staticOption, store])
 
   useEffect(() => {
     if (!remoteUrl || shouldLazyLoad) {
@@ -325,6 +360,25 @@ export function useNodeOption(
 function isRemoteOptionSource(optionConfig: string) {
   const normalized = optionConfig.trim()
   return normalized.startsWith('/') || /^https?:\/\//i.test(normalized)
+}
+
+function getCachedRemoteOptionResult(cacheKey: string) {
+  const cached = remoteOptionResultCache.get(cacheKey)
+  if (!cached) {
+    return undefined
+  }
+  if (cached.expiresAt <= Date.now()) {
+    remoteOptionResultCache.delete(cacheKey)
+    return undefined
+  }
+  return cached.options
+}
+
+function setCachedRemoteOptionResult(cacheKey: string, options: OptionItem[]) {
+  remoteOptionResultCache.set(cacheKey, {
+    options,
+    expiresAt: Date.now() + remoteOptionResultCacheTtl,
+  })
 }
 
 function buildRemoteOptionRequestKey(

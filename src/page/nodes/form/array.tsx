@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import { GripVertical, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -221,6 +221,10 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
   )
 
   const rowItems = rowSchema?.items ?? []
+  const rowKeys = useMemo(
+    () => buildArrayRowKeys(rows, sortField),
+    [rows, sortField]
+  )
 
   return (
     <div className="w-full min-w-0 space-y-3">
@@ -302,37 +306,41 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((row, index) => (
-                <ArrayFormRow
-                  key={getArrayRowKey(row, index)}
-                  rowIndex={index}
-                  row={row}
-                  items={rowItems}
-                  store={store}
-                  onChange={(nextRow) => {
-                    const nextRows = [...rows]
-                    nextRows[index] = nextRow
-                    commitRows(nextRows)
-                  }}
-                  onRequestRemove={() => setPendingRemoveIndex(index)}
-                  draggable={dragEnabled}
-                  onDragStart={() => setDragIndex(index)}
-                  onDragOver={(event) => {
-                    if (!dragEnabled) return
-                    event.preventDefault()
-                  }}
-                  onDrop={() => {
-                    if (!dragEnabled || dragIndex == null || dragIndex === index) {
+              rows.map((row, index) => {
+                const rowKey = rowKeys[index] ?? `row-${index}`
+                return (
+                  <ArrayFormRow
+                    key={rowKey}
+                    rowKey={rowKey}
+                    row={row}
+                    sortField={sortField}
+                    items={rowItems}
+                    store={store}
+                    onChange={(nextRow) => {
+                      const nextRows = [...rows]
+                      nextRows[index] = nextRow
+                      commitRows(nextRows)
+                    }}
+                    onRequestRemove={() => setPendingRemoveIndex(index)}
+                    draggable={dragEnabled}
+                    onDragStart={() => setDragIndex(index)}
+                    onDragOver={(event) => {
+                      if (!dragEnabled) return
+                      event.preventDefault()
+                    }}
+                    onDrop={() => {
+                      if (!dragEnabled || dragIndex == null || dragIndex === index) {
+                        setDragIndex(null)
+                        return
+                      }
+                      const nextRows = moveArrayItem(rows, dragIndex, index)
+                      commitRows(nextRows)
                       setDragIndex(null)
-                      return
-                    }
-                    const nextRows = moveArrayItem(rows, dragIndex, index)
-                    commitRows(nextRows)
-                    setDragIndex(null)
-                  }}
-                  onDragEnd={() => setDragIndex(null)}
-                />
-              ))
+                    }}
+                    onDragEnd={() => setDragIndex(null)}
+                  />
+                )
+              })
             )}
           </TableBody>
         </Table>
@@ -390,7 +398,8 @@ function resolveArrayItemLabel(item: Item, addText: string) {
 
 function ArrayFormRow({
   row,
-  rowIndex,
+  rowKey,
+  sortField,
   items,
   store,
   onChange,
@@ -402,7 +411,8 @@ function ArrayFormRow({
   onDragEnd,
 }: {
   row: Record<string, any>
-  rowIndex: number
+  rowKey: string
+  sortField: string
   items: Item[]
   store: NodeItemProps['store']
   onChange: (nextRow: Record<string, any>) => void
@@ -436,11 +446,12 @@ function ArrayFormRow({
         </TableCell>
       ) : null}
       {items.map((currentItem) => (
-        <TableCell key={`${currentItem.id}-${rowIndex}`} className="px-4 py-3">
+        <TableCell key={`${currentItem.id}-${rowKey}`} className="px-4 py-3">
           <ArrayFormCell
             item={currentItem}
             row={row}
-            rowIndex={rowIndex}
+            rowKey={rowKey}
+            sortField={sortField}
             store={store}
             onChange={onChange}
           />
@@ -466,13 +477,15 @@ function ArrayFormRow({
 function ArrayFormCell({
   item,
   row,
-  rowIndex,
+  rowKey,
+  sortField,
   store,
   onChange,
 }: {
   item: Item
   row: Record<string, any>
-  rowIndex: number
+  rowKey: string
+  sortField: string
   store: NodeItemProps['store']
   onChange: (nextRow: Record<string, any>) => void
 }) {
@@ -483,24 +496,30 @@ function ArrayFormCell({
     allowDataForm: true,
     allowScoped: true,
   })
-  const { option, optionLoading, ensureOptionLoaded } = useNodeOption(store, item.option, item, row)
+  const controlRow = useStableArrayControlRow(row, sortField, fieldPath)
+  const { option, optionLoading, ensureOptionLoaded } = useNodeOption(
+    store,
+    item.option,
+    item,
+    controlRow
+  )
   const rowScopedOption = useMemo(() => {
     const state = store.getState()
     return applyOptionFilters(option, item, {
       data: {
         ...state.data,
-        row,
+        row: controlRow,
       },
       state: state.state,
       optionRegistry: state.optionRegistry,
     })
-  }, [item, option, row, store])
-  const value = fieldPath ? getByPath(row, fieldPath) : undefined
+  }, [controlRow, item, option, store])
+  const value = fieldPath ? getByPath(controlRow, fieldPath) : undefined
   const setValue = useCallback(
     (nextValue: any) => {
       if (!fieldPath) return
-      const previousValue = getByPath(row, fieldPath)
-      let nextRow = setByPath(row, fieldPath, nextValue)
+      const previousValue = getByPath(controlRow, fieldPath)
+      let nextRow = setByPath(controlRow, fieldPath, nextValue)
       if (!isSameControlValue(previousValue, nextValue)) {
         for (const path of normalizeClearOnChangePaths(item.meta?.clearOnChange)) {
           const rowPath = normalizeFormRowFieldPath(path, {
@@ -512,7 +531,7 @@ function ArrayFormCell({
       }
       onChange(nextRow)
     },
-    [fieldPath, item.meta?.clearOnChange, onChange, row]
+    [controlRow, fieldPath, item.meta?.clearOnChange, onChange]
   )
 
   useEffect(() => {
@@ -525,7 +544,7 @@ function ArrayFormCell({
   const cellItem = useMemo<Item>(
     () => ({
       ...item,
-      id: `${item.id || 'array-item'}-${rowIndex}`,
+      id: `${item.id || 'array-item'}-${rowKey}`,
       mode: undefined,
       className: cn('w-full', item.className),
       meta: {
@@ -538,7 +557,7 @@ function ArrayFormCell({
         ),
       },
     }),
-    [editorType, item, rowIndex]
+    [editorType, item, rowKey]
   )
 
   return (
@@ -552,7 +571,7 @@ function ArrayFormCell({
       runAction={async () => {}}
       store={store}
       layoutId=""
-      row={row}
+      row={controlRow}
       setRow={onChange}
     />
   )
@@ -694,12 +713,95 @@ function isRemoteOptionSource(optionConfig: string) {
   return normalized.startsWith('/') || /^https?:\/\//i.test(normalized)
 }
 
-function getArrayRowKey(row: Record<string, any>, index: number) {
-  const id = row?.id
-  if (id != null && id !== '') {
-    return String(id)
+// Sorting rewrites the sort field for many rows; controls should only react to real field changes.
+function useStableArrayControlRow(
+  row: Record<string, any>,
+  sortField: string,
+  fieldPath: string
+) {
+  const shouldStabilize =
+    sortField !== '' &&
+    fieldPath !== sortField &&
+    !fieldPath.startsWith(`${sortField}.`)
+  const rowSignature = useMemo(
+    () => (shouldStabilize ? stableRowSignature(row, sortField) : ''),
+    [row, shouldStabilize, sortField]
+  )
+  const stableRowRef = useRef<{
+    signature: string
+    row: Record<string, any>
+  } | null>(null)
+
+  if (!shouldStabilize) {
+    stableRowRef.current = null
+    return row
   }
-  return `row-${index}`
+
+  if (!stableRowRef.current || stableRowRef.current.signature !== rowSignature) {
+    stableRowRef.current = {
+      signature: rowSignature,
+      row,
+    }
+  }
+
+  return stableRowRef.current.row
+}
+
+function buildArrayRowKeys(rows: Record<string, any>[], sortField: string) {
+  const usedKeys = new Map<string, number>()
+  return rows.map((row) => {
+    const baseKey = getArrayRowKey(row, sortField)
+    const usedCount = usedKeys.get(baseKey) ?? 0
+    usedKeys.set(baseKey, usedCount + 1)
+    return usedCount === 0 ? baseKey : `${baseKey}-${usedCount + 1}`
+  })
+}
+
+function getArrayRowKey(row: Record<string, any>, sortField: string) {
+  const id = row?.id
+  if (isStableArrayRowID(id)) {
+    return `id-${String(id)}`
+  }
+  return `row-${hashString(stableRowSignature(row, sortField))}`
+}
+
+function isStableArrayRowID(id: unknown) {
+  if (id == null) {
+    return false
+  }
+  if (typeof id === 'number') {
+    return id > 0
+  }
+  const text = String(id).trim()
+  return text !== '' && text !== '0'
+}
+
+function stableRowSignature(value: any, sortField: string): string {
+  if (Array.isArray(value)) {
+    return `[${value
+      .map((entry) => stableRowSignature(entry, sortField))
+      .join(',')}]`
+  }
+  if (value && typeof value === 'object') {
+    const keys = Object.keys(value)
+      .filter((key) => key !== sortField)
+      .sort()
+    return `{${keys
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${stableRowSignature(value[key], sortField)}`
+      )
+      .join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'undefined'
+}
+
+function hashString(value: string) {
+  let hash = 5381
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 33) ^ value.charCodeAt(index)
+  }
+  return (hash >>> 0).toString(36)
 }
 
 function normalizeArrayRows(rows: Record<string, any>[], sortField: string) {
