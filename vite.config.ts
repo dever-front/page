@@ -43,6 +43,10 @@ export default defineConfig(async () => {
         '@': path.resolve(__dirname, './src'),
         react: path.resolve(__dirname, './node_modules/react'),
         'react-dom': path.resolve(__dirname, './node_modules/react-dom'),
+        '@xyflow/react': path.resolve(
+          __dirname,
+          './node_modules/@xyflow/react'
+        ),
         'react/jsx-runtime': path.resolve(
           __dirname,
           './node_modules/react/jsx-runtime.js'

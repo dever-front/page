@@ -1,3 +1,4 @@
+import type { WheelEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Send } from 'lucide-react'
 import type {
@@ -131,6 +132,7 @@ export function AgentInteractionPanel({
 
   return (
     <div
+      onWheel={handleInteractionPanelRootWheel}
       className={
         layout === 'dialog'
           ? 'flex min-h-0 flex-col bg-background'
@@ -307,10 +309,12 @@ function AgentInteractionParamForm({
   if (readonly) {
     return (
       <div
+        data-agent-interaction-scroll='true'
+        onWheel={handleInteractionPanelWheel}
         className={
           layout === 'dialog'
-            ? 'max-h-[62vh] space-y-2 overflow-y-auto p-4'
-            : 'max-h-[32vh] space-y-2 overflow-y-auto p-3'
+            ? 'max-h-[62vh] space-y-2 overflow-y-auto overscroll-contain p-4'
+            : 'max-h-[32vh] space-y-2 overflow-y-auto overscroll-contain p-3'
         }
       >
         {loading ? (
@@ -341,10 +345,12 @@ function AgentInteractionParamForm({
   return (
     <>
       <div
+        data-agent-interaction-scroll='true'
+        onWheel={handleInteractionPanelWheel}
         className={
           layout === 'dialog'
-            ? 'max-h-[62vh] space-y-3 overflow-y-auto p-4'
-            : 'max-h-[28vh] space-y-3 overflow-y-auto p-3'
+            ? 'max-h-[62vh] space-y-3 overflow-y-auto overscroll-contain p-4'
+            : 'max-h-[28vh] space-y-3 overflow-y-auto overscroll-contain p-3'
         }
       >
         {loading ? (
@@ -398,6 +404,63 @@ function AgentInteractionParamForm({
       </div>
     </>
   )
+}
+
+function handleInteractionPanelRootWheel(event: WheelEvent<HTMLDivElement>) {
+  const eventTarget = event.target
+  if (
+    eventTarget instanceof HTMLElement &&
+    eventTarget.closest('[data-agent-interaction-scroll="true"]')
+  ) {
+    return
+  }
+
+  const scrollTarget = event.currentTarget.querySelector<HTMLDivElement>(
+    '[data-agent-interaction-scroll="true"]'
+  )
+  if (!scrollTarget) {
+    event.stopPropagation()
+    return
+  }
+
+  scrollInteractionPanel(event, scrollTarget)
+}
+
+function handleInteractionPanelWheel(event: WheelEvent<HTMLDivElement>) {
+  scrollInteractionPanel(event, event.currentTarget)
+}
+
+function scrollInteractionPanel(
+  event: WheelEvent<HTMLDivElement>,
+  target: HTMLDivElement
+) {
+  const scrollDelta = interactionPanelWheelDelta(event, target)
+  if (scrollDelta === 0) {
+    return
+  }
+
+  event.preventDefault()
+  event.stopPropagation()
+  target.scrollTop = Math.max(
+    0,
+    Math.min(
+      target.scrollTop + scrollDelta,
+      target.scrollHeight - target.clientHeight
+    )
+  )
+}
+
+function interactionPanelWheelDelta(
+  event: WheelEvent<HTMLDivElement>,
+  target: HTMLDivElement
+) {
+  if (event.deltaMode === 1) {
+    return event.deltaY * 16
+  }
+  if (event.deltaMode === 2) {
+    return event.deltaY * target.clientHeight
+  }
+  return event.deltaY
 }
 
 function ReadonlyInteractionValues({

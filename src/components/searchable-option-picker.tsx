@@ -1,5 +1,9 @@
+import type { WheelEvent } from 'react'
 import { useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, Plus } from 'lucide-react'
+import { findFloatingLayerContainer } from '@/lib/floating-layer'
+import { resolveSelectedOptionLabels } from '@/lib/option-labels'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   Command,
@@ -9,11 +13,12 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { SelectTriggerShell } from '@/components/select-trigger-shell'
-import { findFloatingLayerContainer } from '@/lib/floating-layer'
-import { resolveSelectedOptionLabels } from '@/lib/option-labels'
-import { cn } from '@/lib/utils'
 
 export type OptionPickerItem = {
   id: string | number
@@ -69,7 +74,9 @@ export function SearchableOptionPicker({
 }: SearchableOptionPickerProps) {
   const [innerOpen, setInnerOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
+    null
+  )
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const currentOpen = open ?? innerOpen
 
@@ -124,28 +131,31 @@ export function SearchableOptionPicker({
         <PopoverTrigger asChild>
           <Button
             ref={triggerRef}
-            type="button"
-            variant="outline"
+            type='button'
+            variant='outline'
             disabled={disabled}
             aria-invalid={!!error}
             className={cn(
               'relative grid w-full grid-cols-[minmax(0,1fr)_2.25rem] justify-normal gap-0 overflow-hidden border-input bg-background px-0 py-0 pl-3 font-normal shadow-xs',
-              selectedLabels.length === 0 && !fallbackText && 'text-muted-foreground',
-              error && 'border-destructive ring-destructive/20 focus-visible:ring-destructive/30',
+              selectedLabels.length === 0 &&
+                !fallbackText &&
+                'text-muted-foreground',
+              error &&
+                'border-destructive ring-destructive/20 focus-visible:ring-destructive/30',
               className
             )}
           >
-            <span className="min-w-0 truncate text-left">{buttonText}</span>
-            <span className="select-trigger-chevron flex h-full self-stretch items-center justify-center text-muted-foreground/70 transition-colors">
-              <ChevronDown className="size-4 shrink-0" />
+            <span className='min-w-0 truncate text-left'>{buttonText}</span>
+            <span className='select-trigger-chevron flex h-full items-center justify-center self-stretch text-muted-foreground/70 transition-colors'>
+              <ChevronDown className='size-4 shrink-0' />
             </span>
           </Button>
         </PopoverTrigger>
       </SelectTriggerShell>
       <PopoverContent
-        align="start"
+        align='start'
         container={portalContainer}
-        className="w-[var(--radix-popover-trigger-width)] min-w-[12rem] p-0"
+        className='w-[var(--radix-popover-trigger-width)] min-w-[12rem] p-0'
       >
         <Command shouldFilter={false}>
           <CommandInput
@@ -156,21 +166,25 @@ export function SearchableOptionPicker({
             }}
             placeholder={searchPlaceholder || '输入关键词筛选...'}
           />
-          <CommandList>
-            <CommandEmpty>{loading ? '正在加载...' : emptyText || '未找到匹配选项'}</CommandEmpty>
+          <CommandList onWheel={handleOptionListWheel}>
+            <CommandEmpty>
+              {loading ? '正在加载...' : emptyText || '未找到匹配选项'}
+            </CommandEmpty>
             {createAction ? (
-              <CommandGroup className="border-b">
+              <CommandGroup className='border-b'>
                 <CommandItem
-                  value="__create_option__"
+                  value='__create_option__'
                   disabled={createAction.disabled}
-                  className="gap-2 font-medium text-primary"
+                  className='gap-2 font-medium text-primary'
                   onSelect={() => {
                     handleOpenChange(false)
                     createAction.onSelect()
                   }}
                 >
-                  <Plus className="size-4" />
-                  <span className="flex-1 truncate text-left">{createAction.label}</span>
+                  <Plus className='size-4' />
+                  <span className='flex-1 truncate text-left'>
+                    {createAction.label}
+                  </span>
                 </CommandItem>
               </CommandGroup>
             ) : null}
@@ -183,11 +197,13 @@ export function SearchableOptionPicker({
                   <CommandItem
                     key={optionId}
                     value={optionId}
-                    className="gap-2"
+                    className='gap-2'
                     onSelect={() => {
                       if (multiple) {
                         const nextValues = checked
-                          ? selectedValues.filter((current) => current !== optionId)
+                          ? selectedValues.filter(
+                              (current) => current !== optionId
+                            )
                           : Array.from(new Set([...selectedValues, optionId]))
                         onChange(nextValues)
                         return
@@ -197,11 +213,13 @@ export function SearchableOptionPicker({
                       handleOpenChange(false)
                     }}
                   >
-                    <span className="flex-1 truncate text-left">{opt.value}</span>
+                    <span className='flex-1 truncate text-left'>
+                      {opt.value}
+                    </span>
                     <Check
                       className={cn(
                         'ml-auto size-4 shrink-0',
-                        checked ? 'opacity-100 text-primary' : 'opacity-0'
+                        checked ? 'text-primary opacity-100' : 'opacity-0'
                       )}
                     />
                   </CommandItem>
@@ -213,6 +231,30 @@ export function SearchableOptionPicker({
       </PopoverContent>
     </Popover>
   )
+}
+
+function handleOptionListWheel(event: WheelEvent<HTMLDivElement>) {
+  const target = event.currentTarget
+  const scrollDelta = wheelScrollDelta(event, target)
+  if (scrollDelta === 0) {
+    return
+  }
+  event.preventDefault()
+  event.stopPropagation()
+  target.scrollTop += scrollDelta
+}
+
+function wheelScrollDelta(
+  event: WheelEvent<HTMLDivElement>,
+  target: HTMLDivElement
+) {
+  if (event.deltaMode === 1) {
+    return event.deltaY * 16
+  }
+  if (event.deltaMode === 2) {
+    return event.deltaY * target.clientHeight
+  }
+  return event.deltaY
 }
 
 function filterOptionItemsByLabel(options: OptionPickerItem[], query: string) {
@@ -227,5 +269,7 @@ function filterOptionItemsByLabel(options: OptionPickerItem[], query: string) {
 }
 
 function normalizeOptionSearchText(value: string | number) {
-  return String(value || '').trim().toLowerCase()
+  return String(value || '')
+    .trim()
+    .toLowerCase()
 }
