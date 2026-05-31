@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import * as React from 'react'
-import ReactDOM from 'react-dom/client'
+import * as ReactDOMClient from 'react-dom/client'
 import { AxiosError } from 'axios'
 import {
   QueryCache,
@@ -8,14 +8,15 @@ import {
   QueryClientProvider,
 } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
-import { toast } from 'sonner'
 import { getSiteConfig } from '@/config/app-config'
+import * as ReactDOM from 'react-dom'
+import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { handleServerError } from '@/lib/handle-server-error'
-import { resetFrontRuntimeCache } from '@/lib/request'
 import { loadRuntimeFrontPlugins } from '@/lib/plugin/runtime'
-import { parseRouterSearch, stringifyRouterSearch } from '@/lib/router-search'
+import { resetFrontRuntimeCache } from '@/lib/request'
 import { getRouterBasePath } from '@/lib/router-path'
+import { parseRouterSearch, stringifyRouterSearch } from '@/lib/router-search'
 import { DirectionProvider } from './context/direction-provider'
 import { FontProvider } from './context/font-provider'
 import { ThemeProvider } from './context/theme-provider'
@@ -96,6 +97,8 @@ declare module '@tanstack/react-router' {
 
 const CONSOLE_BRAND_FLAG = '__dever_front_console_brand__'
 const REACT_GLOBAL_FLAG = 'React'
+const REACT_DOM_GLOBAL_FLAG = 'ReactDOM'
+const REACT_DOM_CLIENT_GLOBAL_FLAG = 'ReactDOMClient'
 
 function printConsoleBrand() {
   if (typeof window === 'undefined') {
@@ -124,8 +127,10 @@ const rootElement = document.getElementById('root')!
 if (!rootElement.innerHTML) {
   printConsoleBrand()
   ;(window as any)[REACT_GLOBAL_FLAG] = React
+  ;(window as any)[REACT_DOM_GLOBAL_FLAG] = ReactDOM
+  ;(window as any)[REACT_DOM_CLIENT_GLOBAL_FLAG] = ReactDOMClient
   void loadRuntimeFrontPlugins().finally(() => {
-    const root = ReactDOM.createRoot(rootElement)
+    const root = ReactDOMClient.createRoot(rootElement)
     root.render(
       <StrictMode>
         <QueryClientProvider client={queryClient}>

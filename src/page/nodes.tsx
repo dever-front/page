@@ -14,7 +14,7 @@ import {
   isSameControlValue,
   normalizeClearOnChangePaths,
 } from '@/lib/form-control'
-import { nodeRegistry } from '@/lib/registry'
+import { getNodeComponent } from '@/lib/registry'
 import type { Item, OptionItem } from '@/lib/schema'
 import { usePageStore, type PageStore, useStorePathValue } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -73,7 +73,7 @@ type NodeItemComponentProps = {
 
 function NodeItem({ item, store, layoutId }: NodeItemComponentProps) {
   // 从注册表查找节点组件
-  const NodeComponent = nodeRegistry[item.type]
+  const NodeComponent = getNodeComponent(item.type)
   if (!NodeComponent) {
     console.warn('[Nodes] 未注册的节点类型:', item.type)
     return null

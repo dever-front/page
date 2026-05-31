@@ -1,6 +1,9 @@
 import type { PluginOption } from 'vite'
 import fs from 'node:fs'
+import http from 'node:http'
+import https from 'node:https'
 import path from 'node:path'
+import { URL } from 'node:url'
 
 type FrontRuntimePluginOptions = {
   projectRoot: string
@@ -8,7 +11,7 @@ type FrontRuntimePluginOptions = {
 
 type FrontConfig = {
   sites?: Record<string, FrontSite>
-  auth?: unknown[]
+  public?: string[]
 }
 
 type FrontSite = {
@@ -23,7 +26,6 @@ type FrontSite = {
     mode?: string
     authProvider?: string
   }
-  public?: string[]
 }
 
 type FrontSiteAssets = {
@@ -42,6 +44,8 @@ type FrontSiteSetting = {
 
 const DEFAULT_SITE_KEY = 'admin'
 const DEFAULT_API = 'front'
+const DEV_API_PREFIX = '/__dever_api'
+const DEFAULT_DEV_BACKEND_PORT = '8085'
 const RUNTIME_HTML_PLACEHOLDER = '<!-- dever:runtime -->'
 
 export function deverRuntimePlugin({
@@ -53,6 +57,16 @@ export function deverRuntimePlugin({
       server.middlewares.use((req, res, next) => {
         void (async () => {
           const pathname = requestPathname(req.url || '')
+          const apiProxy = devAPIProxyTarget(
+            projectRoot,
+            req.url || '',
+            req.headers.host
+          )
+          if (apiProxy) {
+            proxyDevAPI(req, res, apiProxy)
+            return
+          }
+
           const siteAsset = runtimeSiteAsset(projectRoot, pathname)
           if (siteAsset) {
             sendRuntimeAsset(res, siteAsset)
@@ -102,9 +116,7 @@ export function deverRuntimePlugin({
               'Content-Type',
               'application/javascript; charset=utf-8'
             )
-            res.end(
-              runtimeScript(runtimePayload(runtimeKey, site, req.headers.host))
-            )
+            res.end(runtimeScript(runtimePayload(runtimeKey, site)))
             return
           }
 
@@ -125,10 +137,7 @@ export function deverRuntimePlugin({
           const rawHtml = fs.readFileSync(indexFile, 'utf8')
           const html = await server.transformIndexHtml(
             req.url || '/',
-            injectRuntimeIntoHtml(
-              rawHtml,
-              runtimePayload(htmlSiteKey, site, req.headers.host)
-            )
+            injectRuntimeIntoHtml(rawHtml, runtimePayload(htmlSiteKey, site))
           )
           res.statusCode = 200
           res.setHeader('Cache-Control', 'no-cache')
@@ -149,16 +158,13 @@ function htmlRuntimeSiteKey(projectRoot: string, pathname: string) {
   return siteKey && isRuntimeSiteKey(projectRoot, siteKey) ? siteKey : ''
 }
 
-function runtimePayload(
-  siteKey: string,
-  site: FrontSite,
-  hostHeader: string | undefined
-) {
-  const hostname = requestHostname(hostHeader)
+function runtimePayload(siteKey: string, site: FrontSite) {
+  const apiPrefix = trimSlashes(site.api || DEFAULT_API)
   return {
     siteKey,
     basePath: `/${siteKey}`,
-    apiHost: `http://${hostname}:8085/${trimSlashes(site.api || DEFAULT_API)}/`,
+    apiPrefix,
+    apiHost: `${DEV_API_PREFIX}/${apiPrefix}/`,
     site: {
       name: site.name || siteKey,
       subtitle: site.subtitle,
@@ -178,6 +184,105 @@ function runtimePayload(
       authProvider: site.access?.authProvider || DEFAULT_API,
     },
   }
+}
+
+function devAPIProxyTarget(
+  projectRoot: string,
+  rawUrl: string,
+  hostHeader?: string | string[]
+) {
+  const pathname = requestPathname(rawUrl)
+  const apiMatch = pathname.match(/^\/__dever_api\/([^/]+)(\/.*)?$/)
+  if (apiMatch?.[1]) {
+    return devBackendURL(
+      `/${apiMatch[1]}${apiMatch[2] || '/'}`,
+      rawUrl,
+      hostHeader
+    )
+  }
+
+  if (isPublicBackendPath(projectRoot, pathname)) {
+    return devBackendURL(pathname, rawUrl, hostHeader)
+  }
+
+  return null
+}
+
+function devBackendURL(
+  pathname: string,
+  rawUrl: string,
+  hostHeader?: string | string[]
+) {
+  const target = new URL(devBackendOrigin(hostHeader))
+  const source = new URL(rawUrl, 'http://dever.local')
+  target.pathname = pathname
+  target.search = source.search
+  return target
+}
+
+function devBackendOrigin(hostHeader?: string | string[]) {
+  const configuredOrigin = String(
+    process.env.VITE_DEVER_BACKEND_ORIGIN || ''
+  ).trim()
+  if (configuredOrigin) {
+    return configuredOrigin.replace(/\/+$/, '')
+  }
+
+  const hostname = requestHostname(hostHeader)
+  return `http://${hostname}:${DEFAULT_DEV_BACKEND_PORT}`
+}
+
+function isPublicBackendPath(projectRoot: string, pathname: string) {
+  return runtimePublicPaths(projectRoot).some((pattern) =>
+    matchBackendPathPattern(pattern, pathname)
+  )
+}
+
+function runtimePublicPaths(projectRoot: string) {
+  const config = readFrontConfig(projectRoot)
+  return Array.isArray(config.public) ? config.public : []
+}
+
+function matchBackendPathPattern(pattern: string, pathname: string) {
+  const normalizedPattern = `/${trimSlashes(pattern)}`
+  if (!normalizedPattern || normalizedPattern === '/') {
+    return false
+  }
+  if (normalizedPattern.endsWith('/*')) {
+    return pathname.startsWith(normalizedPattern.slice(0, -1))
+  }
+  return pathname === normalizedPattern
+}
+
+function proxyDevAPI(req: any, res: any, target: URL) {
+  const client = target.protocol === 'https:' ? https : http
+  const proxyReq = client.request(
+    target,
+    {
+      method: req.method,
+      headers: {
+        ...req.headers,
+        host: target.host,
+      },
+    },
+    (proxyRes) => {
+      res.statusCode = proxyRes.statusCode || 502
+      for (const [key, value] of Object.entries(proxyRes.headers)) {
+        if (value !== undefined) {
+          res.setHeader(key, value as string | string[])
+        }
+      }
+      proxyRes.pipe(res)
+    }
+  )
+
+  proxyReq.on('error', (error) => {
+    res.statusCode = 502
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+    res.end(`Dever dev backend proxy failed: ${error.message}`)
+  })
+
+  req.pipe(proxyReq)
 }
 
 function runtimeScript(payload: unknown) {
@@ -282,6 +387,15 @@ function runtimeSiteKeyFromReferer(
 
 function requestPathname(rawUrl: string) {
   return new URL(rawUrl, 'http://dever.local').pathname
+}
+
+function requestHostname(hostHeader?: string | string[]) {
+  const rawHost = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader
+  const host = String(rawHost || '').trim()
+  if (!host) {
+    return '127.0.0.1'
+  }
+  return host.split(':')[0] || '127.0.0.1'
 }
 
 function defaultRuntimeSiteKey(projectRoot: string) {
@@ -398,14 +512,6 @@ function stripJsonComments(content: string) {
   return content
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/.*$/gm, '$1')
-}
-
-function requestHostname(hostHeader: string | undefined) {
-  const host = String(hostHeader || '').trim()
-  if (!host) {
-    return 'localhost'
-  }
-  return host.split(':')[0] || 'localhost'
 }
 
 function trimSlashes(value: string) {

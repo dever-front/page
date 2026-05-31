@@ -21,6 +21,7 @@ export type AppearanceConfig = {
 
 export type RuntimeConfig = {
   siteKey: string
+  apiPrefix: string
   skin: string
   routerMode: 'hash' | 'history'
   basePath?: string
@@ -49,6 +50,7 @@ export type RuntimeSettingConfig = {
 export type AppRuntimeConfig = {
   siteKey?: string
   basePath?: string
+  apiPrefix?: string
   apiHost?: string
   site?: Partial<SiteConfig>
   appearance?: Partial<AppearanceConfig>
@@ -79,6 +81,7 @@ const DEFAULT_APP_CONFIG: AppConfig = {
   },
   runtime: {
     siteKey: 'admin',
+    apiPrefix: 'front',
     skin: 'default',
     routerMode: 'history',
     host: '',
@@ -119,6 +122,9 @@ function mergeRuntimeConfig(runtime?: AppRuntimeConfig): AppConfig {
   const siteKey = String(
     runtime?.siteKey || DEFAULT_APP_CONFIG.runtime.siteKey || 'admin'
   )
+  const apiPrefix = normalizeAPIPrefix(
+    runtime?.apiPrefix || runtime?.apiHost || DEFAULT_APP_CONFIG.runtime.host
+  )
   const site = normalizeSiteConfig(DEFAULT_APP_CONFIG.site, runtime?.site)
 
   if (basePath) {
@@ -139,6 +145,7 @@ function mergeRuntimeConfig(runtime?: AppRuntimeConfig): AppConfig {
       {
         ...DEFAULT_APP_CONFIG.runtime,
         siteKey,
+        apiPrefix,
         basePath,
         host,
         access: runtime?.access || DEFAULT_APP_CONFIG.runtime.access,
@@ -238,6 +245,30 @@ function normalizeAPIHost(value?: string) {
     return ''
   }
   return normalized.endsWith('/') ? normalized : `${normalized}/`
+}
+
+function normalizeAPIPrefix(value?: string) {
+  const normalized = String(value || '').trim()
+  if (!normalized) {
+    return ''
+  }
+
+  try {
+    const pathname = new URL(
+      normalized,
+      typeof window === 'undefined'
+        ? 'http://localhost'
+        : window.location.origin
+    ).pathname
+    return apiPrefixFromPath(pathname)
+  } catch {
+    return apiPrefixFromPath(normalized.split(/[?#]/)[0] || '')
+  }
+}
+
+function apiPrefixFromPath(value: string) {
+  const parts = value.split('/').filter(Boolean)
+  return parts[0] === '__dever_api' ? parts[1] || '' : parts[0] || ''
 }
 
 function joinBasePath(basePath: string, relativePath: string) {

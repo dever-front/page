@@ -59,6 +59,7 @@ pnpm build:backend
 ```
 
 默认会把静态文件输出到 `backend/package/front/html`，后端默认从 `/admin` 访问。
+打包默认使用单 bundle，减少后端托管时的大量小文件请求；如需恢复 Vite 拆分 chunk，可设置 `VITE_FRONT_BUNDLE=split`。
 访问前缀、接口前缀、站点信息和皮肤配置由后端 `config/front.json` 生成的 `runtime.js` 下发。
 
 ## 运行时配置

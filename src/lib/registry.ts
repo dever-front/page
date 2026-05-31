@@ -300,16 +300,20 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
   ),
 }
 
-export const nodeRegistry: Record<string, LazyNodeComponent> = {
-  ...coreNodeRegistry,
-  ...mergePluginNodes(sourcePlugins),
-  ...getRuntimePluginNodes(),
+const sourcePluginNodeRegistry = mergePluginNodes(sourcePlugins)
+
+export function getNodeComponent(type: string) {
+  return (
+    coreNodeRegistry[type] ||
+    sourcePluginNodeRegistry[type] ||
+    getRuntimePluginNodes()[type]
+  )
 }
 
 export function preloadNodeComponents(schema: PageSchemaType) {
   const nodeTypes = collectSchemaNodeTypes(schema)
   return Promise.allSettled(
-    nodeTypes.map((type) => nodeRegistry[type]?.preload?.())
+    nodeTypes.map((type) => getNodeComponent(type)?.preload?.())
   )
 }
 
@@ -317,7 +321,7 @@ function collectSchemaNodeTypes(schema: PageSchemaType) {
   const types = new Set<string>()
   for (const items of Object.values(schema.nodes ?? {})) {
     for (const item of items ?? []) {
-      if (item?.type && nodeRegistry[item.type]) {
+      if (item?.type && getNodeComponent(item.type)) {
         types.add(item.type)
       }
     }

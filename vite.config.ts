@@ -9,11 +9,24 @@ function frontDependency(name: string) {
   return path.resolve(__dirname, 'node_modules', name)
 }
 
+function frontDependencyEntry(name: string) {
+  return path.resolve(__dirname, 'node_modules', ...name.split('/'))
+}
+
+function isSingleBundleMode(value: string | undefined) {
+  return (
+    String(value || 'single')
+      .trim()
+      .toLowerCase() !== 'split'
+  )
+}
+
 // https://vite.dev/config/
 export default defineConfig(async () => {
   const enableRouteGeneration = process.env.VITE_ROUTE_GENERATION !== '0'
   const frontBase = process.env.VITE_FRONT_BASE || '/'
   const frontOutDir = process.env.VITE_FRONT_OUT_DIR || 'dist'
+  const singleBundle = isSingleBundleMode(process.env.VITE_FRONT_BUNDLE)
   const enablePolling =
     process.env.VITE_FORCE_POLLING === '1' ||
     process.env.CHOKIDAR_USEPOLLING === 'true'
@@ -47,21 +60,60 @@ export default defineConfig(async () => {
     build: {
       outDir: frontOutDir,
       emptyOutDir: true,
+      cssCodeSplit: !singleBundle,
+      modulePreload: singleBundle ? false : undefined,
+      rollupOptions: singleBundle
+        ? {
+            output: {
+              inlineDynamicImports: true,
+            },
+          }
+        : undefined,
     },
     resolve: {
       dedupe: ['react', 'react-dom'],
-      alias: {
-        '@': path.resolve(__dirname, './src'),
-        react: frontDependency('react'),
-        'react-dom': frontDependency('react-dom'),
-        '@xyflow/react': frontDependency('@xyflow/react'),
-        '@tanstack/react-router': frontDependency('@tanstack/react-router'),
-        'lucide-react': frontDependency('lucide-react'),
-        sonner: frontDependency('sonner'),
-        zustand: frontDependency('zustand'),
-        'react/jsx-runtime': frontDependency('react/jsx-runtime.js'),
-        'react/jsx-dev-runtime': frontDependency('react/jsx-dev-runtime.js'),
-      },
+      alias: [
+        {
+          find: '@dever/front-plugin',
+          replacement: path.resolve(
+            projectRoot,
+            'backend/package/front/sdk/src/index.ts'
+          ),
+        },
+        { find: '@', replacement: path.resolve(__dirname, './src') },
+        {
+          find: /^zustand$/,
+          replacement: frontDependencyEntry('zustand/esm/index.mjs'),
+        },
+        {
+          find: /^zustand\/vanilla$/,
+          replacement: frontDependencyEntry('zustand/esm/vanilla.mjs'),
+        },
+        {
+          find: /^zustand\/react$/,
+          replacement: frontDependencyEntry('zustand/esm/react.mjs'),
+        },
+        {
+          find: 'react/jsx-dev-runtime',
+          replacement: frontDependency('react/jsx-dev-runtime.js'),
+        },
+        {
+          find: 'react/jsx-runtime',
+          replacement: frontDependency('react/jsx-runtime.js'),
+        },
+        { find: 'react', replacement: frontDependency('react') },
+        { find: 'react-dom', replacement: frontDependency('react-dom') },
+        {
+          find: '@xyflow/react',
+          replacement: frontDependency('@xyflow/react'),
+        },
+        {
+          find: '@tanstack/react-router',
+          replacement: frontDependency('@tanstack/react-router'),
+        },
+        { find: 'lucide-react', replacement: frontDependency('lucide-react') },
+        { find: 'sonner', replacement: frontDependency('sonner') },
+      ],
     },
     server: {
       host: '0.0.0.0',
