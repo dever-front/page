@@ -42,6 +42,7 @@ type FrontSiteSetting = {
 
 const DEFAULT_SITE_KEY = 'admin'
 const DEFAULT_API = 'front'
+const RUNTIME_HTML_PLACEHOLDER = '<!-- dever:runtime -->'
 
 export function deverRuntimePlugin({
   projectRoot,
@@ -50,88 +51,145 @@ export function deverRuntimePlugin({
     name: 'dever-front-runtime',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        const pathname = requestPathname(req.url || '')
-        const siteAsset = runtimeSiteAsset(projectRoot, pathname)
-        if (siteAsset) {
-          sendRuntimeAsset(res, siteAsset)
-          return
-        }
+        void (async () => {
+          const pathname = requestPathname(req.url || '')
+          const siteAsset = runtimeSiteAsset(projectRoot, pathname)
+          if (siteAsset) {
+            sendRuntimeAsset(res, siteAsset)
+            return
+          }
 
-        const defaultSiteKey = defaultRuntimeSiteKey(projectRoot)
-        if (pathname === '/') {
-          res.statusCode = 302
-          res.setHeader('Location', `/${defaultSiteKey}/`)
-          res.end()
-          return
-        }
-        if (pathname === `/${defaultSiteKey}`) {
-          res.statusCode = 302
-          res.setHeader('Location', `/${defaultSiteKey}/`)
-          res.end()
-          return
-        }
-        const siteKeyWithoutSlash = pathname.match(/^\/([^/]+)$/)?.[1] || ''
-        if (
-          siteKeyWithoutSlash &&
-          isRuntimeSiteKey(projectRoot, siteKeyWithoutSlash)
-        ) {
-          res.statusCode = 302
-          res.setHeader('Location', `/${siteKeyWithoutSlash}/`)
-          res.end()
-          return
-        }
+          const defaultSiteKey = defaultRuntimeSiteKey(projectRoot)
+          if (pathname === '/') {
+            res.statusCode = 302
+            res.setHeader('Location', `/${defaultSiteKey}/`)
+            res.end()
+            return
+          }
+          if (pathname === `/${defaultSiteKey}`) {
+            res.statusCode = 302
+            res.setHeader('Location', `/${defaultSiteKey}/`)
+            res.end()
+            return
+          }
+          const siteKeyWithoutSlash = pathname.match(/^\/([^/]+)$/)?.[1] || ''
+          if (
+            siteKeyWithoutSlash &&
+            isRuntimeSiteKey(projectRoot, siteKeyWithoutSlash)
+          ) {
+            res.statusCode = 302
+            res.setHeader('Location', `/${siteKeyWithoutSlash}/`)
+            res.end()
+            return
+          }
 
-        const siteKey = runtimeSiteKey(
-          projectRoot,
-          req.url || '',
-          req.headers.referer
-        )
-        if (!siteKey) {
-          next()
-          return
-        }
+          const runtimeKey = runtimeSiteKey(
+            projectRoot,
+            req.url || '',
+            req.headers.referer
+          )
+          if (runtimeKey) {
+            const site = loadRuntimeSite(projectRoot, runtimeKey)
+            if (!site) {
+              res.statusCode = 404
+              res.end('runtime site not found')
+              return
+            }
 
-        const site = loadRuntimeSite(projectRoot, siteKey)
-        if (!site) {
-          res.statusCode = 404
-          res.end('runtime site not found')
-          return
-        }
+            res.statusCode = 200
+            res.setHeader('Cache-Control', 'no-cache')
+            res.setHeader(
+              'Content-Type',
+              'application/javascript; charset=utf-8'
+            )
+            res.end(
+              runtimeScript(runtimePayload(runtimeKey, site, req.headers.host))
+            )
+            return
+          }
 
-        const hostname = requestHostname(req.headers.host)
-        const payload = {
-          siteKey,
-          basePath: `/${siteKey}`,
-          apiHost: `http://${hostname}:8085/${trimSlashes(
-            site.api || DEFAULT_API
-          )}/`,
-          site: {
-            name: site.name || siteKey,
-            subtitle: site.subtitle,
-            description: site.description,
-            url: site.url,
-            logo:
-              runtimeSiteAssetUrl(siteKey, site.assets?.logo) ||
-              `/${siteKey}/assets/images/logo.svg`,
-            favicon:
-              runtimeSiteAssetUrl(siteKey, site.assets?.favicon) ||
-              `/${siteKey}/assets/images/favicon.svg`,
-          },
-          appearance: site.setting?.appearance || {},
-          runtime: site.setting?.runtime || {},
-          access: {
-            mode: site.access?.mode || 'rbac',
-            authProvider: site.access?.authProvider || DEFAULT_API,
-          },
-        }
+          const htmlSiteKey = htmlRuntimeSiteKey(projectRoot, pathname)
+          if (!htmlSiteKey) {
+            next()
+            return
+          }
 
-        res.statusCode = 200
-        res.setHeader('Cache-Control', 'no-cache')
-        res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
-        res.end(`window.appRuntime = ${JSON.stringify(payload)};\n`)
+          const site = loadRuntimeSite(projectRoot, htmlSiteKey)
+          if (!site) {
+            res.statusCode = 404
+            res.end('runtime site not found')
+            return
+          }
+
+          const indexFile = path.join(projectRoot, 'front', 'index.html')
+          const rawHtml = fs.readFileSync(indexFile, 'utf8')
+          const html = await server.transformIndexHtml(
+            req.url || '/',
+            injectRuntimeIntoHtml(
+              rawHtml,
+              runtimePayload(htmlSiteKey, site, req.headers.host)
+            )
+          )
+          res.statusCode = 200
+          res.setHeader('Cache-Control', 'no-cache')
+          res.setHeader('Content-Type', 'text/html; charset=utf-8')
+          res.end(html)
+        })().catch(next)
       })
     },
   }
+}
+
+function htmlRuntimeSiteKey(projectRoot: string, pathname: string) {
+  if (path.posix.extname(pathname)) {
+    return ''
+  }
+
+  const siteKey = pathname.split('/').find(Boolean) || ''
+  return siteKey && isRuntimeSiteKey(projectRoot, siteKey) ? siteKey : ''
+}
+
+function runtimePayload(
+  siteKey: string,
+  site: FrontSite,
+  hostHeader: string | undefined
+) {
+  const hostname = requestHostname(hostHeader)
+  return {
+    siteKey,
+    basePath: `/${siteKey}`,
+    apiHost: `http://${hostname}:8085/${trimSlashes(site.api || DEFAULT_API)}/`,
+    site: {
+      name: site.name || siteKey,
+      subtitle: site.subtitle,
+      description: site.description,
+      url: site.url,
+      logo:
+        runtimeSiteAssetUrl(siteKey, site.assets?.logo) ||
+        `/${siteKey}/assets/images/logo.svg`,
+      favicon:
+        runtimeSiteAssetUrl(siteKey, site.assets?.favicon) ||
+        `/${siteKey}/assets/images/favicon.svg`,
+    },
+    appearance: site.setting?.appearance || {},
+    runtime: site.setting?.runtime || {},
+    access: {
+      mode: site.access?.mode || 'rbac',
+      authProvider: site.access?.authProvider || DEFAULT_API,
+    },
+  }
+}
+
+function runtimeScript(payload: unknown) {
+  return `window.appRuntime = ${JSON.stringify(payload)};\n`
+}
+
+function injectRuntimeIntoHtml(html: string, payload: unknown) {
+  const script = `<script>\n${runtimeScript(payload)}</script>`
+  if (html.includes(RUNTIME_HTML_PLACEHOLDER)) {
+    return html.replace(RUNTIME_HTML_PLACEHOLDER, script)
+  }
+  return html.replace('</head>', `${script}\n  </head>`)
 }
 
 function runtimeSiteAsset(projectRoot: string, pathname: string) {

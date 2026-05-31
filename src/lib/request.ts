@@ -235,9 +235,11 @@ function appendQueryString(url: string, params?: any) {
 }
 
 function normalizeRoute(route: string) {
-  return stripRouterBasePath(route)
-    .replace(/[?#].*$/, '')
-    .replace(/^\/+|\/+$/g, '')
+  const normalizedRoute = String(route || '').trim()
+  const pathValue = normalizedRoute.startsWith('/')
+    ? stripRouterBasePath(normalizedRoute)
+    : normalizedRoute
+  return pathValue.replace(/[?#].*$/, '').replace(/^\/+|\/+$/g, '')
 }
 
 /**

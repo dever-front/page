@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { hideInitialBootScreen } from '@/lib/initial-boot'
 import { loadMainInfo } from '@/lib/request'
-import { resolveFirstRemoteMenuUrl } from '@/components/layout/menu'
 import { stripRouterBasePath } from '@/lib/router-path'
+import { resolveFirstRemoteMenuUrl } from '@/components/layout/menu'
 
 export const Route = createFileRoute('/_authenticated/')({
   component: AuthenticatedIndex,
@@ -22,12 +23,13 @@ function AuthenticatedIndex() {
         ? stripRouterBasePath(`/${entry.replace(/^\/+/, '')}`)
         : resolveFirstRemoteMenuUrl(menu)
       if (!target) {
+        hideInitialBootScreen()
         return
       }
       navigate({ to: target, replace: true })
     }
 
-    loadEntry()
+    void loadEntry()
     return () => {
       cancelled = true
     }

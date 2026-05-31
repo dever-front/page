@@ -1,12 +1,12 @@
 import { z } from 'zod'
 import { createFileRoute } from '@tanstack/react-router'
 import { lazyRouteComponent } from '@/lib/lazy-route'
-import { FrontBootScreen } from '@/components/layout/front-boot-screen'
+import { FrontBootFallback } from '@/components/layout/front-boot-screen'
 
 const SignIn = lazyRouteComponent(
   () =>
     import('@/features/auth/sign-in').then((mod) => ({ default: mod.SignIn })),
-  <FrontBootScreen />
+  <FrontBootFallback />
 )
 
 const searchSchema = z.object({

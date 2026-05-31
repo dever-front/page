@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearch } from '@tanstack/react-router'
+import { hideInitialBootScreen } from '@/lib/initial-boot'
 import { loadPageSchema } from '@/lib/request'
 import { systemPageRoute } from '@/lib/system-page-route'
 import {
@@ -9,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { FrontBootScreen } from '@/components/layout/front-boot-screen'
+import { FrontBootFallback } from '@/components/layout/front-boot-screen'
 import { AuthLayout } from '../auth-layout'
 import { SchemaSignIn } from '../schema-sign-in'
 import { UserAuthForm } from './components/user-auth-form'
@@ -37,8 +38,14 @@ export function SignIn() {
     }
   }, [loginRoute])
 
+  useEffect(() => {
+    if (loaded) {
+      hideInitialBootScreen()
+    }
+  }, [loaded])
+
   if (!loaded) {
-    return <FrontBootScreen />
+    return <FrontBootFallback />
   }
 
   if (schema) {

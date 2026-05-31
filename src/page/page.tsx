@@ -5,9 +5,14 @@
  * 渲染根布局
  */
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
-import { validatePageSchema, type PageSchemaType } from '@/lib/schema'
-import { createPageStore, PageStoreContext, type PageStore } from '@/lib/store'
+import { getSiteConfig } from '@/config/app-config'
 import { runAction } from '@/lib/action'
+import {
+  activateAssistantPage,
+  registerAssistantPage,
+  type AssistantPageScope,
+} from '@/lib/assistant/registry'
+import { finishPageProgress, startPageProgress } from '@/lib/page-progress'
 import {
   finishPageReload,
   isSamePageReloadRoute,
@@ -15,21 +20,13 @@ import {
   type PageReloadDetail,
 } from '@/lib/page-reload'
 import { loadPageSchema } from '@/lib/request'
-import { getSiteConfig } from '@/config/app-config'
-import {
-  activateAssistantPage,
-  registerAssistantPage,
-  type AssistantPageScope,
-} from '@/lib/assistant/registry'
-import {
-  finishPageProgress,
-  startPageProgress,
-} from '@/lib/page-progress'
 import {
   getActiveRouteNavigationKey,
   getCurrentRouteNavigationKey,
   normalizeRouteKey,
 } from '@/lib/route-key'
+import { validatePageSchema, type PageSchemaType } from '@/lib/schema'
+import { createPageStore, PageStoreContext, type PageStore } from '@/lib/store'
 import { LayoutRenderer } from './layout'
 
 type PageProps = {
@@ -37,6 +34,7 @@ type PageProps = {
   schema?: any
   parentStore?: PageStore | null
   onStoreReady?: (store: PageStore | null) => void
+  onReady?: () => void
   assistantScope?: AssistantPageScope
   updateDocumentTitle?: boolean
 }
@@ -59,7 +57,8 @@ function formatDocumentTitle(pageTitle?: string) {
 
 function buildPageLoadKey(route?: string, schema?: any) {
   if (schema) {
-    const page = schema?.page && typeof schema.page === 'object' ? schema.page : {}
+    const page =
+      schema?.page && typeof schema.page === 'object' ? schema.page : {}
     return `schema:${page.route || page.id || page.name || page.title || 'inline'}`
   }
 
@@ -71,6 +70,7 @@ export function Page({
   schema: schemaProp,
   parentStore,
   onStoreReady,
+  onReady,
   assistantScope,
   updateDocumentTitle = true,
 }: PageProps) {
@@ -79,9 +79,9 @@ export function Page({
   const [loading, setLoading] = useState(true)
   const [loadedKey, setLoadedKey] = useState('')
   const [reloadVersion, setReloadVersion] = useState(0)
+  const loadKey = buildPageLoadKey(route, schemaProp)
   const hasLoadedRef = useRef(false)
   const loadedKeyRef = useRef('')
-  const loadKey = buildPageLoadKey(route, schemaProp)
 
   useEffect(() => {
     if (typeof window === 'undefined' || !route) {
@@ -111,11 +111,13 @@ export function Page({
       const isNewPage = loadedKeyRef.current !== loadKey
       const routeProgressKey = normalizeRouteKey(route)
       const currentBrowserNavigationKey = getCurrentRouteNavigationKey()
-      const currentBrowserRouteKey = currentBrowserNavigationKey.split('@')[0] || ''
+      const currentBrowserRouteKey =
+        currentBrowserNavigationKey.split('@')[0] || ''
       const activeNavigationKey = getActiveRouteNavigationKey()
-      const progressRequestKey = reloadVersion > 0
-        ? `${activeNavigationKey || currentBrowserNavigationKey}:reload:${reloadVersion}`
-        : currentBrowserNavigationKey
+      const progressRequestKey =
+        reloadVersion > 0
+          ? `${activeNavigationKey || currentBrowserNavigationKey}:reload:${reloadVersion}`
+          : currentBrowserNavigationKey
       const shouldTrackProgress =
         !schemaProp &&
         !!routeProgressKey &&
@@ -173,28 +175,31 @@ export function Page({
     }
 
     load()
-    return () => { cancelled = true }
-  }, [
-    loadKey,
-    reloadVersion,
-    route,
-    schemaProp,
-  ])
+    return () => {
+      cancelled = true
+    }
+  }, [loadKey, reloadVersion, route, schemaProp])
+
+  useEffect(() => {
+    if (error) {
+      onReady?.()
+    }
+  }, [error, onReady])
 
   const isStalePage = loadedKey !== loadKey
 
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center p-8">
-        <div className="text-destructive">{error}</div>
+      <div className='flex h-full items-center justify-center p-8'>
+        <div className='text-destructive'>{error}</div>
       </div>
     )
   }
 
   if (loading || isStalePage) {
     return (
-      <div className="flex h-full items-center justify-center p-8">
-        <div className="text-muted-foreground">加载中...</div>
+      <div className='flex h-full items-center justify-center p-8'>
+        <div className='text-muted-foreground'>加载中...</div>
       </div>
     )
   }
@@ -207,6 +212,7 @@ export function Page({
       route={route}
       parentStore={parentStore}
       onStoreReady={onStoreReady}
+      onReady={onReady}
       assistantScope={assistantScope}
       updateDocumentTitle={updateDocumentTitle}
     />
@@ -221,6 +227,7 @@ function PageInner({
   route,
   parentStore,
   onStoreReady,
+  onReady,
   assistantScope,
   updateDocumentTitle,
 }: {
@@ -228,6 +235,7 @@ function PageInner({
   route?: string
   parentStore?: PageStore | null
   onStoreReady?: (store: PageStore | null) => void
+  onReady?: () => void
   assistantScope?: AssistantPageScope
   updateDocumentTitle: boolean
 }) {
@@ -258,9 +266,16 @@ function PageInner({
     }
   }, [onStoreReady, store])
 
+  useEffect(() => {
+    onReady?.()
+  }, [onReady])
+
   const assistantRegistrationIdRef = useRef('')
   if (!assistantRegistrationIdRef.current) {
-    assistantRegistrationIdRef.current = createAssistantRegistrationID(pagePath, schema)
+    assistantRegistrationIdRef.current = createAssistantRegistrationID(
+      pagePath,
+      schema
+    )
   }
   const assistantRegistrationId = assistantRegistrationIdRef.current
 
@@ -285,9 +300,11 @@ function PageInner({
   return (
     <PageStoreContext.Provider value={store}>
       <div
-        className="contents"
+        className='contents'
         onFocusCapture={() => activateAssistantPage(assistantRegistrationId)}
-        onPointerDownCapture={() => activateAssistantPage(assistantRegistrationId)}
+        onPointerDownCapture={() =>
+          activateAssistantPage(assistantRegistrationId)
+        }
       >
         <LayoutRenderer config={schema.layout} />
       </div>
@@ -295,7 +312,10 @@ function PageInner({
   )
 }
 
-function createAssistantRegistrationID(pagePath: string, schema: PageSchemaType) {
+function createAssistantRegistrationID(
+  pagePath: string,
+  schema: PageSchemaType
+) {
   const pageName = pagePath || schema.page.name || schema.page.title || 'page'
   return `assistant:${pageName}:${Math.random().toString(16).slice(2)}`
 }

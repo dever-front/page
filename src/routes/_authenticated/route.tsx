@@ -2,14 +2,14 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import { getAccessTokenKey, useAuthStore } from '@/stores/auth-store'
 import { getCookie } from '@/lib/cookies'
 import { lazyRouteComponent } from '@/lib/lazy-route'
-import { FrontBootScreen } from '@/components/layout/front-boot-screen'
+import { FrontBootFallback } from '@/components/layout/front-boot-screen'
 
 const AuthenticatedLayout = lazyRouteComponent(
   () =>
     import('@/components/layout/authenticated-layout').then((mod) => ({
       default: mod.AuthenticatedLayout,
     })),
-  <FrontBootScreen />
+  <FrontBootFallback />
 )
 
 export const Route = createFileRoute('/_authenticated')({

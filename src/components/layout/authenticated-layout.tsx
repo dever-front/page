@@ -12,7 +12,7 @@ import { systemPageRoute } from '@/lib/system-page-route'
 import { LayoutProvider } from '@/context/layout-provider'
 import { SearchProvider } from '@/context/search-provider'
 import { SidebarProvider } from '@/components/ui/sidebar'
-import { FrontBootScreen } from '@/components/layout/front-boot-screen'
+import { FrontBootFallback } from '@/components/layout/front-boot-screen'
 import { getResolvedNavGroups } from '@/components/layout/menu'
 import { AppShellProvider } from '@/components/layout/shell-context'
 
@@ -76,7 +76,7 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   }, [mainRoute])
 
   if (!bootState.ready) {
-    return <FrontBootScreen />
+    return <FrontBootFallback />
   }
 
   const navGroups = getResolvedNavGroups(bootState.menu)

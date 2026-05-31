@@ -1,5 +1,9 @@
+import { Suspense } from 'react'
 import { useSearch } from '@tanstack/react-router'
 import { getSiteConfig } from '@/config/app-config'
+import { getRuntimePluginNodes } from '@/lib/plugin/runtime'
+import { sourcePlugins } from '@/lib/plugin/source-plugins'
+import { mergePluginNodes } from '@/lib/plugin/types'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { SiteLogo } from '@/components/layout/site-logo'
@@ -22,6 +26,8 @@ type NodeItem = {
   className?: string
   meta?: Record<string, any>
 }
+
+const schemaPluginNodes = mergePluginNodes(sourcePlugins)
 
 export function SchemaSignIn({ schema }: SchemaSignInProps) {
   const layout = schema?.layout
@@ -97,8 +103,32 @@ function SchemaNode({ item }: { item: NodeItem }) {
     case 'show-title':
       return <SchemaTitle item={item} />
     default:
-      return null
+      return <SchemaPluginNode item={item} />
   }
+}
+
+function SchemaPluginNode({ item }: { item: NodeItem }) {
+  const NodeComponent = item.type
+    ? schemaPluginNodes[item.type] || getRuntimePluginNodes()[item.type]
+    : undefined
+  if (!NodeComponent) {
+    return null
+  }
+
+  return (
+    <Suspense fallback={null}>
+      <NodeComponent
+        item={item as any}
+        value={undefined}
+        setValue={() => undefined}
+        option={undefined}
+        optionLoading={false}
+        runAction={async () => undefined}
+        store={undefined as any}
+        layoutId='__auth__'
+      />
+    </Suspense>
+  )
 }
 
 function SchemaSiteBrand({ item }: { item: NodeItem }) {
