@@ -5,6 +5,10 @@ import tailwindcss from '@tailwindcss/vite'
 import { deverFrontSourcePlugins } from './vite-plugin-dever-front'
 import { deverRuntimePlugin } from './vite-plugin-runtime'
 
+function frontDependency(name: string) {
+  return path.resolve(__dirname, 'node_modules', name)
+}
+
 // https://vite.dev/config/
 export default defineConfig(async () => {
   const enableRouteGeneration = process.env.VITE_ROUTE_GENERATION !== '0'
@@ -48,20 +52,15 @@ export default defineConfig(async () => {
       dedupe: ['react', 'react-dom'],
       alias: {
         '@': path.resolve(__dirname, './src'),
-        react: path.resolve(__dirname, './node_modules/react'),
-        'react-dom': path.resolve(__dirname, './node_modules/react-dom'),
-        '@xyflow/react': path.resolve(
-          __dirname,
-          './node_modules/@xyflow/react'
-        ),
-        'react/jsx-runtime': path.resolve(
-          __dirname,
-          './node_modules/react/jsx-runtime.js'
-        ),
-        'react/jsx-dev-runtime': path.resolve(
-          __dirname,
-          './node_modules/react/jsx-dev-runtime.js'
-        ),
+        react: frontDependency('react'),
+        'react-dom': frontDependency('react-dom'),
+        '@xyflow/react': frontDependency('@xyflow/react'),
+        '@tanstack/react-router': frontDependency('@tanstack/react-router'),
+        'lucide-react': frontDependency('lucide-react'),
+        sonner: frontDependency('sonner'),
+        zustand: frontDependency('zustand'),
+        'react/jsx-runtime': frontDependency('react/jsx-runtime.js'),
+        'react/jsx-dev-runtime': frontDependency('react/jsx-dev-runtime.js'),
       },
     },
     server: {
