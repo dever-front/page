@@ -4,11 +4,12 @@
  * 支持动作类型：state / data / request / page / modal / save / delete / export / import / increment / array
  * 支持 action 数组串行执行和 then 链式执行
  */
+import { createExportTask, readCurrentExportQuery } from './export-task'
+import { getByPath, isScopedStorePath } from './path'
+import { clearRemoteOptionCache } from './remote-option-cache'
+import { joinFrontApi, request } from './request'
 import type { ActionConfig } from './schema'
 import type { PageStore } from './store'
-import { getByPath, isScopedStorePath } from './path'
-import { joinFrontApi, request } from './request'
-import { createExportTask, readCurrentExportQuery } from './export-task'
 
 type ActionContext = Record<string, any>
 type ActionInvocation = string | ActionConfig
@@ -106,7 +107,10 @@ export async function runActionConfigWithResult(
       return { success: true }
     default:
       console.warn('[runActionConfig] 未知 action 类型:', type)
-      return { success: false, message: `未知 action 类型: ${String(type || '')}` }
+      return {
+        success: false,
+        message: `未知 action 类型: ${String(type || '')}`,
+      }
   }
 }
 
@@ -152,7 +156,11 @@ export async function runActionsWithResult(
 /**
  * state: 修改 state
  */
-function handleStateAction(store: PageStore, config: ActionConfig, context?: ActionContext) {
+function handleStateAction(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+) {
   if (config.key != null && config.value !== undefined) {
     store
       .getState()
@@ -166,7 +174,11 @@ function handleStateAction(store: PageStore, config: ActionConfig, context?: Act
 /**
  * data: 修改 data
  */
-function handleDataAction(store: PageStore, config: ActionConfig, context?: ActionContext) {
+function handleDataAction(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+) {
   if (config.key != null && config.value !== undefined) {
     store
       .getState()
@@ -208,12 +220,23 @@ async function handleRequestAction(
   const result = await request(config.api, config.method || 'get', params)
 
   if (result.code !== 0) {
-    const fieldMessages = applyRequestFieldErrors(store, result.data?.fieldErrors)
+    const fieldMessages = applyRequestFieldErrors(
+      store,
+      result.data?.fieldErrors
+    )
     return {
       success: false,
       data: result.data,
-      message: resolveActionErrorMessage(result.message, fieldMessages, '请求失败'),
+      message: resolveActionErrorMessage(
+        result.message,
+        fieldMessages,
+        '请求失败'
+      ),
     }
+  }
+
+  if (isMutatingRequestMethod(config.method)) {
+    clearRemoteOptionCache()
   }
 
   // 写回目标
@@ -353,16 +376,26 @@ async function handleImportAction(
 /**
  * page: 切换子页面（本质是修改 state/data 路径）
  */
-function handlePageAction(store: PageStore, config: ActionConfig, context?: ActionContext) {
+function handlePageAction(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+) {
   if (config.target && config.value !== undefined) {
-    store.getState().setValueByPath(config.target, resolveContextValue(config.value, context))
+    store
+      .getState()
+      .setValueByPath(config.target, resolveContextValue(config.value, context))
   }
 }
 
 /**
  * modal: 控制弹窗状态（本质也是修改 state）
  */
-function handleModalAction(store: PageStore, config: ActionConfig, context?: ActionContext) {
+function handleModalAction(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+) {
   if (config.key != null && config.value !== undefined) {
     store
       .getState()
@@ -385,21 +418,29 @@ function handleIncrementAction(store: PageStore, config: ActionConfig) {
     .setValueByPath(key, Number.isFinite(currentValue) ? currentValue + 1 : 1)
 }
 
-function handleArrayAction(store: PageStore, config: ActionConfig, context?: ActionContext) {
+function handleArrayAction(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+) {
   const key = String(config.key || '').trim()
   if (!key) {
     return
   }
 
   const rows = normalizeArrayActionRows(store.getState().getValueByPath(key))
-  const op = String(config.op || 'append').trim().toLowerCase()
+  const op = String(config.op || 'append')
+    .trim()
+    .toLowerCase()
   const nextValue =
     config.value !== undefined
       ? resolveTemplateValue(config.value, context)
       : config.params !== undefined
         ? resolveActionPayload(store, config.params, context)
         : undefined
-  const index = normalizeArrayActionIndex(resolveArrayActionIndex(store, config, context))
+  const index = normalizeArrayActionIndex(
+    resolveArrayActionIndex(store, config, context)
+  )
 
   switch (op) {
     case 'append':
@@ -437,9 +478,7 @@ function handleArrayAction(store: PageStore, config: ActionConfig, context?: Act
 }
 
 function normalizeArrayActionRows(value: unknown) {
-  return Array.isArray(value)
-    ? value.map((row) => cloneActionValue(row))
-    : []
+  return Array.isArray(value) ? value.map((row) => cloneActionValue(row)) : []
 }
 
 function resolveArrayActionIndex(
@@ -457,9 +496,10 @@ function resolveArrayActionIndex(
 }
 
 function mergeArrayActionPatch(row: unknown, patch: unknown) {
-  const base = row && typeof row === 'object' && !Array.isArray(row)
-    ? cloneActionValue(row as Record<string, any>)
-    : {}
+  const base =
+    row && typeof row === 'object' && !Array.isArray(row)
+      ? cloneActionValue(row as Record<string, any>)
+      : {}
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
     return base
   }
@@ -503,13 +543,22 @@ async function submitCrudAction(
   )
 
   if (result.code !== 0) {
-    const fieldMessages = applyRequestFieldErrors(store, result.data?.fieldErrors)
+    const fieldMessages = applyRequestFieldErrors(
+      store,
+      result.data?.fieldErrors
+    )
     return {
       success: false,
       data: result.data,
-      message: resolveActionErrorMessage(result.message, fieldMessages, '操作失败'),
+      message: resolveActionErrorMessage(
+        result.message,
+        fieldMessages,
+        '操作失败'
+      ),
     }
   }
+
+  clearRemoteOptionCache()
 
   if (config.target) {
     store.getState().setValueByPath(config.target, result.data)
@@ -538,12 +587,22 @@ function resolveCrudRequestConfig(
   config: ActionConfig,
   context?: ActionContext
 ) {
-  if (String(config.type || '').trim().toLowerCase() !== 'delete') {
+  if (
+    String(config.type || '')
+      .trim()
+      .toLowerCase() !== 'delete'
+  ) {
     return config
   }
 
   const actionKey = normalizeOperationKey(
-    String(config.key || context?.itemKey || context?.item?.key || context?.item?.id || '').trim()
+    String(
+      config.key ||
+        context?.itemKey ||
+        context?.item?.key ||
+        context?.item?.id ||
+        ''
+    ).trim()
   )
   if (!actionKey) {
     return config
@@ -563,8 +622,27 @@ function resolveCrudRequestConfig(
   }
 }
 
+function isMutatingRequestMethod(method?: string) {
+  switch (
+    String(method || 'get')
+      .trim()
+      .toLowerCase()
+  ) {
+    case 'post':
+    case 'put':
+    case 'patch':
+    case 'delete':
+      return true
+    default:
+      return false
+  }
+}
+
 function normalizeOperationKey(key: string) {
-  return String(key || '').trim().replace(/^\/+|\/+$/g, '').replace(/\./g, '-')
+  return String(key || '')
+    .trim()
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\./g, '-')
 }
 
 function resolveCurrentPagePath(store: PageStore) {
@@ -573,7 +651,9 @@ function resolveCurrentPagePath(store: PageStore) {
     return storePath
   }
 
-  return normalizeActionPagePath(String(store.getState().schema.page?.route ?? ''))
+  return normalizeActionPagePath(
+    String(store.getState().schema.page?.route ?? '')
+  )
 }
 
 // ========== 辅助函数 ==========
@@ -601,7 +681,10 @@ function resolveTemplateValue(value: any, context?: ActionContext): any {
 
   if (value && typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, resolveTemplateValue(item, context)])
+      Object.entries(value).map(([key, item]) => [
+        key,
+        resolveTemplateValue(item, context),
+      ])
     )
   }
 
@@ -659,7 +742,9 @@ function isCurrentPageSavePath(store: PageStore, savePath: string) {
     return true
   }
 
-  const schemaPath = normalizeActionPagePath(String(store.getState().schema.page?.route ?? ''))
+  const schemaPath = normalizeActionPagePath(
+    String(store.getState().schema.page?.route ?? '')
+  )
   return !!schemaPath && schemaPath === savePath
 }
 
@@ -701,7 +786,9 @@ function resolveExportPagePath(
   config: ActionConfig,
   context?: ActionContext
 ) {
-  const configPath = String(resolveContextValue(config.path, context) || '').trim()
+  const configPath = String(
+    resolveContextValue(config.path, context) || ''
+  ).trim()
   if (configPath) {
     return configPath
   }
@@ -759,10 +846,7 @@ function resolveExportTableID(config: ActionConfig, context?: ActionContext) {
   return String(group?.meta?.tableId || '').trim()
 }
 
-function normalizeActionKeyPath(
-  type: 'state' | 'data' | 'modal',
-  key: string
-) {
+function normalizeActionKeyPath(type: 'state' | 'data' | 'modal', key: string) {
   const normalizedKey = String(key || '').trim()
   if (!normalizedKey) {
     return ''
@@ -786,7 +870,9 @@ function resolveActionPagePath(store: PageStore, config: ActionConfig) {
     return storePath
   }
 
-  return normalizeActionPagePath(String(store.getState().schema.page?.route ?? ''))
+  return normalizeActionPagePath(
+    String(store.getState().schema.page?.route ?? '')
+  )
 }
 
 function normalizeActionPagePath(path: string | undefined) {
@@ -794,14 +880,17 @@ function normalizeActionPagePath(path: string | undefined) {
     return ''
   }
 
-  return String(path).replace(/[?#].*$/, '').replace(/^\/+|\/+$/g, '')
+  return String(path)
+    .replace(/[?#].*$/, '')
+    .replace(/^\/+|\/+$/g, '')
 }
 
-function applyRequestFieldErrors(
-  store: PageStore,
-  fieldErrors: unknown
-) {
-  if (!fieldErrors || typeof fieldErrors !== 'object' || Array.isArray(fieldErrors)) {
+function applyRequestFieldErrors(store: PageStore, fieldErrors: unknown) {
+  if (
+    !fieldErrors ||
+    typeof fieldErrors !== 'object' ||
+    Array.isArray(fieldErrors)
+  ) {
     return []
   }
 
@@ -817,7 +906,9 @@ function applyRequestFieldErrors(
   }
 
   const messages: string[] = []
-  for (const [path, message] of Object.entries(fieldErrors as Record<string, unknown>)) {
+  for (const [path, message] of Object.entries(
+    fieldErrors as Record<string, unknown>
+  )) {
     const normalizedMessage = String(message ?? '').trim()
     if (!normalizedMessage) {
       continue
@@ -833,7 +924,10 @@ function applyRequestFieldErrors(
   return messages
 }
 
-function firstMatchedFieldItemID(pathToItemId: Map<string, string>, path: string) {
+function firstMatchedFieldItemID(
+  pathToItemId: Map<string, string>,
+  path: string
+) {
   for (const candidate of fieldPathCandidates(path)) {
     const itemId = pathToItemId.get(candidate)
     if (itemId) {
