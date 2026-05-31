@@ -1,6 +1,6 @@
+import { normalizePath, type PluginOption } from 'vite'
 import fs from 'node:fs'
 import path from 'node:path'
-import { normalizePath, type PluginOption } from 'vite'
 
 const virtualModuleID = 'virtual:dever-front-plugins'
 const resolvedVirtualModuleID = '\0' + virtualModuleID
@@ -19,7 +19,6 @@ export function deverFrontSourcePlugins({
     configResolved(config) {
       enabled =
         config.command === 'serve' ||
-        config.command === 'build' ||
         process.env.VITE_DEVER_FRONT_SOURCE_PLUGINS === '1'
     },
     resolveId(id) {
