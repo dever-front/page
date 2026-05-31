@@ -29,9 +29,6 @@
 
 ```txt
 front/
-  public/
-    config.js          # 运行时配置，如接口地址、站点信息、皮肤
-    skin/              # 皮肤变量
   src/
     page/              # JSON 页面运行时、布局、节点组件
     lib/               # schema、store、action、request、path 等核心能力
@@ -61,37 +58,38 @@ pnpm dev
 pnpm build:backend
 ```
 
-默认会把静态文件输出到 `backend/package/front/html`，后端默认从 `/_admin` 访问。
-如果要改访问前缀，需要同步调整 `public/config.js` 的 `basePath` 和构建时的 `VITE_FRONT_BASE`。
+默认会把静态文件输出到 `backend/package/front/html`，后端默认从 `/admin` 访问。
+访问前缀、接口前缀、站点信息和皮肤配置由后端 `config/front.json` 生成的 `runtime.js` 下发。
 
 ## 运行时配置
 
-主要配置在：
+主要配置在后端：
 
 ```txt
-public/config.js
+backend/config/front.json
 ```
 
 常用字段：
 
-- `site`：站点名称、描述、图标
-- `appearance`：默认主题、侧边栏、布局方向
-- `runtime.host`：Dever 后端 JSON 页面接口地址
-- `runtime.basePath`：前端被后端托管时的访问前缀，默认 `/_admin`
-- `runtime.skin`：当前皮肤名称
-- `runtime.routerMode`：路由模式
+- `sites.*.name/subtitle/description`：站点名称和描述
+- `sites.*.assets`：站点图标资源，默认映射到 `backend/config/front/assets/{siteKey}`
+- `sites.*.setting.appearance`：默认主题、侧边栏、布局方向
+- `sites.*.setting.runtime`：皮肤和路由模式
+- `sites.*.api/page/access/public`：接口前缀、页面目录和访问控制
 
 ## Git 提交建议
 
 需要提交：
 
 - `src/`
-- `public/`
 - `package.json`
 - 锁文件：`pnpm-lock.yaml`
 - `vite.config.ts`
 - `tsconfig*.json`
 - `components.json`
+
+站点 logo、favicon 等可替换资源提交到后端 `backend/config/front/assets/{siteKey}/`，不要放到前端 `public/`。
+
 - `README.md`
 
 不要提交：
@@ -113,4 +111,4 @@ public/config.js
 
 前端只负责协议解析和通用渲染。
 
-业务页面结构、列表字段、表单字段、操作动作、权限信息等由 Dever 后端通过 JSON 下发。前端通过 `public/config.js` 中的 `runtime.host` 请求对应页面配置。
+业务页面结构、列表字段、表单字段、操作动作、权限信息等由 Dever 后端通过 JSON 下发。前端通过 `runtime.js` 中的 `apiHost` 请求对应页面配置。

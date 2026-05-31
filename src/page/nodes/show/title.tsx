@@ -18,7 +18,8 @@ export function ShowTitle({ item, value }: NodeItemProps) {
     value,
     item.info || item.meta?.description || item.meta?.subtitle
   )
-  const section = item.meta?.variant === 'section' || item.meta?.size === 'section'
+  const section =
+    item.meta?.variant === 'section' || item.meta?.size === 'section'
 
   if (!title && !description) {
     return null
@@ -30,14 +31,22 @@ export function ShowTitle({ item, value }: NodeItemProps) {
         <h1
           className={cn(
             'font-semibold tracking-tight text-foreground',
-            section ? 'text-base' : 'text-xl'
+            section ? 'text-base' : 'text-xl',
+            item.meta?.titleClassName
           )}
         >
           {title}
         </h1>
       ) : null}
       {description ? (
-        <p className="text-sm leading-6 text-muted-foreground">{description}</p>
+        <p
+          className={cn(
+            'text-sm leading-6 text-muted-foreground',
+            item.meta?.descriptionClassName
+          )}
+        >
+          {description}
+        </p>
       ) : null}
     </div>
   )

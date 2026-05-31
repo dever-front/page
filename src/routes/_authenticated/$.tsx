@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { stringifyRouterSearch } from '@/lib/router-search'
+import { LazyJsonPageRoute } from '@/page/lazy-json-page-route'
 import { stripRouterBasePath } from '@/lib/router-path'
-import { Page } from '@/page/page'
+import { stringifyRouterSearch } from '@/lib/router-search'
 
 export const Route = createFileRoute('/_authenticated/$')({
   component: DynamicNestedPage,
@@ -12,6 +12,9 @@ function DynamicNestedPage() {
   const search = Route.useSearch()
   const query = stringifyRouterSearch(search as Record<string, unknown>)
 
-  const normalizedRoute = stripRouterBasePath(`/${_splat ?? ''}`).replace(/^\/+/, '')
-  return <Page route={`/${normalizedRoute}${query}`} />
+  const normalizedRoute = stripRouterBasePath(`/${_splat ?? ''}`).replace(
+    /^\/+/,
+    ''
+  )
+  return <LazyJsonPageRoute route={`/${normalizedRoute}${query}`} />
 }

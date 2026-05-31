@@ -7,7 +7,7 @@
 import type { ActionConfig } from './schema'
 import type { PageStore } from './store'
 import { getByPath, isScopedStorePath } from './path'
-import { request } from './request'
+import { joinFrontApi, request } from './request'
 import { createExportTask, readCurrentExportQuery } from './export-task'
 
 type ActionContext = Record<string, any>
@@ -493,10 +493,14 @@ async function submitCrudAction(
   context?: ActionContext
 ): Promise<ActionRunResult> {
   const requestConfig = resolveCrudRequestConfig(store, config, context)
-  const result = await request(`/front/route/action?path=${path}`, 'post', {
-    action: requestConfig,
-    payload,
-  })
+  const result = await request(
+    joinFrontApi(`route/action?path=${path}`),
+    'post',
+    {
+      action: requestConfig,
+      payload,
+    }
+  )
 
   if (result.code !== 0) {
     const fieldMessages = applyRequestFieldErrors(store, result.data?.fieldErrors)

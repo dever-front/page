@@ -1,4 +1,4 @@
-import { request, requestBlob } from './request'
+import { joinFrontApi, request, requestBlob } from './request'
 
 export type ExportTaskInfo = {
   id: number
@@ -15,7 +15,7 @@ export async function createExportTask(params: {
   exportKey: string
   query: Record<string, string>
 }) {
-  const result = await request('/front/export/task_create', 'post', {
+  const result = await request(joinFrontApi('export/task_create'), 'post', {
     path: params.path,
     tableId: params.tableId,
     exportKey: params.exportKey,
@@ -30,7 +30,7 @@ export async function createExportTask(params: {
 }
 
 export async function getExportTaskInfo(taskId: number) {
-  const result = await request('/front/export/task_info', 'get', { id: taskId })
+  const result = await request(joinFrontApi('export/task_info'), 'get', { id: taskId })
   if (result.code !== 0 || !result.data) {
     throw new Error(result.message || '获取导出任务失败')
   }
@@ -38,7 +38,7 @@ export async function getExportTaskInfo(taskId: number) {
 }
 
 export async function downloadExportTask(task: ExportTaskInfo) {
-  const blob = await requestBlob('/front/export/download', 'get', { id: task.id })
+  const blob = await requestBlob(joinFrontApi('export/download'), 'get', { id: task.id })
   if (!blob) {
     throw new Error('下载导出文件失败')
   }

@@ -8,7 +8,7 @@
     "dev": "vite",
     "dev:host": "vite --host 0.0.0.0 --port 5173",
     "build:vite": "vite build",
-    "build:backend": "VITE_FRONT_BASE=/_admin/ VITE_FRONT_OUT_DIR=../backend/package/front/html vite build",
+    "build:backend": "VITE_FRONT_BASE=/admin/ VITE_FRONT_OUT_DIR=../backend/package/front/html vite build",
     "preview:host": "vite preview --host 0.0.0.0 --port 5173 --strictPort",
     "serve:host": "pnpm build:vite && pnpm preview:host",
     "build": "tsc -b && vite build",

@@ -11,7 +11,7 @@ import {
 import { isItemCurrentlyHidden } from '@/lib/condition'
 import { getByPath, isScopedStorePath, setByPath } from '@/lib/path'
 import { CONTROL_HIDDEN_WHEN_KEY } from '@/lib/page-control'
-import { request } from '@/lib/request'
+import { joinFrontApi, request } from '@/lib/request'
 import { getStoreValueByPath, useStorePathValue } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { useNodeOption } from '@/page/option'
@@ -275,14 +275,18 @@ export function TypeEditor({ item, value, setValue, option, store, layoutId }: N
 
     setSaving(true)
     try {
-      const result = await request(`/front/route/action?path=${savePath}`, 'post', {
-        action: {
-          type: 'save',
-          before: meta.saveBefore,
-          upsert: meta.upsert === true,
-        },
-        payload,
-      })
+      const result = await request(
+        joinFrontApi(`route/action?path=${savePath}`),
+        'post',
+        {
+          action: {
+            type: 'save',
+            before: meta.saveBefore,
+            upsert: meta.upsert === true,
+          },
+          payload,
+        }
+      )
       if (result.code != null && result.code !== 0) {
         toast.error(result.message || '保存失败。')
         return

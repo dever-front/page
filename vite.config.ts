@@ -3,11 +3,12 @@ import { type PluginOption, defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
 import { deverFrontSourcePlugins } from './vite-plugin-dever-front'
+import { deverRuntimePlugin } from './vite-plugin-runtime'
 
 // https://vite.dev/config/
 export default defineConfig(async () => {
   const enableRouteGeneration = process.env.VITE_ROUTE_GENERATION !== '0'
-  const frontBase = process.env.VITE_FRONT_BASE || '/_admin/'
+  const frontBase = process.env.VITE_FRONT_BASE || '/'
   const frontOutDir = process.env.VITE_FRONT_OUT_DIR || 'dist'
   const enablePolling =
     process.env.VITE_FORCE_POLLING === '1' ||
@@ -28,10 +29,16 @@ export default defineConfig(async () => {
     )
   }
 
-  plugins.push(deverFrontSourcePlugins({ projectRoot }), react(), tailwindcss())
+  plugins.push(
+    deverRuntimePlugin({ projectRoot }),
+    deverFrontSourcePlugins({ projectRoot }),
+    react(),
+    tailwindcss()
+  )
 
   return {
     base: frontBase,
+    publicDir: false,
     plugins,
     build: {
       outDir: frontOutDir,

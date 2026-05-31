@@ -2,10 +2,10 @@ import { getRuntimeConfig } from '@/config/app-config'
 
 export function getRouterBasePath() {
   const basePath = String(getRuntimeConfig()?.basePath || '').trim()
-  if (!basePath || basePath === '/') {
-    return ''
+  if (basePath && basePath !== '/') {
+    return `/${basePath.replace(/^\/+|\/+$/g, '')}`
   }
-  return `/${basePath.replace(/^\/+|\/+$/g, '')}`
+  return ''
 }
 
 export function stripRouterBasePath(path: unknown) {
@@ -66,7 +66,9 @@ function splitPathSuffix(value: string) {
 }
 
 function normalizePathname(pathname: string) {
-  const normalized = String(pathname || '').trim().replace(/\/+$/, '')
+  const normalized = String(pathname || '')
+    .trim()
+    .replace(/\/+$/, '')
   if (!normalized) {
     return '/'
   }

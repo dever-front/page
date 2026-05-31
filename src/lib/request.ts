@@ -3,13 +3,10 @@
  * 支持 get/post，统一错误处理
  */
 import { getRuntimeConfig } from '@/config/app-config'
+import { getAccessTokenKey, useAuthStore } from '@/stores/auth-store'
 import { getCookie } from '@/lib/cookies'
 import { resetPageProgressCache } from '@/lib/page-progress'
-import {
-  getCurrentRouterHref,
-  stripRouterBasePath,
-} from '@/lib/router-path'
-import { ACCESS_TOKEN_KEY, useAuthStore } from '@/stores/auth-store'
+import { getCurrentRouterHref, stripRouterBasePath } from '@/lib/router-path'
 
 export type RequestResult = {
   code: number
@@ -58,10 +55,14 @@ type BackendResponseError = Error & {
 
 let mainInfoPromise: Promise<MainInfoResult> | null = null
 let mainInfoCacheToken = ''
-let assistantPermissionPromise: Promise<AssistantPermissionContextResult> | null = null
+let assistantPermissionPromise: Promise<AssistantPermissionContextResult> | null =
+  null
 let assistantPermissionCacheToken = ''
 const remoteSchemaPromiseCache = new Map<string, Promise<any>>()
-const remoteSchemaValueCache = new Map<string, { data: any; expiresAt: number }>()
+const remoteSchemaValueCache = new Map<
+  string,
+  { data: any; expiresAt: number }
+>()
 const REMOTE_SCHEMA_VALUE_CACHE_TTL = 1000
 
 function normalizeRequestMethod(method: string = 'get') {
@@ -73,7 +74,9 @@ function emitRequestError(detail: RequestErrorDetail) {
     return
   }
 
-  window.dispatchEvent(new CustomEvent<RequestErrorDetail>(REQUEST_ERROR_EVENT, { detail }))
+  window.dispatchEvent(
+    new CustomEvent<RequestErrorDetail>(REQUEST_ERROR_EVENT, { detail })
+  )
 }
 
 function emitFrontRuntimeRefresh(detail: FrontRuntimeRefreshDetail) {
@@ -88,7 +91,7 @@ function emitFrontRuntimeRefresh(detail: FrontRuntimeRefreshDetail) {
   )
 }
 
-function joinFrontApi(path: string) {
+export function joinFrontApi(path: string) {
   const { host } = getRuntimeConfig()
   if (!host) return ''
   return `${host.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
@@ -98,6 +101,9 @@ function resolveRuntimeOrigin() {
   const { host } = getRuntimeConfig()
   const normalizedHost = String(host || '').trim()
   if (!normalizedHost) {
+    return ''
+  }
+  if (normalizedHost.startsWith('/')) {
     return ''
   }
 
@@ -159,7 +165,7 @@ export function resolveAssetUrl(url: string) {
 }
 
 function applyAccessTokenHeader(headers: Record<string, string>) {
-  const accessToken = getCookie(ACCESS_TOKEN_KEY)
+  const accessToken = getCookie(getAccessTokenKey())
   if (!accessToken) {
     return headers
   }
@@ -229,7 +235,9 @@ function appendQueryString(url: string, params?: any) {
 }
 
 function normalizeRoute(route: string) {
-  return stripRouterBasePath(route).replace(/[?#].*$/, '').replace(/^\/+|\/+$/g, '')
+  return stripRouterBasePath(route)
+    .replace(/[?#].*$/, '')
+    .replace(/^\/+|\/+$/g, '')
 }
 
 /**
@@ -299,10 +307,7 @@ export async function request(
     ) {
       const normalized = normalizeBackendResponse(result)
 
-      if (
-        Number(result.status) === 2 &&
-        normalized.message
-      ) {
+      if (Number(result.status) === 2 && normalized.message) {
         emitRequestError({
           code: normalized.code,
           message: normalized.message,
@@ -336,26 +341,39 @@ export async function request(
           message: normalized.message,
         })
       }
-      applyRuntimeRequestSideEffects(api, normalizeRequestMethod(method), normalized)
+      applyRuntimeRequestSideEffects(
+        api,
+        normalizeRequestMethod(method),
+        normalized
+      )
       return normalized
     }
 
-    const message = error instanceof Error && error.message ? error.message : '请求失败'
+    const message =
+      error instanceof Error && error.message ? error.message : '请求失败'
     emitRequestError({ code: -1, message })
     return { code: -1, data: null, message }
   }
 }
 
-function normalizeBackendResponse(result: any, httpStatus?: number): RequestResult {
+function normalizeBackendResponse(
+  result: any,
+  httpStatus?: number
+): RequestResult {
   return {
-    code: Number(result?.status) === 1 ? 0 : Number(result?.code ?? httpStatus ?? -1),
+    code:
+      Number(result?.status) === 1
+        ? 0
+        : Number(result?.code ?? httpStatus ?? -1),
     data: result?.data,
     message: String(result?.msg ?? result?.message ?? ''),
   }
 }
 
 function createBackendResponseError(result: any, httpStatus: number) {
-  const message = String(result?.msg ?? result?.message ?? `请求失败(${httpStatus})`)
+  const message = String(
+    result?.msg ?? result?.message ?? `请求失败(${httpStatus})`
+  )
   const error = new Error(message) as BackendResponseError
   error.backendResponse = result
   error.httpStatus = httpStatus
@@ -364,8 +382,7 @@ function createBackendResponseError(result: any, httpStatus: number) {
 
 function isBackendResponseError(error: unknown): error is BackendResponseError {
   return (
-    error instanceof Error &&
-    !!(error as BackendResponseError).backendResponse
+    error instanceof Error && !!(error as BackendResponseError).backendResponse
   )
 }
 
@@ -374,7 +391,10 @@ function isBackendResponseEnvelope(value: unknown) {
     value != null &&
     typeof value === 'object' &&
     !Array.isArray(value) &&
-    ('status' in value || 'code' in value || 'msg' in value || 'message' in value)
+    ('status' in value ||
+      'code' in value ||
+      'msg' in value ||
+      'message' in value)
   )
 }
 
@@ -469,7 +489,11 @@ export async function loadPageSchema(
     const [routePath, routeQuery = ''] = route.split('?')
     const normalizedRoute = normalizeRoute(routePath)
     const queryString = new URLSearchParams(routeQuery).toString()
-    const cacheKey = queryString ? `${normalizedRoute}?${queryString}` : normalizedRoute
+    const schemaCachePrefix = getRuntimeSchemaCachePrefix()
+    const routeCacheKey = queryString
+      ? `${normalizedRoute}?${queryString}`
+      : normalizedRoute
+    const cacheKey = `${schemaCachePrefix}:${routeCacheKey}`
 
     if (!normalizedRoute) {
       return null
@@ -495,7 +519,9 @@ export async function loadPageSchema(
       return null
     }
 
-    const extraParams = Object.fromEntries(new URLSearchParams(routeQuery).entries())
+    const extraParams = Object.fromEntries(
+      new URLSearchParams(routeQuery).entries()
+    )
 
     const schemaPromise = (async () => {
       const result = await request(routeApi, 'get', {
@@ -511,7 +537,9 @@ export async function loadPageSchema(
           ? result.data
           : result
 
-      return payload && typeof payload === 'object' && 'page' in payload ? payload : null
+      return payload && typeof payload === 'object' && 'page' in payload
+        ? payload
+        : null
     })()
 
     remoteSchemaPromiseCache.set(cacheKey, schemaPromise)
@@ -557,10 +585,13 @@ export async function loadMainInfo(): Promise<MainInfoResult> {
 
 export async function loadAssistantPermissionContext(): Promise<AssistantPermissionContextResult> {
   const cacheToken = getMainInfoCacheToken()
-  if (!assistantPermissionPromise || assistantPermissionCacheToken !== cacheToken) {
+  if (
+    !assistantPermissionPromise ||
+    assistantPermissionCacheToken !== cacheToken
+  ) {
     assistantPermissionCacheToken = cacheToken
     assistantPermissionPromise = (async () => {
-      const result = await request('/front/main/info', 'get', {
+      const result = await request(joinFrontApi('main/info'), 'get', {
         include: 'permissions',
       })
       return {
@@ -582,7 +613,19 @@ export function resetFrontRuntimeCache(notify = false) {
 }
 
 function getMainInfoCacheToken() {
-  return String(useAuthStore.getState().auth.accessToken || getCookie(ACCESS_TOKEN_KEY) || '')
+  return String(
+    useAuthStore.getState().auth.accessToken ||
+      getCookie(getAccessTokenKey()) ||
+      ''
+  )
+}
+
+function getRuntimeSchemaCachePrefix() {
+  const runtime = getRuntimeConfig()
+  return [
+    String(runtime.siteKey || '').trim(),
+    String(runtime.host || '').trim(),
+  ].join(':')
 }
 
 export async function loadSidebarMenu() {
@@ -640,7 +683,8 @@ function normalizeFrontPermission(value: unknown): FrontPermissionItem | null {
     name: name || key,
     icon: String(item.icon ?? '').trim() || undefined,
     path: String(item.path ?? '').trim() || undefined,
-    parent_key: String(item.parent_key ?? item.parentKey ?? '').trim() || undefined,
+    parent_key:
+      String(item.parent_key ?? item.parentKey ?? '').trim() || undefined,
     type: normalizeOptionalNumber(item.type),
     sort: normalizeOptionalNumber(item.sort),
   }
@@ -665,7 +709,9 @@ function normalizePermissionQuery(value: unknown) {
   }
 
   const entries = Object.entries(value as Record<string, unknown>)
-    .map(([key, current]) => [key.trim(), String(current ?? '').trim()] as const)
+    .map(
+      ([key, current]) => [key.trim(), String(current ?? '').trim()] as const
+    )
     .filter(([key, current]) => key !== '' && current !== '')
   return entries.length > 0 ? Object.fromEntries(entries) : undefined
 }
@@ -683,7 +729,7 @@ function isMainInfoSyncRequest(api: string, method: string) {
     return false
   }
 
-  return normalizeApiPath(api) === '/front/main/sync'
+  return normalizeApiPath(api) === normalizeApiPath(joinFrontApi('main/sync'))
 }
 
 function normalizeApiPath(api: string) {
@@ -694,7 +740,9 @@ function normalizeApiPath(api: string) {
 
   try {
     const base =
-      typeof window === 'undefined' ? 'http://localhost' : window.location.origin
+      typeof window === 'undefined'
+        ? 'http://localhost'
+        : window.location.origin
     return normalizePathname(new URL(value, base).pathname)
   } catch {
     return normalizePathname(value.split('?')[0])

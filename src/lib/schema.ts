@@ -7,13 +7,16 @@ import { applyPageControlRules } from './page-control'
 
 // ========== Action Schema ==========
 
-const RequestMethodSchema = z.preprocess((value) => {
-  if (typeof value !== 'string') {
-    return value
-  }
+const RequestMethodSchema = z.preprocess(
+  (value) => {
+    if (typeof value !== 'string') {
+      return value
+    }
 
-  return value.toLowerCase()
-}, z.enum(['get', 'post', 'put', 'delete']))
+    return value.toLowerCase()
+  },
+  z.enum(['get', 'post', 'put', 'delete'])
+)
 
 const ExportSourceSchema = z.enum(['table', 'model', 'service'])
 const ExportScopeSchema = z.enum(['current', 'all', 'fixed'])
@@ -81,10 +84,12 @@ const ItemActionValueSchema: z.ZodType<any> = z.lazy(() =>
 
 export const ItemActionSchema = z.record(z.string(), ItemActionValueSchema)
 
-export const OptionItemSchema = z.object({
-  id: z.union([z.string(), z.number()]),
-  value: z.string(),
-}).passthrough()
+export const OptionItemSchema = z
+  .object({
+    id: z.union([z.string(), z.number()]),
+    value: z.string(),
+  })
+  .passthrough()
 
 export const ValidateRuleSchema = z.object({
   type: z.string(),
@@ -143,10 +148,7 @@ export const ItemSchema: z.ZodType<any> = z.object({
   placeholder: z.string().optional(),
   info: z.string().optional(),
   value: z.string().optional(),
-  option: z.union([
-    z.array(OptionItemSchema),
-    z.string(),
-  ]).optional(),
+  option: z.union([z.array(OptionItemSchema), z.string()]).optional(),
   mode: z.enum(['form', 'table', 'search']).optional(),
   type: z.string(),
   meta: z.record(z.string(), z.any()).optional(),
@@ -160,7 +162,20 @@ export const ItemSchema: z.ZodType<any> = z.object({
 
 export const LayoutNodeSchema: z.ZodType<any> = z.lazy(() =>
   z.object({
-    type: z.enum(['container', 'header', 'footer', 'main', 'aside', 'row', 'col']),
+    type: z.enum([
+      'container',
+      'header',
+      'footer',
+      'main',
+      'aside',
+      'row',
+      'col',
+      'card',
+      'card-header',
+      'card-content',
+      'card-footer',
+      'shell-sidebar-inset',
+    ]),
     name: z.string().optional(),
     value: z.string().optional(),
     path: z.string().optional(),

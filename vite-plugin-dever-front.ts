@@ -19,6 +19,7 @@ export function deverFrontSourcePlugins({
     configResolved(config) {
       enabled =
         config.command === 'serve' ||
+        config.command === 'build' ||
         process.env.VITE_DEVER_FRONT_SOURCE_PLUGINS === '1'
     },
     resolveId(id) {

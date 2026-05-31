@@ -1,4 +1,4 @@
-import { request, resolveAssetUrl } from '@/lib/request'
+import { joinFrontApi, request, resolveAssetUrl } from '@/lib/request'
 import type { UploadFileItem, UploadRuleMeta } from '@/lib/upload'
 
 export type ResourceScope = 'current' | 'all'
@@ -68,8 +68,10 @@ const IMAGE_EXTENSIONS = new Set([
   '.svg',
 ])
 
-export async function listResources(query: ResourceQuery): Promise<ResourceListResult> {
-  const result = await request('/front/resource/list', 'get', {
+export async function listResources(
+  query: ResourceQuery
+): Promise<ResourceListResult> {
+  const result = await request(joinFrontApi('resource/list'), 'get', {
     page: query.page ?? 1,
     page_size: query.pageSize ?? 24,
     biz_key: query.bizKey ?? '',
@@ -96,7 +98,7 @@ export async function listResourceCategories(input?: {
   bizKey?: string
   kind?: string
 }) {
-  const result = await request('/front/resource/category', 'get', {
+  const result = await request(joinFrontApi('resource/category'), 'get', {
     biz_key: input?.bizKey ?? '',
     kind: input?.kind ?? '',
   })
@@ -118,7 +120,7 @@ export async function listResourceCategories(input?: {
 }
 
 export async function listResourceSources(input?: { kind?: string }) {
-  const result = await request('/front/resource/source', 'get', {
+  const result = await request(joinFrontApi('resource/source'), 'get', {
     kind: input?.kind ?? '',
   })
 
@@ -138,7 +140,10 @@ export async function listResourceSources(input?: { kind?: string }) {
     .filter((item) => item.id && item.value)
 }
 
-export async function assignResourceCategory(fileID: string | number, categoryId?: string | number) {
+export async function assignResourceCategory(
+  fileID: string | number,
+  categoryId?: string | number
+) {
   return assignResourceCategories([fileID], categoryId)
 }
 
@@ -154,11 +159,15 @@ export async function assignResourceCategories(
     throw new Error('资源文件不能为空')
   }
 
-  const result = await request('/front/resource/assign_category', 'post', {
-    file_id: normalizedFileIDs[0],
-    file_ids: normalizedFileIDs,
-    category_id: Number(normalizeResourceCategoryId(categoryId) || 0),
-  })
+  const result = await request(
+    joinFrontApi('resource/assign_category'),
+    'post',
+    {
+      file_id: normalizedFileIDs[0],
+      file_ids: normalizedFileIDs,
+      category_id: Number(normalizeResourceCategoryId(categoryId) || 0),
+    }
+  )
 
   if (result.code !== 0) {
     throw new Error(result.message || '更新资源分类失败')
@@ -288,7 +297,8 @@ export function serializeUploadUrlItems(items: UploadFileItem[]) {
     if (!url) {
       continue
     }
-    const name = String(item?.name || '').trim() || resolveUploadUrlName(url, records.size)
+    const name =
+      String(item?.name || '').trim() || resolveUploadUrlName(url, records.size)
     records.set(url, { name, url })
   }
   return JSON.stringify(Array.from(records.values()))
@@ -296,7 +306,8 @@ export function serializeUploadUrlItems(items: UploadFileItem[]) {
 
 export function normalizeUploadItem(value: any): UploadFileItem {
   const id = value?.id ?? value?.value ?? value?.label ?? ''
-  const fallbackOpenUrl = id !== '' ? resolveAssetUrl(`/front/upload/open?id=${id}`) : ''
+  const fallbackOpenUrl =
+    id !== '' ? resolveAssetUrl(joinFrontApi(`upload/open?id=${id}`)) : ''
 
   return {
     id,

@@ -5,6 +5,12 @@
  */
 import { type ComponentType } from 'react'
 import { Aside } from '@/page/layout/aside'
+import {
+  CardContentLayout,
+  CardFooterLayout,
+  CardHeaderLayout,
+  CardLayout,
+} from '@/page/layout/card'
 import { Col } from '@/page/layout/col'
 // ========== Layout 组件注册 ==========
 
@@ -13,12 +19,13 @@ import { Footer } from '@/page/layout/footer'
 import { Header } from '@/page/layout/header'
 import { Main } from '@/page/layout/main'
 import { Row } from '@/page/layout/row'
+import { ShellSidebarInset } from '@/page/layout/shell-sidebar-inset'
 import type { LayoutComponentProps } from '@/page/layout/types'
-import type { PageSchemaType } from '@/lib/schema'
+import { getRuntimePluginNodes } from '@/lib/plugin/runtime'
+import { sourcePlugins } from '@/lib/plugin/source-plugins'
 import { lazyNode, mergePluginNodes } from '@/lib/plugin/types'
 import type { LazyNodeComponent } from '@/lib/plugin/types'
-import { sourcePlugins } from '@/lib/plugin/source-plugins'
-import { getRuntimePluginNodes } from '@/lib/plugin/runtime'
+import type { PageSchemaType } from '@/lib/schema'
 
 export const layoutRegistry: Record<
   string,
@@ -31,11 +38,53 @@ export const layoutRegistry: Record<
   aside: Aside,
   row: Row,
   col: Col,
+  card: CardLayout,
+  'card-header': CardHeaderLayout,
+  'card-content': CardContentLayout,
+  'card-footer': CardFooterLayout,
+  'shell-sidebar-inset': ShellSidebarInset,
 }
 
 // ========== Node 组件注册 ==========
 
 const coreNodeRegistry: Record<string, LazyNodeComponent> = {
+  // App shell/auth
+  'app-site-brand': lazyNode(() =>
+    import('@/page/nodes/app/site-brand').then((mod) => ({
+      default: mod.AppSiteBrand,
+    }))
+  ),
+  'app-login-form': lazyNode(() =>
+    import('@/page/nodes/app/login-form').then((mod) => ({
+      default: mod.AppLoginForm,
+    }))
+  ),
+  'app-skip-to-main': lazyNode(() =>
+    import('@/page/nodes/app/shell').then((mod) => ({
+      default: mod.AppSkipToMain,
+    }))
+  ),
+  'app-sidebar': lazyNode(() =>
+    import('@/page/nodes/app/shell').then((mod) => ({
+      default: mod.AppSidebarNode,
+    }))
+  ),
+  'app-topbar': lazyNode(() =>
+    import('@/page/nodes/app/shell').then((mod) => ({
+      default: mod.AppTopbarNode,
+    }))
+  ),
+  'app-outlet': lazyNode(() =>
+    import('@/page/nodes/app/shell').then((mod) => ({
+      default: mod.AppOutletNode,
+    }))
+  ),
+  'app-assistant': lazyNode(() =>
+    import('@/page/nodes/app/shell').then((mod) => ({
+      default: mod.AppAssistantNode,
+    }))
+  ),
+
   // Show
   'show-base': lazyNode(() =>
     import('@/page/nodes/show/base').then((mod) => ({ default: mod.ShowBase }))

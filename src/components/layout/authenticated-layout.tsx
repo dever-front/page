@@ -1,37 +1,40 @@
-import { Outlet } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { getCookie } from '@/lib/cookies'
-import { cn } from '@/lib/utils'
 import { getDefaultSidebarOpen } from '@/config/app-config'
-import { LayoutProvider } from '@/context/layout-provider'
-import { SearchProvider } from '@/context/search-provider'
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
-import { AppSidebar } from '@/components/layout/app-sidebar'
-import { AppTopbar } from '@/components/layout/app-topbar'
-import { FrontBootScreen } from '@/components/layout/front-boot-screen'
-import { SkipToMain } from '@/components/skip-to-main'
-import { GlobalAssistant } from '@/components/assistant/global'
+import { Page } from '@/page/page'
+import { getCookie } from '@/lib/cookies'
 import {
   FRONT_RUNTIME_REFRESH_EVENT,
+  loadPageSchema,
   loadMainInfo,
   type FrontRuntimeRefreshDetail,
 } from '@/lib/request'
+import { systemPageRoute } from '@/lib/system-page-route'
+import { LayoutProvider } from '@/context/layout-provider'
+import { SearchProvider } from '@/context/search-provider'
+import { SidebarProvider } from '@/components/ui/sidebar'
+import { FrontBootScreen } from '@/components/layout/front-boot-screen'
 import { getResolvedNavGroups } from '@/components/layout/menu'
+import { AppShellProvider } from '@/components/layout/shell-context'
 
 type AuthenticatedLayoutProps = {
   children?: React.ReactNode
 }
 
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
+  const mainRoute = systemPageRoute('main')
   const savedSidebarState = getCookie('sidebar_state')
   const defaultOpen =
-    savedSidebarState == null ? getDefaultSidebarOpen() : savedSidebarState !== 'false'
+    savedSidebarState == null
+      ? getDefaultSidebarOpen()
+      : savedSidebarState !== 'false'
   const [bootState, setBootState] = useState<{
     ready: boolean
     menu: any[]
+    shellSchema: any | null
   }>({
     ready: false,
     menu: [],
+    shellSchema: null,
   })
 
   useEffect(() => {
@@ -40,12 +43,16 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
 
     async function bootstrap() {
       const seq = ++requestSeq
-      const { menu } = await loadMainInfo()
+      const [{ menu }, shellSchema] = await Promise.all([
+        loadMainInfo(),
+        loadPageSchema(mainRoute),
+      ])
       if (!active || seq !== requestSeq) return
 
       setBootState({
         ready: true,
         menu,
+        shellSchema,
       })
     }
 
@@ -61,44 +68,97 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
     window.addEventListener(FRONT_RUNTIME_REFRESH_EVENT, handleRuntimeRefresh)
     return () => {
       active = false
-      window.removeEventListener(FRONT_RUNTIME_REFRESH_EVENT, handleRuntimeRefresh)
+      window.removeEventListener(
+        FRONT_RUNTIME_REFRESH_EVENT,
+        handleRuntimeRefresh
+      )
     }
-  }, [])
+  }, [mainRoute])
 
   if (!bootState.ready) {
     return <FrontBootScreen />
   }
 
   const navGroups = getResolvedNavGroups(bootState.menu)
+  const shellValue = {
+    menu: bootState.menu,
+    navGroups,
+    children,
+  }
 
   return (
     <SearchProvider navGroups={navGroups}>
       <LayoutProvider>
         <SidebarProvider defaultOpen={defaultOpen}>
-          <SkipToMain />
-          <AppSidebar remoteMenu={bootState.menu} />
-          <SidebarInset
-            className={cn(
-              // Set content container, so we can use container queries
-              '@container/content',
-
-              // If layout is fixed, set the height
-              // to 100svh to prevent overflow
-              'has-data-[layout=fixed]:h-svh',
-
-              // If layout is fixed and sidebar is inset,
-              // set the height to 100svh - spacing (total margins) to prevent overflow
-              'peer-data-[variant=inset]:has-data-[layout=fixed]:h-[calc(100svh-(var(--spacing)*4))]'
-            )}
-          >
-            <AppTopbar />
-            <div className='flex min-h-0 flex-1 flex-col'>
-              {children ?? <Outlet />}
-            </div>
-          </SidebarInset>
-          <GlobalAssistant />
+          <AppShellProvider value={shellValue}>
+            <Page
+              route={mainRoute}
+              schema={bootState.shellSchema ?? defaultMainSchema}
+              updateDocumentTitle={false}
+              assistantScope='nested'
+            />
+          </AppShellProvider>
         </SidebarProvider>
       </LayoutProvider>
     </SearchProvider>
   )
+}
+
+const defaultMainSchema = {
+  page: {
+    name: '主框架',
+  },
+  layout: {
+    type: 'container',
+    children: {
+      sidebar: {
+        type: 'container',
+      },
+      shell: {
+        type: 'shell-sidebar-inset',
+        children: {
+          topbar: {
+            type: 'container',
+          },
+          content: {
+            type: 'container',
+            className: 'flex min-h-0 flex-1 flex-col',
+          },
+        },
+      },
+      assistant: {
+        type: 'container',
+      },
+    },
+  },
+  nodes: {
+    __root__: [
+      {
+        type: 'app-skip-to-main',
+      },
+    ],
+    sidebar: [
+      {
+        type: 'app-sidebar',
+      },
+    ],
+    topbar: [
+      {
+        type: 'app-topbar',
+      },
+    ],
+    content: [
+      {
+        type: 'app-outlet',
+      },
+    ],
+    assistant: [
+      {
+        type: 'app-assistant',
+      },
+    ],
+  },
+  data: {},
+  state: {},
+  action: {},
 }

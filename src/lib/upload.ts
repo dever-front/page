@@ -1,4 +1,4 @@
-import { request, requestBlob } from './request'
+import { joinFrontApi, request, requestBlob } from './request'
 import { runRuntimeStream } from './runtime-stream-runner'
 import {
   streamValueText,
@@ -81,7 +81,11 @@ export async function uploadFileByRule(
 ) {
   const hash = await digestUploadFile(file)
   const initPayload = buildUploadInitPayload(ruleId, file, hash, options)
-  const initResult = await request('/front/upload/init', 'post', initPayload)
+  const initResult = await request(
+    joinFrontApi('upload/init'),
+    'post',
+    initPayload
+  )
   if (initResult.code !== 0 || !initResult.data) {
     throw new Error(initResult.message || '初始化上传失败')
   }
@@ -93,7 +97,7 @@ export async function uploadFileByRule(
     await uploadFileByRelay(file, payload, options?.onProgress)
   }
 
-  const completeResult = await request('/front/upload/complete', 'post', {
+  const completeResult = await request(joinFrontApi('upload/complete'), 'post', {
     session_id: payload.session_id,
   })
   if (completeResult.code !== 0 || !completeResult.data) {
@@ -110,7 +114,7 @@ export async function importRemoteFileByRule(
 ) {
   options?.onProgress?.(0, 0)
   const result = await request(
-    '/front/upload/import_url',
+    joinFrontApi('upload/import_url'),
     'post',
     buildImportRemotePayload(ruleId, url, options)
   )
@@ -128,8 +132,8 @@ export async function importRemoteFileByRuleStream(
 ) {
   let resultFrame: RuntimeStreamFrame | null = null
   await runRuntimeStream({
-    requestApi: '/front/upload/import_url_stream',
-    streamApi: '/front/upload/stream',
+    requestApi: joinFrontApi('upload/import_url_stream'),
+    streamApi: joinFrontApi('upload/stream'),
     body: buildImportRemotePayload(ruleId, url, options),
     blockMs: Number(options?.blockMs || 1000),
     useStartFrameStreamID: true,
@@ -244,7 +248,7 @@ export function getCachedUploadRuleMetas(ruleIds: number[]) {
 
 async function fetchUploadRuleMetas(ruleIds: number[]) {
   try {
-    const result = await request('/front/upload/rule', 'get', {
+    const result = await request(joinFrontApi('upload/rule'), 'get', {
       ids: ruleIds.join(','),
     })
     if (result.code !== 0) {
@@ -322,7 +326,9 @@ async function uploadFileByRelay(
     formData.append('file', chunk, file.name)
 
     const result = await request(
-      `/front/upload/part?session_id=${payload.session_id}&part_number=${index + 1}`,
+      joinFrontApi(
+        `upload/part?session_id=${payload.session_id}&part_number=${index + 1}`
+      ),
       'post',
       formData
     )

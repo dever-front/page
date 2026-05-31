@@ -2,13 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link
-      rel="icon"
-      type="image/svg+xml"
-      href="/images/favicon.svg"
-    />
+    <link rel="icon" type="image/svg+xml" href="./assets/images/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <script src="/config.js"></script>
+    <script src="./runtime.js"></script>
     <!-- Primary Meta Tags -->
     <title>Dever Front</title>
     <meta name="title" content="Dever Front" />
@@ -46,8 +42,14 @@
     <meta name="theme-color" content="#fff" />
     <script>
       ;(() => {
-        const appConfig = window.appConfig || {}
-        const site = appConfig.site || {}
+        const runtime = window.appRuntime || {}
+        const basePath = String(runtime.basePath || '').replace(/\/+$/, '')
+        const site = { ...(runtime.site || {}) }
+        if (basePath) {
+          site.url = site.url || basePath
+          site.logo = site.logo || `${basePath}/assets/images/logo.svg`
+          site.favicon = site.favicon || `${basePath}/assets/images/favicon.svg`
+        }
 
         if (site.name) document.title = site.name
 

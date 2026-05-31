@@ -1,8 +1,6 @@
+import { getRuntimeConfig } from '@/config/app-config'
 import { create } from 'zustand'
 import { getCookie, setCookie, removeCookie } from '@/lib/cookies'
-
-export const ACCESS_TOKEN_KEY = 'thisisjustarandomstring'
-const AUTH_USER_KEY = 'app-auth-user'
 
 interface AuthUser {
   id: number
@@ -24,7 +22,7 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>()((set) => {
-  const cookieState = getCookie(ACCESS_TOKEN_KEY)
+  const cookieState = getCookie(getAccessTokenKey())
   const initToken = (() => {
     if (!cookieState) {
       return ''
@@ -39,7 +37,7 @@ export const useAuthStore = create<AuthState>()((set) => {
     typeof window !== 'undefined'
       ? (() => {
           try {
-            const raw = window.localStorage.getItem(AUTH_USER_KEY)
+            const raw = window.localStorage.getItem(getAuthUserKey())
             return raw ? JSON.parse(raw) : null
           } catch {
             return null
@@ -53,9 +51,12 @@ export const useAuthStore = create<AuthState>()((set) => {
         set((state) => {
           if (typeof window !== 'undefined') {
             if (user) {
-              window.localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user))
+              window.localStorage.setItem(
+                getAuthUserKey(),
+                JSON.stringify(user)
+              )
             } else {
-              window.localStorage.removeItem(AUTH_USER_KEY)
+              window.localStorage.removeItem(getAuthUserKey())
             }
           }
           return { ...state, auth: { ...state.auth, user } }
@@ -63,19 +64,19 @@ export const useAuthStore = create<AuthState>()((set) => {
       accessToken: initToken,
       setAccessToken: (accessToken) =>
         set((state) => {
-          setCookie(ACCESS_TOKEN_KEY, JSON.stringify(accessToken))
+          setCookie(getAccessTokenKey(), JSON.stringify(accessToken))
           return { ...state, auth: { ...state.auth, accessToken } }
         }),
       resetAccessToken: () =>
         set((state) => {
-          removeCookie(ACCESS_TOKEN_KEY)
+          removeCookie(getAccessTokenKey())
           return { ...state, auth: { ...state.auth, accessToken: '' } }
         }),
       reset: () =>
         set((state) => {
-          removeCookie(ACCESS_TOKEN_KEY)
+          removeCookie(getAccessTokenKey())
           if (typeof window !== 'undefined') {
-            window.localStorage.removeItem(AUTH_USER_KEY)
+            window.localStorage.removeItem(getAuthUserKey())
           }
           return {
             ...state,
@@ -85,3 +86,15 @@ export const useAuthStore = create<AuthState>()((set) => {
     },
   }
 })
+
+export function getAccessTokenKey() {
+  return `front-token:${currentSiteKey()}`
+}
+
+export function getAuthUserKey() {
+  return `front-user:${currentSiteKey()}`
+}
+
+function currentSiteKey() {
+  return String(getRuntimeConfig().siteKey || 'admin').trim() || 'admin'
+}

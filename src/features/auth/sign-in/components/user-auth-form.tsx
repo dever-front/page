@@ -6,9 +6,14 @@ import { useNavigate } from '@tanstack/react-router'
 import { Loader2, LogIn } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
-import { cn } from '@/lib/utils'
-import { loadMainInfo, request, resetFrontRuntimeCache } from '@/lib/request'
 import { resolvePostLoginTarget } from '@/lib/auth-redirect'
+import {
+  joinFrontApi,
+  loadMainInfo,
+  request,
+  resetFrontRuntimeCache,
+} from '@/lib/request'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -26,19 +31,28 @@ const formSchema = z.object({
     .string()
     .min(1, '请输入账户')
     .regex(/^1\d{10}$/, '账户必须是手机号格式'),
-  password: z
-    .string()
-    .min(1, '请输入密码')
-    .min(6, '密码至少 6 位'),
+  password: z.string().min(1, '请输入密码').min(6, '密码至少 6 位'),
 })
 
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLFormElement> {
   redirectTo?: string
+  accountLabel?: string
+  accountPlaceholder?: string
+  passwordLabel?: string
+  passwordPlaceholder?: string
+  submitText?: string
+  loadingText?: string
 }
 
 export function UserAuthForm({
   className,
   redirectTo,
+  accountLabel = '账户',
+  accountPlaceholder = '请输入手机号',
+  passwordLabel = '密码',
+  passwordPlaceholder = '请输入密码',
+  submitText = '登录',
+  loadingText,
   ...props
 }: UserAuthFormProps) {
   const [isLoading, setIsLoading] = useState(false)
@@ -56,7 +70,7 @@ export function UserAuthForm({
   async function onSubmit(data: z.infer<typeof formSchema>) {
     setIsLoading(true)
     try {
-      const result = await request('/front/auth/login', 'post', data)
+      const result = await request(joinFrontApi('auth/login'), 'post', data)
       if (result.code !== 0 || !result.data?.token) {
         toast.error(result.message || '登录失败')
         return
@@ -91,9 +105,9 @@ export function UserAuthForm({
           name='account'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>账户</FormLabel>
+              <FormLabel>{accountLabel}</FormLabel>
               <FormControl>
-                <Input placeholder='请输入手机号' {...field} />
+                <Input placeholder={accountPlaceholder} {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -104,9 +118,9 @@ export function UserAuthForm({
           name='password'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>密码</FormLabel>
+              <FormLabel>{passwordLabel}</FormLabel>
               <FormControl>
-                <PasswordInput placeholder='请输入密码' {...field} />
+                <PasswordInput placeholder={passwordPlaceholder} {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -114,7 +128,7 @@ export function UserAuthForm({
         />
         <Button className='mt-2' disabled={isLoading}>
           {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
-          登录
+          {isLoading ? loadingText || submitText : submitText}
         </Button>
       </form>
     </Form>

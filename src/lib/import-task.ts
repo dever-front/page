@@ -1,4 +1,4 @@
-import { request } from './request'
+import { joinFrontApi, request } from './request'
 
 export type ImportFieldInfo = {
   field: string
@@ -67,7 +67,7 @@ export async function analyzeImportFile(params: {
   fileId: number
   sheetName?: string
 }) {
-  const result = await request('/front/import/analyze', 'post', {
+  const result = await request(joinFrontApi('import/analyze'), 'post', {
     path: params.path,
     importKey: params.importKey,
     fileId: params.fileId,
@@ -91,7 +91,7 @@ export async function createImportTask(params: {
   matchMode: string
   fieldSettings?: Record<string, { missingPolicy?: string; sourceMode?: string; baseDir?: string }>
 }) {
-  const result = await request('/front/import/task_create', 'post', {
+  const result = await request(joinFrontApi('import/task_create'), 'post', {
     path: params.path,
     importKey: params.importKey,
     fileId: params.fileId,
@@ -110,7 +110,7 @@ export async function createImportTask(params: {
 }
 
 export async function getImportTaskInfo(taskId: number) {
-  const result = await request('/front/import/task_info', 'get', { id: taskId })
+  const result = await request(joinFrontApi('import/task_info'), 'get', { id: taskId })
   if (result.code !== 0 || !result.data) {
     throw new Error(result.message || '获取导入任务失败')
   }

@@ -1,3 +1,4 @@
+import { getRuntimeConfig } from '@/config/app-config'
 import type { DeverFrontPlugin, NodeComponentRegistry } from './types'
 
 const GLOBAL_KEY = 'DeverFront'
@@ -43,14 +44,11 @@ function installRuntimeGlobal() {
 }
 
 function runtimePluginManifestUrls() {
-  const config = (window as any).appConfig
-  const plugins = config?.runtime?.plugins
+  const plugins = getRuntimeConfig().plugins
   if (!Array.isArray(plugins)) {
     return []
   }
-  return plugins
-    .map((url) => String(url || '').trim())
-    .filter(Boolean)
+  return plugins.map((url) => String(url || '').trim()).filter(Boolean)
 }
 
 async function loadRuntimePlugin(manifestUrl: string) {
@@ -66,7 +64,9 @@ async function loadRuntimePlugin(manifestUrl: string) {
   }
 
   const baseUrl = manifestUrl.slice(0, manifestUrl.lastIndexOf('/') + 1)
-  await Promise.all((entry.css || []).map((file: string) => loadStyle(baseUrl + file)))
+  await Promise.all(
+    (entry.css || []).map((file: string) => loadStyle(baseUrl + file))
+  )
   await loadScript(baseUrl + entry.file)
 }
 
@@ -77,7 +77,9 @@ function findManifestEntry(manifest: unknown): any {
 
   return (
     Object.values(manifest).find((entry: any) => entry?.isEntry) ||
-    Object.values(manifest).find((entry: any) => String(entry?.file || '').endsWith('.js'))
+    Object.values(manifest).find((entry: any) =>
+      String(entry?.file || '').endsWith('.js')
+    )
   )
 }
 

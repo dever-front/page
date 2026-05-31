@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from 'zustand'
 import { getByPath, resolvePath } from '@/lib/path'
 import { inferRelationPath, sanitizeRelationValue } from '@/lib/relation-field'
-import { request } from '@/lib/request'
+import { joinFrontApi, request } from '@/lib/request'
 import type { Item, OptionItem } from '@/lib/schema'
 import { type PageStore, useStorePathValue } from '@/lib/store'
 import {
@@ -432,11 +432,15 @@ function buildRemoteOptionURL(
 }
 
 function isFrontRouteOptionURL(remoteUrl: string) {
+  const runtimeOptionPath = new URL(
+    joinFrontApi('route/option'),
+    window.location.origin
+  ).pathname
   try {
     const parsed = new URL(remoteUrl, window.location.origin)
-    return parsed.pathname.endsWith('/front/route/option')
+    return parsed.pathname === runtimeOptionPath
   } catch {
-    return remoteUrl.split('?')[0].endsWith('/front/route/option')
+    return remoteUrl.split('?')[0].endsWith(runtimeOptionPath)
   }
 }
 

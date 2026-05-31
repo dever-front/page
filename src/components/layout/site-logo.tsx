@@ -1,5 +1,6 @@
-import { Logo } from '@/assets/logo'
+import { useState } from 'react'
 import { getSiteConfig } from '@/config/app-config'
+import { Logo } from '@/assets/logo'
 import { cn } from '@/lib/utils'
 
 type SiteLogoProps = {
@@ -9,13 +10,15 @@ type SiteLogoProps = {
 export function SiteLogo({ className }: SiteLogoProps) {
   const site = getSiteConfig()
   const logo = site.logo || site.favicon
+  const [failedLogo, setFailedLogo] = useState('')
 
-  if (logo) {
+  if (logo && logo !== failedLogo) {
     return (
       <img
         src={logo}
         alt={site.name}
         className={cn('size-6 shrink-0 object-contain', className)}
+        onError={() => setFailedLogo(logo)}
       />
     )
   }
