@@ -1,4 +1,4 @@
-import type { PluginOption } from 'vite'
+import { normalizePath, type PluginOption } from 'vite'
 import fs from 'node:fs'
 import http from 'node:http'
 import https from 'node:https'
@@ -38,8 +38,24 @@ type FrontSiteSetting = {
   runtime?: {
     skin?: string
     routerMode?: string
-    plugins?: string[]
+    plugins?: Array<string | RuntimePluginDescriptor>
   }
+}
+
+type RuntimePluginDescriptor = {
+  name: string
+  manifest?: string
+  entry?: string
+  css?: string[]
+  nodes?: string[]
+  depends?: string[]
+  module?: boolean
+}
+
+type PluginSourceMetadata = {
+  name: string
+  nodes?: string[]
+  depends?: string[]
 }
 
 const DEFAULT_SITE_KEY = 'admin'
@@ -47,6 +63,10 @@ const DEFAULT_API = 'front'
 const DEV_API_PREFIX = '/__dever_api'
 const DEFAULT_DEV_BACKEND_PORT = '8085'
 const RUNTIME_HTML_PLACEHOLDER = '<!-- dever:runtime -->'
+const PLUGIN_SOURCE_MOUNT_DIR = 'plugins-src'
+const PLUGIN_MANIFEST = 'manifest.json'
+const PLUGIN_SOURCE_ENTRY = 'plugin.ts'
+const PLUGIN_DEV_RUNTIME = 'runtime.js'
 
 export function deverRuntimePlugin({
   projectRoot,
@@ -64,6 +84,15 @@ export function deverRuntimePlugin({
           )
           if (apiProxy) {
             proxyDevAPI(req, res, apiProxy)
+            return
+          }
+
+          const pluginSourceAsset = runtimePluginSourceAsset(
+            projectRoot,
+            pathname
+          )
+          if (pluginSourceAsset) {
+            sendPluginSourceAsset(res, pluginSourceAsset)
             return
           }
 
@@ -116,7 +145,9 @@ export function deverRuntimePlugin({
               'Content-Type',
               'application/javascript; charset=utf-8'
             )
-            res.end(runtimeScript(runtimePayload(runtimeKey, site)))
+            res.end(
+              runtimeScript(runtimePayload(projectRoot, runtimeKey, site))
+            )
             return
           }
 
@@ -137,7 +168,10 @@ export function deverRuntimePlugin({
           const rawHtml = fs.readFileSync(indexFile, 'utf8')
           const html = await server.transformIndexHtml(
             req.url || '/',
-            injectRuntimeIntoHtml(rawHtml, runtimePayload(htmlSiteKey, site))
+            injectRuntimeIntoHtml(
+              rawHtml,
+              runtimePayload(projectRoot, htmlSiteKey, site)
+            )
           )
           res.statusCode = 200
           res.setHeader('Cache-Control', 'no-cache')
@@ -158,8 +192,9 @@ function htmlRuntimeSiteKey(projectRoot: string, pathname: string) {
   return siteKey && isRuntimeSiteKey(projectRoot, siteKey) ? siteKey : ''
 }
 
-function runtimePayload(siteKey: string, site: FrontSite) {
+function runtimePayload(projectRoot: string, siteKey: string, site: FrontSite) {
   const apiPrefix = trimSlashes(site.api || DEFAULT_API)
+  const runtimeSetting = site.setting?.runtime || {}
   return {
     siteKey,
     basePath: `/${siteKey}`,
@@ -178,11 +213,89 @@ function runtimePayload(siteKey: string, site: FrontSite) {
         `/${siteKey}/assets/images/favicon.svg`,
     },
     appearance: site.setting?.appearance || {},
-    runtime: site.setting?.runtime || {},
+    runtime: {
+      ...runtimeSetting,
+      plugins: runtimePluginDescriptors(
+        projectRoot,
+        siteKey,
+        runtimeSetting.plugins
+      ),
+    },
     access: {
       mode: site.access?.mode || 'rbac',
       authProvider: site.access?.authProvider || DEFAULT_API,
     },
+  }
+}
+
+function runtimePluginDescriptors(
+  projectRoot: string,
+  siteKey: string,
+  configuredPlugins?: Array<string | RuntimePluginDescriptor>
+) {
+  const configured = Array.isArray(configuredPlugins) ? configuredPlugins : []
+  const descriptors = [...configured]
+  const seen = new Set(configured.map(runtimePluginName).filter(Boolean))
+
+  for (const pluginName of discoverSourcePluginNames(projectRoot)) {
+    if (seen.has(pluginName)) {
+      continue
+    }
+    descriptors.push(
+      sourceRuntimePluginDescriptor(projectRoot, siteKey, pluginName)
+    )
+    seen.add(pluginName)
+  }
+
+  return descriptors
+}
+
+function runtimePluginName(plugin: string | RuntimePluginDescriptor) {
+  if (typeof plugin === 'string') {
+    return runtimePluginNameFromURL(plugin)
+  }
+  return (
+    String(plugin.name || '').trim() ||
+    runtimePluginNameFromURL(plugin.manifest || plugin.entry || '')
+  )
+}
+
+function runtimePluginNameFromURL(value: string) {
+  const normalized = String(value || '').trim()
+  if (!normalized) {
+    return ''
+  }
+  const parts = normalized.split('/').filter(Boolean)
+  const pluginIndex = Math.max(
+    parts.lastIndexOf('plugins'),
+    parts.lastIndexOf(PLUGIN_SOURCE_MOUNT_DIR)
+  )
+  if (pluginIndex >= 0 && parts[pluginIndex + 1]) {
+    return parts[pluginIndex + 1]
+  }
+  return ''
+}
+
+function sourceRuntimePluginDescriptor(
+  projectRoot: string,
+  siteKey: string,
+  pluginName: string
+): RuntimePluginDescriptor {
+  const metadata = readPluginSourceMetadata(
+    pluginName,
+    path.join(
+      resolvePluginSourceRoot(projectRoot, pluginName),
+      PLUGIN_SOURCE_ENTRY
+    )
+  )
+  const mount = `/${siteKey}/${PLUGIN_SOURCE_MOUNT_DIR}/${pluginName}`
+  return {
+    name: metadata.name,
+    manifest: `${mount}/${PLUGIN_MANIFEST}`,
+    entry: `${mount}/${PLUGIN_DEV_RUNTIME}`,
+    nodes: metadata.nodes,
+    depends: metadata.depends,
+    module: true,
   }
 }
 
@@ -312,6 +425,90 @@ function runtimeSiteAsset(projectRoot: string, pathname: string) {
       fallbackAssetPath(assetPath)
     )
   )
+}
+
+type PluginSourceAsset = {
+  pluginName: string
+  sourceRoot: string
+  rel: string
+}
+
+function runtimePluginSourceAsset(
+  projectRoot: string,
+  pathname: string
+): PluginSourceAsset | null {
+  const pattern = new RegExp(
+    `^\\/([^/]+)\\/${PLUGIN_SOURCE_MOUNT_DIR}\\/([^/]+)\\/(.+)$`
+  )
+  const match = pathname.match(pattern)
+  const siteKey = match?.[1] || ''
+  const pluginName = match?.[2] || ''
+  const rel = match?.[3] || ''
+  if (
+    !siteKey ||
+    !pluginName ||
+    !rel ||
+    !isRuntimeSiteKey(projectRoot, siteKey)
+  ) {
+    return null
+  }
+
+  const sourceRoot = resolvePluginSourceRoot(projectRoot, pluginName)
+  if (!sourceRoot) {
+    return null
+  }
+  return { pluginName, sourceRoot, rel }
+}
+
+function sendPluginSourceAsset(res: any, asset: PluginSourceAsset) {
+  switch (asset.rel) {
+    case PLUGIN_MANIFEST:
+      sendPluginSourceManifest(res, asset.pluginName, asset.sourceRoot)
+      return
+    case PLUGIN_DEV_RUNTIME:
+      sendPluginSourceRuntime(res, asset.sourceRoot)
+      return
+    default:
+      res.statusCode = 404
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+      res.end('front plugin source asset not found')
+  }
+}
+
+function sendPluginSourceManifest(
+  res: any,
+  pluginName: string,
+  sourceRoot: string
+) {
+  const metadata = readPluginSourceMetadata(
+    pluginName,
+    path.join(sourceRoot, PLUGIN_SOURCE_ENTRY)
+  )
+  const content = JSON.stringify({
+    __plugin: metadata,
+    [PLUGIN_DEV_RUNTIME]: {
+      isEntry: true,
+      file: PLUGIN_DEV_RUNTIME,
+      module: true,
+    },
+  })
+  res.statusCode = 200
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
+  res.end(content)
+}
+
+function sendPluginSourceRuntime(res: any, sourceRoot: string) {
+  const entryFile = path.join(sourceRoot, PLUGIN_SOURCE_ENTRY)
+  const content = `import plugin from ${JSON.stringify(viteFSURL(entryFile))};\nwindow.DeverFront?.registerPlugin(plugin);\n`
+  res.statusCode = 200
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+  res.end(content)
+}
+
+function viteFSURL(filePath: string) {
+  return `/@fs/${normalizePath(filePath)}`
 }
 
 function frontAssetRoot(projectRoot: string, siteKey: string) {
@@ -470,6 +667,185 @@ function normalizeRuntimeAssetValue(value?: string) {
     return normalized
   }
   return trimAssetPrefix(trimSlashes(normalized))
+}
+
+function discoverSourcePluginNames(projectRoot: string) {
+  return [
+    ...discoverSourcePluginNamesIn(
+      path.join(projectRoot, 'backend', 'package')
+    ),
+    ...discoverSourcePluginNamesIn(path.join(projectRoot, 'backend', 'module')),
+  ].sort()
+}
+
+function discoverSourcePluginNamesIn(root: string) {
+  if (!fs.existsSync(root)) {
+    return []
+  }
+
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .filter((pluginName) =>
+      fs.existsSync(
+        path.join(root, pluginName, 'front', 'src', PLUGIN_SOURCE_ENTRY)
+      )
+    )
+}
+
+function resolvePluginSourceRoot(projectRoot: string, pluginName: string) {
+  for (const root of [
+    path.join(projectRoot, 'backend', 'package', pluginName, 'front', 'src'),
+    path.join(projectRoot, 'backend', 'module', pluginName, 'front', 'src'),
+  ]) {
+    if (fs.existsSync(path.join(root, PLUGIN_SOURCE_ENTRY))) {
+      return root
+    }
+  }
+  return ''
+}
+
+function readPluginSourceMetadata(
+  defaultName: string,
+  entryFile: string
+): PluginSourceMetadata {
+  if (!fs.existsSync(entryFile)) {
+    return { name: defaultName }
+  }
+  return extractPluginSourceMetadata(
+    defaultName,
+    fs.readFileSync(entryFile, 'utf8')
+  )
+}
+
+function extractPluginSourceMetadata(
+  defaultName: string,
+  content: string
+): PluginSourceMetadata {
+  const metadata: PluginSourceMetadata = { name: defaultName }
+  const name = extractStringProperty(content, 'name')
+  if (name) {
+    metadata.name = name
+  }
+
+  const nodesBlock = extractPropertyBlock(content, 'nodes', '{', '}')
+  if (nodesBlock) {
+    metadata.nodes = extractObjectStringKeys(nodesBlock)
+  }
+
+  const dependsBlock = extractPropertyBlock(content, 'depends', '[', ']')
+  if (dependsBlock) {
+    metadata.depends = extractStringLiterals(dependsBlock)
+  }
+  return metadata
+}
+
+function extractStringProperty(content: string, key: string) {
+  const match = content.match(
+    new RegExp(`\\b${escapeRegExp(key)}\\s*:\\s*${stringLiteralPattern()}`)
+  )
+  return match?.[1]?.trim() || ''
+}
+
+function extractPropertyBlock(
+  content: string,
+  key: string,
+  open: string,
+  close: string
+) {
+  const matcher = new RegExp(`\\b${escapeRegExp(key)}\\s*:`, 'g')
+  let match: RegExpExecArray | null
+  while ((match = matcher.exec(content))) {
+    let index = match.index + match[0].length
+    while (index < content.length && /\s/.test(content[index])) {
+      index++
+    }
+    if (content[index] !== open) {
+      continue
+    }
+    return matchDelimitedBlock(content, index, open, close)
+  }
+  return ''
+}
+
+function matchDelimitedBlock(
+  content: string,
+  start: number,
+  open: string,
+  close: string
+) {
+  let depth = 0
+  let inString = ''
+  let escaped = false
+
+  for (let index = start; index < content.length; index++) {
+    const current = content[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (current === '\\') {
+        escaped = true
+        continue
+      }
+      if (current === inString) {
+        inString = ''
+      }
+      continue
+    }
+
+    if (current === '"' || current === "'" || current === '`') {
+      inString = current
+      continue
+    }
+    if (current === open) {
+      depth++
+      continue
+    }
+    if (current === close) {
+      depth--
+      if (depth === 0) {
+        return content.slice(start, index + 1)
+      }
+    }
+  }
+  return ''
+}
+
+function extractObjectStringKeys(block: string) {
+  const values: string[] = []
+  const matcher = new RegExp(`${stringLiteralPattern()}\\s*:`, 'g')
+  let match: RegExpExecArray | null
+  while ((match = matcher.exec(block))) {
+    values.push(match[1].trim())
+  }
+  return uniqueStrings(values)
+}
+
+function extractStringLiterals(block: string) {
+  const values: string[] = []
+  const matcher = new RegExp(stringLiteralPattern(), 'g')
+  let match: RegExpExecArray | null
+  while ((match = matcher.exec(block))) {
+    values.push(match[1].trim())
+  }
+  return uniqueStrings(values)
+}
+
+function stringLiteralPattern() {
+  return `["'\`]([^"'\\\`]+)["'\`]`
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(
+    new Set(values.map((value) => String(value || '').trim()).filter(Boolean))
+  )
 }
 
 function runtimeSiteAssetUrl(siteKey: string, assetValue?: string) {

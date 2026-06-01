@@ -18,8 +18,8 @@ export function FrontBootScreen() {
     <div className='front-boot-screen'>
       <div className='front-boot-panel'>
         <div className='front-boot-logo'>
-          {site.favicon ? (
-            <img src={site.favicon} alt={site.name} />
+          {site.logo ? (
+            <img src={site.logo} alt={site.name} />
           ) : (
             <span className='front-boot-initials'>{initials}</span>
           )}

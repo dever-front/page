@@ -1,61 +1,12 @@
-import { useNavigate, useSearch } from '@tanstack/react-router'
-import { getRuntimeConfig, getSiteConfig } from '@/config/app-config'
-import * as authStoreModule from '@/stores/auth-store'
-import * as agentResultProtocolModule from '@/lib/agent-result-protocol'
-import * as agentRunnerModule from '@/lib/agent/runner'
-import * as assistantContextModule from '@/lib/assistant/context'
-import * as assistantReferenceModule from '@/lib/assistant/reference'
-import * as authRedirectModule from '@/lib/auth-redirect'
-import * as pageSchemaReloadModule from '@/lib/page-schema-reload'
-import * as requestModule from '@/lib/request'
-import * as resourceModule from '@/lib/resource'
-import * as runtimeStreamOutputModule from '@/lib/runtime-stream-output'
-import * as runtimeStreamRunnerModule from '@/lib/runtime-stream-runner'
-import * as storeModule from '@/lib/store'
-import * as streamModule from '@/lib/stream'
-import * as utilsModule from '@/lib/utils'
-import * as uploadRuleMetasModule from '@/hooks/use-upload-rule-metas'
-import { Button, buttonVariants } from '@/components/ui/button'
-import * as cardModule from '@/components/ui/card'
-import * as dialogModule from '@/components/ui/dialog'
-import * as inputModule from '@/components/ui/input'
-import * as radioGroupModule from '@/components/ui/radio-group'
-import * as selectModule from '@/components/ui/select'
-import * as sheetModule from '@/components/ui/sheet'
-import * as textareaModule from '@/components/ui/textarea'
-import * as agentInteractionPanelModule from '@/components/agent/interaction-panel'
-import * as agentStreamRequestParamsModule from '@/components/agent/stream-request-params'
-import * as assistantFormActionsModule from '@/components/assistant/form-actions'
-import * as assistantReferencePickerModule from '@/components/assistant/reference-picker'
-import * as assistantTaskPopoverModule from '@/components/assistant/task-popover'
-import * as confirmDialogModule from '@/components/confirm-dialog'
-import * as energonContentViewModule from '@/components/energon/content-view'
-import * as energonProgressModule from '@/components/energon/progress'
-import * as siteLogoModule from '@/components/layout/site-logo'
-import * as searchableOptionPickerModule from '@/components/searchable-option-picker'
-import * as streamTimingModule from '@/components/stream-timing'
-import {
-  defineFrontPlugin,
-  lazyNode,
-  mergePluginNodes,
-  type DeverFrontPlugin,
-  type NodeComponentRegistry,
-} from './types'
+import { getRuntimeConfig, type RuntimePluginConfig } from '@/config/app-config'
+import type { FrontPluginSDK } from './sdk-compat'
+import { type DeverFrontPlugin, type NodeComponentRegistry } from './types'
 
 const GLOBAL_KEY = 'DeverFront'
 
 type FrontPluginRuntimeGlobal = {
-  registerPlugin: (plugin: DeverFrontPlugin) => void
-  sdk: FrontPluginSDK
-}
-
-type FrontPluginSDK = {
-  defineFrontPlugin: typeof defineFrontPlugin
-  lazyNode: typeof lazyNode
-  mergePluginNodes: typeof mergePluginNodes
-  useNavigate: typeof useNavigate
-  useSearch: typeof useSearch
-  getCompatModule: (path: string) => Record<string, any>
+  registerPlugin?: (plugin: DeverFrontPlugin) => void
+  sdk?: FrontPluginSDK
 }
 
 type RuntimeManifestEntry = {
@@ -72,123 +23,159 @@ declare global {
 }
 
 const runtimeNodes: NodeComponentRegistry = {}
+const loadingPlugins = new Map<string, Promise<void>>()
+let sdkPromise: Promise<void> | null = null
 
 export function getRuntimePluginNodes() {
   return runtimeNodes
 }
 
-export async function loadRuntimeFrontPlugins() {
-  installRuntimeGlobal()
-
-  if (import.meta.env.DEV) {
+export function installRuntimeGlobal() {
+  if (window[GLOBAL_KEY]) {
+    window[GLOBAL_KEY]!.registerPlugin ||= registerRuntimePlugin
     return
   }
 
-  const manifestUrls = runtimePluginManifestUrls()
-  for (const manifestUrl of manifestUrls) {
-    await loadRuntimePlugin(manifestUrl)
-  }
-}
-
-function installRuntimeGlobal() {
   window[GLOBAL_KEY] = {
-    registerPlugin(plugin) {
-      if (!plugin?.name) {
-        return
-      }
-      Object.assign(runtimeNodes, plugin.nodes)
-    },
-    sdk: createFrontPluginSDK(),
+    registerPlugin: registerRuntimePlugin,
   }
 }
 
-function createFrontPluginSDK(): FrontPluginSDK {
-  const modules = createCompatModules()
-  return {
-    defineFrontPlugin,
-    lazyNode,
-    mergePluginNodes,
-    useNavigate,
-    useSearch,
-    getCompatModule(path) {
-      return modules[path] || {}
-    },
+function registerRuntimePlugin(plugin: DeverFrontPlugin) {
+  if (!plugin?.name) {
+    return
   }
+  Object.assign(runtimeNodes, plugin.nodes)
 }
 
-function createCompatModules(): Record<string, Record<string, any>> {
-  return {
-    '@/components/agent/interaction-panel': agentInteractionPanelModule,
-    '@/components/agent/stream-request-params': agentStreamRequestParamsModule,
-    '@/components/assistant/form-actions': assistantFormActionsModule,
-    '@/components/assistant/reference-picker': assistantReferencePickerModule,
-    '@/components/assistant/task-popover': assistantTaskPopoverModule,
-    '@/components/confirm-dialog': confirmDialogModule,
-    '@/components/energon/content-view': energonContentViewModule,
-    '@/components/energon/progress': energonProgressModule,
-    '@/components/layout/site-logo': siteLogoModule,
-    '@/components/searchable-option-picker': searchableOptionPickerModule,
-    '@/components/stream-timing': streamTimingModule,
-    '@/components/ui/button': { Button, buttonVariants },
-    '@/components/ui/card': cardModule,
-    '@/components/ui/dialog': dialogModule,
-    '@/components/ui/input': inputModule,
-    '@/components/ui/radio-group': radioGroupModule,
-    '@/components/ui/select': selectModule,
-    '@/components/ui/sheet': sheetModule,
-    '@/components/ui/textarea': textareaModule,
-    '@/config/app-config': { getSiteConfig },
-    '@/hooks/use-upload-rule-metas': uploadRuleMetasModule,
-    '@/lib/agent-result-protocol': agentResultProtocolModule,
-    '@/lib/agent/runner': agentRunnerModule,
-    '@/lib/assistant/context': assistantContextModule,
-    '@/lib/assistant/reference': assistantReferenceModule,
-    '@/lib/auth-redirect': authRedirectModule,
-    '@/lib/page-schema-reload': pageSchemaReloadModule,
-    '@/lib/plugin/types': {
-      defineFrontPlugin,
-      lazyNode,
-      mergePluginNodes,
-    },
-    '@/lib/request': requestModule,
-    '@/lib/resource': resourceModule,
-    '@/lib/runtime-stream-output': runtimeStreamOutputModule,
-    '@/lib/runtime-stream-runner': runtimeStreamRunnerModule,
-    '@/lib/store': storeModule,
-    '@/lib/stream': streamModule,
-    '@/lib/utils': utilsModule,
-    '@/page/nodes': {},
-    '@/stores/auth-store': authStoreModule,
-  }
-}
-
-function runtimePluginManifestUrls() {
-  const plugins = getRuntimeConfig().plugins
-  if (!Array.isArray(plugins)) {
-    return []
-  }
-  return plugins.map((url) => String(url || '').trim()).filter(Boolean)
-}
-
-async function loadRuntimePlugin(manifestUrl: string) {
-  const response = await fetch(manifestUrl, { credentials: 'same-origin' })
-  if (!response.ok) {
+export async function ensurePluginsForNodes(nodeTypes: string[]) {
+  const types = uniqueStrings(nodeTypes)
+  if (types.length === 0) {
     return
   }
 
-  const manifest = await response.json()
-  const entry = findManifestEntry(manifest)
+  const plugins = runtimePluginConfigs()
+  const matched = plugins.filter((plugin) =>
+    pluginMatchesNodeTypes(plugin, types)
+  )
+  const legacy = matched.length > 0 ? [] : plugins.filter(isLegacyPlugin)
+
+  await Promise.allSettled(
+    [...matched, ...legacy].map((plugin) =>
+      loadRuntimePluginWithDependencies(plugin)
+    )
+  )
+}
+
+async function loadRuntimePluginWithDependencies(
+  plugin: RuntimePluginConfig,
+  stack = new Set<string>()
+) {
+  const key = runtimePluginKey(plugin)
+  if (!key || loadingPlugins.has(key)) {
+    return loadingPlugins.get(key)
+  }
+
+  const promise = (async () => {
+    if (stack.has(key)) {
+      return
+    }
+    stack.add(key)
+    try {
+      for (const dependencyName of plugin.depends || []) {
+        const dependency = runtimePluginConfigs().find(
+          (item) => item.name === dependencyName
+        )
+        if (dependency) {
+          await loadRuntimePluginWithDependencies(dependency, stack)
+        }
+      }
+
+      await loadRuntimePlugin(plugin)
+    } finally {
+      stack.delete(key)
+    }
+  })()
+
+  loadingPlugins.set(key, promise)
+  return promise
+}
+
+async function loadRuntimePlugin(plugin: RuntimePluginConfig) {
+  installRuntimeGlobal()
+  await ensureRuntimeSDK()
+
+  const entry = plugin.entry
+    ? {
+        file: plugin.entry,
+        css: plugin.css,
+        module: plugin.module,
+      }
+    : await loadManifestEntry(plugin.manifest || '')
+
   if (!entry?.file) {
     return
   }
 
-  const baseUrl = manifestUrl.slice(0, manifestUrl.lastIndexOf('/') + 1)
+  const baseUrl = plugin.manifest
+    ? plugin.manifest.slice(0, plugin.manifest.lastIndexOf('/') + 1)
+    : entry.file.slice(0, entry.file.lastIndexOf('/') + 1)
   await Promise.all(
     (entry.css || []).map((file: string) =>
-      loadStyle(resolveManifestAsset(baseUrl, file))
+      loadStyle(resolveRuntimeAsset(baseUrl, file))
     )
   )
-  await loadScript(resolveManifestAsset(baseUrl, entry.file), !!entry.module)
+  await loadScript(resolveRuntimeAsset(baseUrl, entry.file), !!entry.module)
+}
+
+async function loadManifestEntry(manifestUrl: string) {
+  if (!manifestUrl) {
+    return undefined
+  }
+
+  const response = await fetch(manifestUrl, { credentials: 'same-origin' })
+  if (!response.ok) {
+    return undefined
+  }
+
+  return findManifestEntry(await response.json())
+}
+
+function runtimePluginConfigs() {
+  return getRuntimeConfig().plugins || []
+}
+
+function pluginMatchesNodeTypes(
+  plugin: RuntimePluginConfig,
+  nodeTypes: string[]
+) {
+  if (!plugin.nodes?.length) {
+    return false
+  }
+  const nodeSet = new Set(plugin.nodes)
+  return nodeTypes.some((type) => nodeSet.has(type))
+}
+
+function isLegacyPlugin(plugin: RuntimePluginConfig) {
+  return !plugin.nodes?.length
+}
+
+export async function ensureRuntimeSDK() {
+  installRuntimeGlobal()
+  if (window[GLOBAL_KEY]?.sdk) {
+    return
+  }
+  if (!sdkPromise) {
+    sdkPromise = import('./sdk-compat').then(({ createFrontPluginSDK }) => {
+      installRuntimeGlobal()
+      window[GLOBAL_KEY]!.sdk = createFrontPluginSDK()
+    })
+  }
+  await sdkPromise
+}
+
+function runtimePluginKey(plugin: RuntimePluginConfig) {
+  return plugin.name || plugin.entry || plugin.manifest || ''
 }
 
 function findManifestEntry(
@@ -207,7 +194,7 @@ function findManifestEntry(
   )
 }
 
-function resolveManifestAsset(baseUrl: string, file: string) {
+function resolveRuntimeAsset(baseUrl: string, file: string) {
   if (/^(https?:)?\/\//.test(file) || file.startsWith('/')) {
     return file
   }
@@ -247,4 +234,10 @@ function loadScript(url: string, module: boolean) {
     script.onerror = () => resolve()
     document.head.appendChild(script)
   })
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(
+    new Set(values.map((value) => String(value || '').trim()).filter(Boolean))
+  )
 }

@@ -21,11 +21,15 @@ import { Main } from '@/page/layout/main'
 import { Row } from '@/page/layout/row'
 import { ShellSidebarInset } from '@/page/layout/shell-sidebar-inset'
 import type { LayoutComponentProps } from '@/page/layout/types'
-import { getRuntimePluginNodes } from '@/lib/plugin/runtime'
+import {
+  ensurePluginsForNodes,
+  getRuntimePluginNodes,
+} from '@/lib/plugin/runtime'
 import { sourcePlugins } from '@/lib/plugin/source-plugins'
 import { lazyNode, mergePluginNodes } from '@/lib/plugin/types'
 import type { LazyNodeComponent } from '@/lib/plugin/types'
 import type { PageSchemaType } from '@/lib/schema'
+import { collectSchemaNodeTypes } from '@/lib/schema-nodes'
 
 export const layoutRegistry: Record<
   string,
@@ -317,14 +321,12 @@ export function preloadNodeComponents(schema: PageSchemaType) {
   )
 }
 
-function collectSchemaNodeTypes(schema: PageSchemaType) {
-  const types = new Set<string>()
-  for (const items of Object.values(schema.nodes ?? {})) {
-    for (const item of items ?? []) {
-      if (item?.type && getNodeComponent(item.type)) {
-        types.add(item.type)
-      }
-    }
-  }
-  return Array.from(types)
+export function ensureNodePluginsForSchema(schema: PageSchemaType) {
+  const pluginNodeTypes = collectSchemaNodeTypes(schema).filter(
+    (type) =>
+      !coreNodeRegistry[type] &&
+      !sourcePluginNodeRegistry[type] &&
+      !getRuntimePluginNodes()[type]
+  )
+  return ensurePluginsForNodes(pluginNodeTypes)
 }

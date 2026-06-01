@@ -15,6 +15,7 @@ export type NodeComponentRegistry = Record<string, LazyNodeComponent>
 
 export type DeverFrontPlugin = {
   name: string
+  depends?: string[]
   nodes?: NodeComponentRegistry
 }
 

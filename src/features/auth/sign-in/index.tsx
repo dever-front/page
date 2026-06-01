@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useSearch } from '@tanstack/react-router'
+import { preparePageSchema } from '@/page/preload'
 import { hideInitialBootScreen } from '@/lib/initial-boot'
 import { loadPageSchema } from '@/lib/request'
+import { validatePageSchema } from '@/lib/schema'
 import { systemPageRoute } from '@/lib/system-page-route'
 import {
   Card,
@@ -25,10 +27,14 @@ export function SignIn() {
 
     async function loadLoginSchema() {
       const nextSchema = await loadPageSchema(loginRoute)
+      const validatedSchema = nextSchema ? validatePageSchema(nextSchema) : null
+      if (validatedSchema) {
+        await preparePageSchema(validatedSchema)
+      }
       if (!active) {
         return
       }
-      setSchema(nextSchema)
+      setSchema(validatedSchema)
       setLoaded(true)
     }
 

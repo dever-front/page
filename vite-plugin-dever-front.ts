@@ -16,10 +16,8 @@ export function deverFrontSourcePlugins({
 
   return {
     name: 'dever-front-source-plugins',
-    configResolved(config) {
-      enabled =
-        config.command === 'serve' ||
-        process.env.VITE_DEVER_FRONT_SOURCE_PLUGINS === '1'
+    configResolved() {
+      enabled = process.env.VITE_DEVER_FRONT_SOURCE_PLUGINS === '1'
     },
     resolveId(id) {
       if (id === virtualModuleID) {

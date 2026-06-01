@@ -27,7 +27,7 @@ export type RuntimeConfig = {
   basePath?: string
   host: string
   access?: RuntimeAccessConfig
-  plugins?: string[]
+  plugins?: RuntimePluginConfig[]
 }
 
 export type AppConfig = {
@@ -44,7 +44,17 @@ export type RuntimeAccessConfig = {
 export type RuntimeSettingConfig = {
   skin?: string
   routerMode?: 'hash' | 'history'
-  plugins?: string[]
+  plugins?: Array<string | RuntimePluginConfig>
+}
+
+export type RuntimePluginConfig = {
+  name: string
+  manifest?: string
+  entry?: string
+  css?: string[]
+  nodes?: string[]
+  depends?: string[]
+  module?: boolean
 }
 
 export type AppRuntimeConfig = {
@@ -167,7 +177,7 @@ function normalizeRuntimeConfig(
       ['hash', 'history'],
       'history'
     ),
-    plugins: normalizeStringList(runtime?.plugins || defaults.plugins),
+    plugins: normalizeRuntimePlugins(runtime?.plugins || defaults.plugins),
   }
 }
 
@@ -275,6 +285,87 @@ function joinBasePath(basePath: string, relativePath: string) {
   const base = String(basePath || '').replace(/\/+$/, '')
   const rel = String(relativePath || '').replace(/^\/+/, '')
   return base ? `${base}/${rel}` : `/${rel}`
+}
+
+function normalizeRuntimePlugins(values?: Array<string | RuntimePluginConfig>) {
+  if (!Array.isArray(values)) {
+    return undefined
+  }
+
+  const seen = new Set<string>()
+  const result: RuntimePluginConfig[] = []
+  for (const value of values) {
+    const plugin =
+      typeof value === 'string'
+        ? runtimePluginFromManifest(value)
+        : normalizeRuntimePlugin(value)
+    if (!plugin) {
+      continue
+    }
+
+    const key = plugin.name || plugin.manifest || plugin.entry || ''
+    if (!key || seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    result.push(plugin)
+  }
+  return result.length > 0 ? result : undefined
+}
+
+function runtimePluginFromManifest(value: string): RuntimePluginConfig | null {
+  const manifest = String(value || '').trim()
+  if (!manifest) {
+    return null
+  }
+
+  return {
+    name: pluginNameFromURL(manifest),
+    manifest,
+  }
+}
+
+function normalizeRuntimePlugin(
+  plugin?: RuntimePluginConfig
+): RuntimePluginConfig | null {
+  if (!plugin || typeof plugin !== 'object') {
+    return null
+  }
+
+  const manifest = String(plugin.manifest || '').trim()
+  const entry = String(plugin.entry || '').trim()
+  const name = String(
+    plugin.name || pluginNameFromURL(manifest || entry)
+  ).trim()
+  if (!name && !manifest && !entry) {
+    return null
+  }
+
+  return {
+    name,
+    manifest,
+    entry,
+    css: normalizeStringList(plugin.css),
+    nodes: normalizeStringList(plugin.nodes),
+    depends: normalizeStringList(plugin.depends),
+    module: plugin.module === true,
+  }
+}
+
+function pluginNameFromURL(value: string) {
+  const parts = String(value || '')
+    .split(/[?#]/)[0]
+    .split('/')
+    .filter(Boolean)
+  const manifestIndex = parts.lastIndexOf('manifest.json')
+  if (manifestIndex > 0) {
+    return parts[manifestIndex - 1] || ''
+  }
+  const runtimeIndex = parts.lastIndexOf('runtime.js')
+  if (runtimeIndex > 0) {
+    return parts[runtimeIndex - 1] || ''
+  }
+  return parts[parts.length - 1] || ''
 }
 
 function normalizeStringList(values?: string[]) {

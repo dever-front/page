@@ -28,6 +28,7 @@ import {
 import { validatePageSchema, type PageSchemaType } from '@/lib/schema'
 import { createPageStore, PageStoreContext, type PageStore } from '@/lib/store'
 import { LayoutRenderer } from './layout'
+import { preparePageSchema } from './preload'
 
 type PageProps = {
   route?: string
@@ -151,6 +152,7 @@ export function Page({
         }
 
         const validated = validatePageSchema(raw)
+        await preparePageSchema(validated)
         if (cancelled) return
         setPageSchema(validated)
         loadedKeyRef.current = loadKey

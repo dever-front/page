@@ -13,7 +13,7 @@ import * as ReactDOM from 'react-dom'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { handleServerError } from '@/lib/handle-server-error'
-import { loadRuntimeFrontPlugins } from '@/lib/plugin/runtime'
+import { installRuntimeGlobal } from '@/lib/plugin/runtime'
 import { resetFrontRuntimeCache } from '@/lib/request'
 import { getRouterBasePath } from '@/lib/router-path'
 import { parseRouterSearch, stringifyRouterSearch } from '@/lib/router-search'
@@ -129,7 +129,9 @@ if (!rootElement.innerHTML) {
   ;(window as any)[REACT_GLOBAL_FLAG] = React
   ;(window as any)[REACT_DOM_GLOBAL_FLAG] = ReactDOM
   ;(window as any)[REACT_DOM_CLIENT_GLOBAL_FLAG] = ReactDOMClient
-  void loadRuntimeFrontPlugins().finally(() => {
+  installRuntimeGlobal()
+
+  const renderApp = () => {
     const root = ReactDOMClient.createRoot(rootElement)
     root.render(
       <StrictMode>
@@ -144,5 +146,7 @@ if (!rootElement.innerHTML) {
         </QueryClientProvider>
       </StrictMode>
     )
-  })
+  }
+
+  renderApp()
 }

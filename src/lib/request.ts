@@ -128,11 +128,37 @@ export function resolveRequestUrl(api: string) {
   }
 
   if (api.startsWith('/')) {
+    const devProxyUrl = resolveDevBackendProxyUrl(api)
+    if (devProxyUrl) {
+      return devProxyUrl
+    }
+
     const origin = resolveRuntimeOrigin()
     return origin ? `${origin}${api}` : api
   }
 
   return api
+}
+
+function resolveDevBackendProxyUrl(api: string) {
+  if (!import.meta.env.DEV) {
+    return ''
+  }
+
+  const normalizedApi = String(api || '').trim()
+  if (
+    !normalizedApi.startsWith('/') ||
+    normalizedApi.startsWith('/__dever_api/')
+  ) {
+    return ''
+  }
+
+  const { host } = getRuntimeConfig()
+  if (!String(host || '').startsWith('/__dever_api/')) {
+    return ''
+  }
+
+  return `/__dever_api${normalizedApi}`
 }
 
 export function resolveAssetUrl(url: string) {
