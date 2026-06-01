@@ -16,6 +16,7 @@ export type RequestResult = {
 
 export const REQUEST_ERROR_EVENT = 'app:request-error'
 export const FRONT_RUNTIME_REFRESH_EVENT = 'app:front-runtime-refresh'
+export const SITE_CONTEXT_HEADER = 'X-Dever-Site'
 
 export type RequestErrorDetail = {
   code?: number
@@ -65,6 +66,23 @@ const remoteSchemaValueCache = new Map<
 >()
 const REMOTE_SCHEMA_VALUE_CACHE_TTL = 1000
 
+type BatchResult = {
+  code?: number
+  message?: string
+  msg?: string
+  data?: any
+  path?: string
+}
+
+type OptionBatchPending = {
+  url: string
+  params: Record<string, string>
+  resolve: (value: RequestResult) => void
+}
+
+let optionBatchScheduled = false
+const optionBatchQueue: OptionBatchPending[] = []
+
 function normalizeRequestMethod(method: string = 'get') {
   return method.toLowerCase()
 }
@@ -95,6 +113,13 @@ export function joinFrontApi(path: string) {
   const { host } = getRuntimeConfig()
   if (!host) return ''
   return `${host.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
+}
+
+export function joinSiteApi(path: string) {
+  const { siteHost, host } = getRuntimeConfig()
+  const base = siteHost || host
+  if (!base) return ''
+  return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
 }
 
 function resolveRuntimeOrigin() {
@@ -224,6 +249,14 @@ function applyClientPageHeader(headers: Record<string, string>) {
   return headers
 }
 
+function applySiteContextHeader(headers: Record<string, string>) {
+  const siteKey = String(getRuntimeConfig().siteKey || '').trim()
+  if (siteKey) {
+    headers[SITE_CONTEXT_HEADER] = siteKey
+  }
+  return headers
+}
+
 export function buildRuntimeRequestHeaders(options?: {
   accept?: string
   contentType?: string | false
@@ -238,6 +271,7 @@ export function buildRuntimeRequestHeaders(options?: {
   }
   applyAccessTokenHeader(headers)
   applyClientPageHeader(headers)
+  applySiteContextHeader(headers)
   return headers
 }
 
@@ -325,34 +359,12 @@ export async function request(
 ): Promise<RequestResult> {
   try {
     const normalizedMethod = normalizeRequestMethod(method)
+    if (isBatchableRouteOptionRequest(api, normalizedMethod, params)) {
+      return await queueRouteOptionRequest(api, params)
+    }
+
     const result = await requestRaw(api, method, params)
-
-    if (
-      result &&
-      typeof result === 'object' &&
-      'status' in result &&
-      'data' in result
-    ) {
-      const normalized = normalizeBackendResponse(result)
-
-      if (Number(result.status) === 2 && normalized.message) {
-        emitRequestError({
-          code: normalized.code,
-          message: normalized.message,
-        })
-      }
-
-      applyRuntimeRequestSideEffects(api, normalizedMethod, normalized)
-      return normalized
-    }
-
-    if (isRuntimeResponseFrame(result)) {
-      const normalized = normalizeRuntimeResponseFrame(result)
-      applyRuntimeRequestSideEffects(api, normalizedMethod, normalized)
-      return normalized
-    }
-
-    const normalized = result as RequestResult
+    const normalized = normalizeRequestRawPayload(result)
     applyRuntimeRequestSideEffects(api, normalizedMethod, normalized)
     return normalized
   } catch (error) {
@@ -382,6 +394,32 @@ export async function request(
     emitRequestError({ code: -1, message })
     return { code: -1, data: null, message }
   }
+}
+
+function normalizeRequestRawPayload(result: any): RequestResult {
+  if (
+    result &&
+    typeof result === 'object' &&
+    'status' in result &&
+    'data' in result
+  ) {
+    const normalized = normalizeBackendResponse(result)
+
+    if (Number(result.status) === 2 && normalized.message) {
+      emitRequestError({
+        code: normalized.code,
+        message: normalized.message,
+      })
+    }
+
+    return normalized
+  }
+
+  if (isRuntimeResponseFrame(result)) {
+    return normalizeRuntimeResponseFrame(result)
+  }
+
+  return result as RequestResult
 }
 
 function normalizeBackendResponse(
@@ -475,6 +513,7 @@ export async function requestBlob(
     const headers: Record<string, string> = {}
     applyAccessTokenHeader(headers)
     applyClientPageHeader(headers)
+    applySiteContextHeader(headers)
     const options: RequestInit = {
       method: normalizedMethod.toUpperCase(),
       headers,
@@ -551,24 +590,11 @@ export async function loadPageSchema(
       new URLSearchParams(routeQuery).entries()
     )
 
-    const schemaPromise = (async () => {
-      const result = await request(routeApi, 'get', {
-        path: normalizedRoute,
-        ...extraParams,
-      })
-      if (Number(result?.code ?? 0) !== 0) {
-        return null
-      }
-
-      const payload =
-        result?.data && typeof result.data === 'object' && 'page' in result.data
-          ? result.data
-          : result
-
-      return payload && typeof payload === 'object' && 'page' in payload
-        ? payload
-        : null
-    })()
+    const schemaPromise = loadPageSchemaSingle(
+      routeApi,
+      normalizedRoute,
+      extraParams
+    )
 
     remoteSchemaPromiseCache.set(cacheKey, schemaPromise)
 
@@ -587,6 +613,166 @@ export async function loadPageSchema(
   } catch (error) {
     console.error('[loadPageSchema] 加载失败:', route, error)
     return null
+  }
+}
+
+async function loadPageSchemaSingle(
+  routeApi: string,
+  normalizedRoute: string,
+  extraParams: Record<string, string>
+) {
+  const result = await request(routeApi, 'get', {
+    path: normalizedRoute,
+    ...extraParams,
+  })
+  if (Number(result?.code ?? 0) !== 0) {
+    return null
+  }
+
+  return normalizeSchemaPayload(result)
+}
+
+function normalizeSchemaPayload(result: RequestResult) {
+  const payload =
+    result?.data && typeof result.data === 'object' && 'page' in result.data
+      ? result.data
+      : result
+
+  return payload && typeof payload === 'object' && 'page' in payload
+    ? payload
+    : null
+}
+
+function isBatchableRouteOptionRequest(
+  api: string,
+  method: string,
+  params?: any
+) {
+  if (typeof window === 'undefined') {
+    return false
+  }
+  if (method !== 'get') {
+    return false
+  }
+  if (typeof FormData !== 'undefined' && params instanceof FormData) {
+    return false
+  }
+
+  const routeOptionPath = runtimeApiPath('route/option')
+  if (!routeOptionPath) {
+    return false
+  }
+  try {
+    const url = new URL(
+      resolveGETRequestUrl(api, params),
+      window.location.origin
+    )
+    return normalizePathname(url.pathname) === normalizePathname(routeOptionPath)
+  } catch {
+    return false
+  }
+}
+
+function queueRouteOptionRequest(
+  api: string,
+  params?: any
+): Promise<RequestResult> {
+  const url = resolveGETRequestUrl(api, params)
+  return new Promise((resolve) => {
+    const parsedURL = new URL(url, window.location.origin)
+    optionBatchQueue.push({
+      url,
+      params: Object.fromEntries(parsedURL.searchParams.entries()),
+      resolve,
+    })
+    if (optionBatchScheduled) {
+      return
+    }
+    optionBatchScheduled = true
+    Promise.resolve().then(flushRouteOptionBatch)
+  })
+}
+
+async function flushRouteOptionBatch() {
+  const pending = optionBatchQueue.splice(0)
+  optionBatchScheduled = false
+  if (pending.length === 0) {
+    return
+  }
+  if (pending.length === 1) {
+    await fallbackRouteOptionRequests(pending)
+    return
+  }
+
+  const batchApi = joinFrontApi('route/batch_option')
+  if (!batchApi) {
+    await fallbackRouteOptionRequests(pending)
+    return
+  }
+
+  try {
+    const raw = await requestRaw(batchApi, 'post', {
+      options: pending.map((item) => item.params),
+    })
+    const results = normalizeBatchResults(raw)
+    pending.forEach((item, index) => {
+      item.resolve(normalizeBatchResult(results[index]))
+    })
+  } catch {
+    await fallbackRouteOptionRequests(pending)
+  }
+}
+
+async function fallbackRouteOptionRequests(pending: OptionBatchPending[]) {
+  await Promise.all(
+    pending.map(async (item) => {
+      try {
+        item.resolve(normalizeRequestRawPayload(await requestRaw(item.url)))
+      } catch (error) {
+        item.resolve({
+          code: -1,
+          data: null,
+          message:
+            error instanceof Error && error.message ? error.message : '请求失败',
+        })
+      }
+    })
+  )
+}
+
+function normalizeBatchResult(result?: BatchResult): RequestResult {
+  const code = Number(result?.code ?? -1)
+  const message = String(result?.message ?? result?.msg ?? '')
+  if (code !== 0 && message) {
+    emitRequestError({ code, message })
+  }
+  return {
+    code,
+    data: result?.data ?? null,
+    message,
+  }
+}
+
+function normalizeBatchResults(raw: any): BatchResult[] {
+  if (Array.isArray(raw?.data)) {
+    return raw.data as BatchResult[]
+  }
+  return Array.isArray(raw) ? (raw as BatchResult[]) : []
+}
+
+function resolveGETRequestUrl(api: string, params?: any) {
+  return appendQueryString(resolveRequestUrl(api), params)
+}
+
+function runtimeApiPath(path: string) {
+  const api = joinFrontApi(path)
+  if (!api) {
+    return ''
+  }
+  try {
+    return new URL(api, window.location.origin).pathname
+  } catch {
+    return api.split('?')[0]
   }
 }
 

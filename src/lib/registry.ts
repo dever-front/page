@@ -25,8 +25,7 @@ import {
   ensurePluginsForNodes,
   getRuntimePluginNodes,
 } from '@/lib/plugin/runtime'
-import { sourcePlugins } from '@/lib/plugin/source-plugins'
-import { lazyNode, mergePluginNodes } from '@/lib/plugin/types'
+import { lazyNode } from '@/lib/plugin/types'
 import type { LazyNodeComponent } from '@/lib/plugin/types'
 import type { PageSchemaType } from '@/lib/schema'
 import { collectSchemaNodeTypes } from '@/lib/schema-nodes'
@@ -304,14 +303,8 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
   ),
 }
 
-const sourcePluginNodeRegistry = mergePluginNodes(sourcePlugins)
-
 export function getNodeComponent(type: string) {
-  return (
-    coreNodeRegistry[type] ||
-    sourcePluginNodeRegistry[type] ||
-    getRuntimePluginNodes()[type]
-  )
+  return coreNodeRegistry[type] || getRuntimePluginNodes()[type]
 }
 
 export function preloadNodeComponents(schema: PageSchemaType) {
@@ -323,10 +316,7 @@ export function preloadNodeComponents(schema: PageSchemaType) {
 
 export function ensureNodePluginsForSchema(schema: PageSchemaType) {
   const pluginNodeTypes = collectSchemaNodeTypes(schema).filter(
-    (type) =>
-      !coreNodeRegistry[type] &&
-      !sourcePluginNodeRegistry[type] &&
-      !getRuntimePluginNodes()[type]
+    (type) => !coreNodeRegistry[type] && !getRuntimePluginNodes()[type]
   )
   return ensurePluginsForNodes(pluginNodeTypes)
 }

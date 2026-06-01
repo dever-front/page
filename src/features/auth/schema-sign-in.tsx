@@ -2,8 +2,6 @@ import { Suspense } from 'react'
 import { useSearch } from '@tanstack/react-router'
 import { getSiteConfig } from '@/config/app-config'
 import { getRuntimePluginNodes } from '@/lib/plugin/runtime'
-import { sourcePlugins } from '@/lib/plugin/source-plugins'
-import { mergePluginNodes } from '@/lib/plugin/types'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { SiteLogo } from '@/components/layout/site-logo'
@@ -26,8 +24,6 @@ type NodeItem = {
   className?: string
   meta?: Record<string, any>
 }
-
-const schemaPluginNodes = mergePluginNodes(sourcePlugins)
 
 export function SchemaSignIn({ schema }: SchemaSignInProps) {
   const layout = schema?.layout
@@ -109,7 +105,7 @@ function SchemaNode({ item }: { item: NodeItem }) {
 
 function SchemaPluginNode({ item }: { item: NodeItem }) {
   const NodeComponent = item.type
-    ? schemaPluginNodes[item.type] || getRuntimePluginNodes()[item.type]
+    ? getRuntimePluginNodes()[item.type]
     : undefined
   if (!NodeComponent) {
     return null

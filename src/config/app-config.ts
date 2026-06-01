@@ -26,6 +26,7 @@ export type RuntimeConfig = {
   routerMode: 'hash' | 'history'
   basePath?: string
   host: string
+  siteHost: string
   access?: RuntimeAccessConfig
   plugins?: RuntimePluginConfig[]
 }
@@ -62,6 +63,7 @@ export type AppRuntimeConfig = {
   basePath?: string
   apiPrefix?: string
   apiHost?: string
+  siteApiHost?: string
   site?: Partial<SiteConfig>
   appearance?: Partial<AppearanceConfig>
   runtime?: RuntimeSettingConfig
@@ -95,6 +97,7 @@ const DEFAULT_APP_CONFIG: AppConfig = {
     skin: 'default',
     routerMode: 'history',
     host: '',
+    siteHost: '',
   },
 }
 
@@ -129,6 +132,9 @@ function mergeRuntimeConfig(runtime?: AppRuntimeConfig): AppConfig {
   const host = normalizeAPIHost(
     runtime?.apiHost || DEFAULT_APP_CONFIG.runtime.host
   )
+  const siteHost = normalizeAPIHost(
+    runtime?.siteApiHost || host || DEFAULT_APP_CONFIG.runtime.siteHost
+  )
   const siteKey = String(
     runtime?.siteKey || DEFAULT_APP_CONFIG.runtime.siteKey || 'admin'
   )
@@ -158,6 +164,7 @@ function mergeRuntimeConfig(runtime?: AppRuntimeConfig): AppConfig {
         apiPrefix,
         basePath,
         host,
+        siteHost,
         access: runtime?.access || DEFAULT_APP_CONFIG.runtime.access,
       },
       runtime?.runtime

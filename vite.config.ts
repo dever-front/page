@@ -2,7 +2,6 @@ import path from 'path'
 import { type PluginOption, defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
-import { deverFrontSourcePlugins } from './vite-plugin-dever-front'
 import { deverRuntimePlugin } from './vite-plugin-runtime'
 
 function frontDependency(name: string) {
@@ -46,12 +45,7 @@ export default defineConfig(async () => {
     )
   }
 
-  plugins.push(
-    deverRuntimePlugin({ projectRoot }),
-    deverFrontSourcePlugins({ projectRoot }),
-    react(),
-    tailwindcss()
-  )
+  plugins.push(deverRuntimePlugin({ projectRoot }), react(), tailwindcss())
 
   return {
     base: frontBase,

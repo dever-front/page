@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { useAuthStore } from '@/stores/auth-store'
 import { resolvePostLoginTarget } from '@/lib/auth-redirect'
 import {
-  joinFrontApi,
+  joinSiteApi,
   loadMainInfo,
   request,
   resetFrontRuntimeCache,
@@ -70,7 +70,7 @@ export function UserAuthForm({
   async function onSubmit(data: z.infer<typeof formSchema>) {
     setIsLoading(true)
     try {
-      const result = await request(joinFrontApi('auth/login'), 'post', data)
+      const result = await request(joinSiteApi('auth/login'), 'post', data)
       if (result.code !== 0 || !result.data?.token) {
         toast.error(result.message || '登录失败')
         return
