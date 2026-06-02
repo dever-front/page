@@ -52,16 +52,17 @@ export default defineConfig(async () => {
     publicDir: false,
     plugins,
     build: {
+      chunkSizeWarningLimit: 3000,
       outDir: frontOutDir,
       emptyOutDir: true,
       cssCodeSplit: !singleBundle,
       modulePreload: singleBundle ? false : undefined,
       rollupOptions: singleBundle
         ? {
-            output: {
-              inlineDynamicImports: true,
-            },
-          }
+          output: {
+            inlineDynamicImports: true,
+          },
+        }
         : undefined,
     },
     resolve: {
@@ -126,11 +127,11 @@ export default defineConfig(async () => {
         ],
         ...(enablePolling
           ? {
-              usePolling: true,
-              interval: Number.isFinite(pollingInterval)
-                ? pollingInterval
-                : 800,
-            }
+            usePolling: true,
+            interval: Number.isFinite(pollingInterval)
+              ? pollingInterval
+              : 800,
+          }
           : {}),
       },
     },
