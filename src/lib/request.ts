@@ -6,7 +6,12 @@ import { getRuntimeConfig } from '@/config/app-config'
 import { getAccessTokenKey, useAuthStore } from '@/stores/auth-store'
 import { getCookie } from '@/lib/cookies'
 import { resetPageProgressCache } from '@/lib/page-progress'
-import { getCurrentRouterHref, stripRouterBasePath } from '@/lib/router-path'
+import {
+  getCurrentRouterHref,
+  getCurrentRouterPathname,
+  getRouterBasePath,
+  stripRouterBasePath,
+} from '@/lib/router-path'
 
 export type RequestResult = {
   code: number
@@ -17,6 +22,7 @@ export type RequestResult = {
 export const REQUEST_ERROR_EVENT = 'app:request-error'
 export const FRONT_RUNTIME_REFRESH_EVENT = 'app:front-runtime-refresh'
 export const SITE_CONTEXT_HEADER = 'X-Dever-Site'
+const AUTH_REQUIRED_CODE = 401
 
 export type RequestErrorDetail = {
   code?: number
@@ -26,6 +32,12 @@ export type RequestErrorDetail = {
 export type MainInfoResult = {
   menu: any[]
   entry: string
+}
+
+export type MainBootstrapResult = {
+  main: MainInfoResult
+  path: string
+  schema: any | null
 }
 
 export type FrontPermissionItem = {
@@ -56,9 +68,12 @@ type BackendResponseError = Error & {
 
 let mainInfoPromise: Promise<MainInfoResult> | null = null
 let mainInfoCacheToken = ''
+let mainBootstrapPromise: Promise<MainBootstrapResult> | null = null
+let mainBootstrapCacheToken = ''
 let assistantPermissionPromise: Promise<AssistantPermissionContextResult> | null =
   null
 let assistantPermissionCacheToken = ''
+let authRedirecting = false
 const remoteSchemaPromiseCache = new Map<string, Promise<any>>()
 const remoteSchemaValueCache = new Map<
   string,
@@ -95,6 +110,37 @@ function emitRequestError(detail: RequestErrorDetail) {
   window.dispatchEvent(
     new CustomEvent<RequestErrorDetail>(REQUEST_ERROR_EVENT, { detail })
   )
+}
+
+function isAuthRequiredResult(result?: RequestResult | null) {
+  return Number(result?.code ?? 0) === AUTH_REQUIRED_CODE
+}
+
+function handleAuthRequiredResult(result?: RequestResult | null) {
+  if (!isAuthRequiredResult(result) || typeof window === 'undefined') {
+    return false
+  }
+
+  useAuthStore.getState().auth.reset()
+  clearFrontRuntimeCache()
+  redirectToSignIn()
+  return true
+}
+
+function redirectToSignIn() {
+  if (authRedirecting) {
+    return
+  }
+
+  const currentPath = getCurrentRouterPathname()
+  if (currentPath === '/sign-in') {
+    return
+  }
+
+  authRedirecting = true
+  const signInPath = `${getRouterBasePath()}/sign-in`
+  const redirect = encodeURIComponent(getCurrentRouterHref() || '/')
+  window.location.assign(`${signInPath}?redirect=${redirect}`)
 }
 
 function emitFrontRuntimeRefresh(detail: FrontRuntimeRefreshDetail) {
@@ -343,7 +389,10 @@ export async function requestRaw(
       result && typeof result === 'object'
         ? String(result.msg ?? result.message ?? `请求失败(${response.status})`)
         : `请求失败(${response.status})`
-    throw new Error(message)
+    throw createBackendResponseError(
+      { status: 2, code: response.status, data: null, msg: message },
+      response.status
+    )
   }
   return result
 }
@@ -365,6 +414,9 @@ export async function request(
 
     const result = await requestRaw(api, method, params)
     const normalized = normalizeRequestRawPayload(result)
+    if (handleAuthRequiredResult(normalized)) {
+      return normalized
+    }
     applyRuntimeRequestSideEffects(api, normalizedMethod, normalized)
     return normalized
   } catch (error) {
@@ -375,6 +427,9 @@ export async function request(
         error.backendResponse,
         error.httpStatus
       )
+      if (handleAuthRequiredResult(normalized)) {
+        return normalized
+      }
       if (normalized.message) {
         emitRequestError({
           code: normalized.code,
@@ -405,7 +460,11 @@ function normalizeRequestRawPayload(result: any): RequestResult {
   ) {
     const normalized = normalizeBackendResponse(result)
 
-    if (Number(result.status) === 2 && normalized.message) {
+    if (
+      Number(result.status) === 2 &&
+      normalized.message &&
+      !isAuthRequiredResult(normalized)
+    ) {
       emitRequestError({
         code: normalized.code,
         message: normalized.message,
@@ -483,10 +542,12 @@ function normalizeRuntimeResponseFrame(result: any): RequestResult {
   }
 
   if (Number(result.status) === 2 && normalized.message) {
-    emitRequestError({
-      code: normalized.code,
-      message: normalized.message,
-    })
+    if (!isAuthRequiredResult(normalized)) {
+      emitRequestError({
+        code: normalized.code,
+        message: normalized.message,
+      })
+    }
   }
 
   return normalized
@@ -556,11 +617,7 @@ export async function loadPageSchema(
     const [routePath, routeQuery = ''] = route.split('?')
     const normalizedRoute = normalizeRoute(routePath)
     const queryString = new URLSearchParams(routeQuery).toString()
-    const schemaCachePrefix = getRuntimeSchemaCachePrefix()
-    const routeCacheKey = queryString
-      ? `${normalizedRoute}?${queryString}`
-      : normalizedRoute
-    const cacheKey = `${schemaCachePrefix}:${routeCacheKey}`
+    const cacheKey = schemaCacheKey(normalizedRoute, queryString)
 
     if (!normalizedRoute) {
       return null
@@ -601,10 +658,7 @@ export async function loadPageSchema(
     try {
       const schema = await schemaPromise
       if (schema) {
-        remoteSchemaValueCache.set(cacheKey, {
-          data: schema,
-          expiresAt: Date.now() + REMOTE_SCHEMA_VALUE_CACHE_TTL,
-        })
+        cachePageSchema(normalizedRoute, queryString, schema)
       }
       return schema
     } finally {
@@ -643,6 +697,27 @@ function normalizeSchemaPayload(result: RequestResult) {
     : null
 }
 
+function cachePageSchema(
+  normalizedRoute: string,
+  queryString: string,
+  schema: any
+) {
+  if (!normalizedRoute || !schema) {
+    return
+  }
+  remoteSchemaValueCache.set(schemaCacheKey(normalizedRoute, queryString), {
+    data: schema,
+    expiresAt: Date.now() + REMOTE_SCHEMA_VALUE_CACHE_TTL,
+  })
+}
+
+function schemaCacheKey(normalizedRoute: string, queryString = '') {
+  const routeCacheKey = queryString
+    ? `${normalizedRoute}?${queryString}`
+    : normalizedRoute
+  return `${getRuntimeSchemaCachePrefix()}:${routeCacheKey}`
+}
+
 function isBatchableRouteOptionRequest(
   api: string,
   method: string,
@@ -667,7 +742,9 @@ function isBatchableRouteOptionRequest(
       resolveGETRequestUrl(api, params),
       window.location.origin
     )
-    return normalizePathname(url.pathname) === normalizePathname(routeOptionPath)
+    return (
+      normalizePathname(url.pathname) === normalizePathname(routeOptionPath)
+    )
   } catch {
     return false
   }
@@ -733,7 +810,9 @@ async function fallbackRouteOptionRequests(pending: OptionBatchPending[]) {
           code: -1,
           data: null,
           message:
-            error instanceof Error && error.message ? error.message : '请求失败',
+            error instanceof Error && error.message
+              ? error.message
+              : '请求失败',
         })
       }
     })
@@ -743,14 +822,18 @@ async function fallbackRouteOptionRequests(pending: OptionBatchPending[]) {
 function normalizeBatchResult(result?: BatchResult): RequestResult {
   const code = Number(result?.code ?? -1)
   const message = String(result?.message ?? result?.msg ?? '')
-  if (code !== 0 && message) {
-    emitRequestError({ code, message })
-  }
-  return {
+  const normalized = {
     code,
     data: result?.data ?? null,
     message,
   }
+  if (handleAuthRequiredResult(normalized)) {
+    return normalized
+  }
+  if (code !== 0 && message) {
+    emitRequestError({ code, message })
+  }
+  return normalized
 }
 
 function normalizeBatchResults(raw: any): BatchResult[] {
@@ -795,6 +878,87 @@ export async function loadMainInfo(): Promise<MainInfoResult> {
   }
 
   return mainInfoPromise
+}
+
+export async function loadMainBootstrap(
+  mainRoute: string
+): Promise<MainBootstrapResult> {
+  const normalizedMainRoute = normalizeRoute(mainRoute)
+  const cacheToken = [
+    getMainInfoCacheToken(),
+    getRuntimeSchemaCachePrefix(),
+    normalizedMainRoute,
+  ].join(':')
+
+  if (!mainBootstrapPromise || mainBootstrapCacheToken !== cacheToken) {
+    mainBootstrapCacheToken = cacheToken
+    mainBootstrapPromise = (async () => {
+      const bootstrapApi = joinFrontApi('main/bootstrap')
+      if (!bootstrapApi) {
+        return loadMainBootstrapFallback(normalizedMainRoute)
+      }
+
+      const result = await request(bootstrapApi)
+      if (Number(result?.code ?? -1) !== 0) {
+        return loadMainBootstrapFallback(normalizedMainRoute)
+      }
+
+      const main = normalizeMainInfoPayload(result.data?.main)
+      const schema = normalizeSchemaPayload({
+        code: 0,
+        data: result.data?.schema,
+      })
+      const schemaPath = normalizeRoute(
+        result.data?.path || normalizedMainRoute
+      )
+      primeMainInfoCache(main)
+      if (schema) {
+        cachePageSchema(schemaPath, '', schema)
+        if (schemaPath !== normalizedMainRoute) {
+          cachePageSchema(normalizedMainRoute, '', schema)
+        }
+      }
+
+      return {
+        main,
+        path: schemaPath,
+        schema,
+      }
+    })()
+  }
+
+  return mainBootstrapPromise
+}
+
+async function loadMainBootstrapFallback(
+  normalizedMainRoute: string
+): Promise<MainBootstrapResult> {
+  const [main, schema] = await Promise.all([
+    loadMainInfo(),
+    loadPageSchema(normalizedMainRoute),
+  ])
+  return {
+    main,
+    path: normalizedMainRoute,
+    schema,
+  }
+}
+
+function normalizeMainInfoPayload(value: unknown): MainInfoResult {
+  const payload =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {}
+  return {
+    menu: Array.isArray(payload.menu) ? payload.menu : [],
+    entry: typeof payload.entry === 'string' ? payload.entry : '',
+  }
+}
+
+function primeMainInfoCache(main: MainInfoResult) {
+  const cacheToken = getMainInfoCacheToken()
+  mainInfoCacheToken = cacheToken
+  mainInfoPromise = Promise.resolve(main)
 }
 
 export async function loadAssistantPermissionContext(): Promise<AssistantPermissionContextResult> {
@@ -863,6 +1027,8 @@ function applyRuntimeRequestSideEffects(
 function clearFrontRuntimeCache() {
   mainInfoPromise = null
   mainInfoCacheToken = ''
+  mainBootstrapPromise = null
+  mainBootstrapCacheToken = ''
   assistantPermissionPromise = null
   assistantPermissionCacheToken = ''
   remoteSchemaPromiseCache.clear()

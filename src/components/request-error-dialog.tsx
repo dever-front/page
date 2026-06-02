@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { REQUEST_ERROR_EVENT, type RequestErrorDetail } from '@/lib/request'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -8,10 +9,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import {
-  REQUEST_ERROR_EVENT,
-  type RequestErrorDetail,
-} from '@/lib/request'
 
 export function RequestErrorDialog() {
   const [detail, setDetail] = useState<RequestErrorDetail | null>(null)
@@ -20,6 +17,9 @@ export function RequestErrorDialog() {
     const handleError = (event: Event) => {
       const customEvent = event as CustomEvent<RequestErrorDetail>
       if (!customEvent.detail?.message) {
+        return
+      }
+      if (Number(customEvent.detail.code) === 401) {
         return
       }
 
@@ -33,7 +33,10 @@ export function RequestErrorDialog() {
   }, [])
 
   return (
-    <AlertDialog open={!!detail} onOpenChange={(open) => !open && setDetail(null)}>
+    <AlertDialog
+      open={!!detail}
+      onOpenChange={(open) => !open && setDetail(null)}
+    >
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>操作失败</AlertDialogTitle>

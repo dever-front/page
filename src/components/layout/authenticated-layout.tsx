@@ -4,8 +4,7 @@ import { Page } from '@/page/page'
 import { getCookie } from '@/lib/cookies'
 import {
   FRONT_RUNTIME_REFRESH_EVENT,
-  loadPageSchema,
-  loadMainInfo,
+  loadMainBootstrap,
   type FrontRuntimeRefreshDetail,
 } from '@/lib/request'
 import { systemPageRoute } from '@/lib/system-page-route'
@@ -43,16 +42,13 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
 
     async function bootstrap() {
       const seq = ++requestSeq
-      const [{ menu }, shellSchema] = await Promise.all([
-        loadMainInfo(),
-        loadPageSchema(mainRoute),
-      ])
+      const { main, schema } = await loadMainBootstrap(mainRoute)
       if (!active || seq !== requestSeq) return
 
       setBootState({
         ready: true,
-        menu,
-        shellSchema,
+        menu: main.menu,
+        shellSchema: schema,
       })
     }
 
