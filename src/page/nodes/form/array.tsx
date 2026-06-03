@@ -73,6 +73,8 @@ type FallbackRowsConfig = {
   defaultRow: Record<string, any>
 }
 
+let arrayClientRowKeySeed = 0
+
 export function FormArray({ item, value, setValue, store }: NodeItemProps) {
   const pageRoute = String(item.meta?.pageRoute || '').trim()
   const layoutId = String(item.meta?.layoutId || '').trim()
@@ -105,6 +107,7 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
   const [fillLoading, setFillLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const clientRowKeysRef = useRef<string[]>([])
   const [pendingRemoveIndex, setPendingRemoveIndex] = useState<number | null>(null)
   const clearOnChangePaths = useMemo(
     () => normalizeClearOnChangePaths(item.meta?.clearOnChange),
@@ -215,16 +218,17 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
 
   const handleRemoveRow = useCallback(
     (index: number) => {
+      clientRowKeysRef.current.splice(index, 1)
       commitRows(rows.filter((_, currentIndex) => currentIndex !== index))
     },
     [commitRows, rows]
   )
 
   const rowItems = rowSchema?.items ?? []
-  const rowKeys = useMemo(
-    () => buildArrayRowKeys(rows, sortField),
-    [rows, sortField]
-  )
+  const rowKeys = useMemo(() => {
+    ensureArrayClientRowKeys(clientRowKeysRef.current, rows.length)
+    return buildArrayRowKeys(rows, sortField, clientRowKeysRef.current)
+  }, [rows, sortField])
 
   return (
     <div className="w-full min-w-0 space-y-3">
@@ -259,7 +263,10 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
             size="sm"
             variant="outline"
             className="h-8 rounded-md bg-background"
-            onClick={() => commitRows([])}
+            onClick={() => {
+              clientRowKeysRef.current = []
+              commitRows([])
+            }}
             disabled={loading || fillLoading || rows.length === 0}
           >
             {String(item.meta?.clearText || '清空')}
@@ -334,6 +341,11 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
                         return
                       }
                       const nextRows = moveArrayItem(rows, dragIndex, index)
+                      clientRowKeysRef.current = moveArrayItem(
+                        clientRowKeysRef.current,
+                        dragIndex,
+                        index
+                      )
                       commitRows(nextRows)
                       setDragIndex(null)
                     }}
@@ -747,20 +759,43 @@ function useStableArrayControlRow(
   return stableRowRef.current.row
 }
 
-function buildArrayRowKeys(rows: Record<string, any>[], sortField: string) {
+function buildArrayRowKeys(
+  rows: Record<string, any>[],
+  sortField: string,
+  clientKeys: string[] = []
+) {
   const usedKeys = new Map<string, number>()
-  return rows.map((row) => {
-    const baseKey = getArrayRowKey(row, sortField)
+  return rows.map((row, index) => {
+    const baseKey = getArrayRowKey(row, sortField, clientKeys[index])
     const usedCount = usedKeys.get(baseKey) ?? 0
     usedKeys.set(baseKey, usedCount + 1)
     return usedCount === 0 ? baseKey : `${baseKey}-${usedCount + 1}`
   })
 }
 
-function getArrayRowKey(row: Record<string, any>, sortField: string) {
+function ensureArrayClientRowKeys(keys: string[], rowCount: number) {
+  keys.splice(rowCount)
+  while (keys.length < rowCount) {
+    keys.push(createArrayClientRowKey())
+  }
+}
+
+function createArrayClientRowKey() {
+  arrayClientRowKeySeed += 1
+  return arrayClientRowKeySeed.toString(36)
+}
+
+function getArrayRowKey(
+  row: Record<string, any>,
+  sortField: string,
+  clientKey?: string
+) {
   const id = row?.id
   if (isStableArrayRowID(id)) {
     return `id-${String(id)}`
+  }
+  if (clientKey) {
+    return `client-${clientKey}`
   }
   return `row-${hashString(stableRowSignature(row, sortField))}`
 }
