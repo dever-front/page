@@ -47,6 +47,7 @@ export async function readRuntimeStreamEvents<TOutput = Record<string, any>>(
         accept: 'text/event-stream',
         contentType: false,
       }),
+      credentials: 'include',
       signal,
     }
   )

@@ -1,12 +1,37 @@
 import { CircleAlert } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import type { ReactNode } from 'react'
 import type { NodeItemProps } from '../../nodes'
+
+type HoverTipProps = {
+  content?: string
+  children: ReactNode
+  className?: string
+  sideOffset?: number
+}
 
 type InlineTipProps = {
   content?: string
   className?: string
   iconClassName?: string
+}
+
+export function HoverTip({ content, children, className, sideOffset = 8 }: HoverTipProps) {
+  const text = String(content || '').trim()
+
+  if (!text) {
+    return <>{children}</>
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent sideOffset={sideOffset} className={className}>
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 export function InlineTip({ content, className, iconClassName }: InlineTipProps) {
@@ -17,22 +42,19 @@ export function InlineTip({ content, className, iconClassName }: InlineTipProps)
   }
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            'inline-flex size-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 cursor-pointer',
-            className
-          )}
-          onClick={(event) => event.preventDefault()}
-          aria-label="查看提示"
-        >
-          <CircleAlert className={cn('size-3.5', iconClassName)} />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent sideOffset={8}>{text}</TooltipContent>
-    </Tooltip>
+    <HoverTip content={text}>
+      <button
+        type="button"
+        className={cn(
+          'inline-flex size-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 cursor-pointer',
+          className
+        )}
+        onClick={(event) => event.preventDefault()}
+        aria-label="查看提示"
+      >
+        <CircleAlert className={cn('size-3.5', iconClassName)} />
+      </button>
+    </HoverTip>
   )
 }
 

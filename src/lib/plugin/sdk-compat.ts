@@ -6,6 +6,7 @@ import * as agentRunnerModule from '@/lib/agent/runner'
 import * as assistantContextModule from '@/lib/assistant/context'
 import * as assistantReferenceModule from '@/lib/assistant/reference'
 import * as authRedirectModule from '@/lib/auth-redirect'
+import * as iconModule from '@/lib/icon'
 import * as pageSchemaReloadModule from '@/lib/page-schema-reload'
 import * as requestModule from '@/lib/request'
 import * as resourceModule from '@/lib/resource'
@@ -23,6 +24,7 @@ import * as radioGroupModule from '@/components/ui/radio-group'
 import * as selectModule from '@/components/ui/select'
 import * as sheetModule from '@/components/ui/sheet'
 import * as textareaModule from '@/components/ui/textarea'
+import * as showTooltipModule from '@/page/nodes/show/tooltip'
 import * as agentInteractionPanelModule from '@/components/agent/interaction-panel'
 import * as agentStreamRequestParamsModule from '@/components/agent/stream-request-params'
 import * as assistantFormActionsModule from '@/components/assistant/form-actions'
@@ -87,6 +89,7 @@ function createCompatModules(): Record<string, Record<string, any>> {
     '@/lib/assistant/context': assistantContextModule,
     '@/lib/assistant/reference': assistantReferenceModule,
     '@/lib/auth-redirect': authRedirectModule,
+    '@/lib/icon': iconModule,
     '@/lib/page-schema-reload': pageSchemaReloadModule,
     '@/lib/plugin/types': {
       defineFrontPlugin,
@@ -100,6 +103,7 @@ function createCompatModules(): Record<string, Record<string, any>> {
     '@/lib/store': storeModule,
     '@/lib/stream': streamModule,
     '@/lib/utils': utilsModule,
+    '@/page/nodes/show/tooltip': showTooltipModule,
     '@/page/nodes': {},
     '@/stores/auth-store': authStoreModule,
   }
