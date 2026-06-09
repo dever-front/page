@@ -14,6 +14,7 @@ import * as runtimeStreamOutputModule from '@/lib/runtime-stream-output'
 import * as runtimeStreamRunnerModule from '@/lib/runtime-stream-runner'
 import * as storeModule from '@/lib/store'
 import * as streamModule from '@/lib/stream'
+import * as uploadModule from '@/lib/upload'
 import * as utilsModule from '@/lib/utils'
 import * as uploadRuleMetasModule from '@/hooks/use-upload-rule-metas'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -102,6 +103,7 @@ function createCompatModules(): Record<string, Record<string, any>> {
     '@/lib/runtime-stream-runner': runtimeStreamRunnerModule,
     '@/lib/store': storeModule,
     '@/lib/stream': streamModule,
+    '@/lib/upload': uploadModule,
     '@/lib/utils': utilsModule,
     '@/page/nodes/show/tooltip': showTooltipModule,
     '@/page/nodes': {},

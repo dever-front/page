@@ -224,7 +224,9 @@ function PowerParamControl({
     try {
       let nextFiles = multiple ? [...files] : []
       for (const file of (multiple ? selected.slice(0, remaining) : selected.slice(0, 1))) {
-        const uploaded = await uploadFileByRule(ruleId, file)
+        const uploaded = await uploadFileByRule(ruleId, file, {
+          kind: resourceRule?.kind || resolveFileResourceKind(file),
+        })
         nextFiles = multiple ? [...nextFiles, uploaded] : [uploaded]
       }
       onFilesChange(nextFiles)
@@ -699,6 +701,20 @@ function resolveAcceptResourceKind(accept: string) {
     return 'audio'
   }
   return resolveResourceKind({ accept: normalized })
+}
+
+function resolveFileResourceKind(file: File) {
+  const mime = String(file.type || '').toLowerCase()
+  if (mime.startsWith('image/')) {
+    return 'image'
+  }
+  if (mime.startsWith('video/')) {
+    return 'video'
+  }
+  if (mime.startsWith('audio/')) {
+    return 'audio'
+  }
+  return 'file'
 }
 
 const imageAcceptExtensions = new Set([
