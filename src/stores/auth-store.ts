@@ -88,13 +88,35 @@ export const useAuthStore = create<AuthState>()((set) => {
 })
 
 export function getAccessTokenKey() {
-  return `front-token:${currentSiteKey()}`
+  return `front-token:${currentAuthStorageScope()}`
 }
 
 export function getAuthUserKey() {
-  return `front-user:${currentSiteKey()}`
+  return `front-user:${currentAuthStorageScope()}`
+}
+
+function currentAuthStorageScope() {
+  return `${normalizeStorageKeyPart(currentSiteKey())}_${currentHostKey()}`
 }
 
 function currentSiteKey() {
   return String(getRuntimeConfig().siteKey || 'admin').trim() || 'admin'
+}
+
+function currentHostKey() {
+  const runtime = getRuntimeConfig()
+  const host =
+    browserHost() || String(runtime.siteHost || runtime.host || '').trim()
+  return normalizeStorageKeyPart(host || 'default')
+}
+
+function browserHost() {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+  return window.location.host || window.location.hostname || ''
+}
+
+function normalizeStorageKeyPart(value: string) {
+  return value.trim().replace(/[^a-zA-Z0-9._-]+/g, '_') || 'default'
 }
