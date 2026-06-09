@@ -7,6 +7,13 @@ import {
 } from '@/lib/option-filter'
 import { getByPath, resolvePath } from '@/lib/path'
 import { inferRelationPath } from '@/lib/relation-field'
+import {
+  deleteRemoteOptionPromise,
+  getCachedRemoteOptionResult,
+  getRemoteOptionPromise,
+  setCachedRemoteOptionResult,
+  setRemoteOptionPromise,
+} from '@/lib/remote-option-cache'
 import { request } from '@/lib/request'
 import { cn } from '@/lib/utils'
 import {
@@ -24,22 +31,6 @@ type CascaderOption = {
   value: string
   leaf?: boolean
 } & Record<string, any>
-
-type RemoteOptionCacheEntry = {
-  options: CascaderOption[]
-  expiresAt: number
-}
-
-type SelectedLeafPathCacheEntry = {
-  values: any[]
-  expiresAt: number
-}
-
-const remoteOptionCache = new Map<string, RemoteOptionCacheEntry>()
-const remoteOptionPendingCache = new Map<string, Promise<CascaderOption[]>>()
-const selectedLeafPathCache = new Map<string, SelectedLeafPathCacheEntry>()
-const selectedLeafPathPendingCache = new Map<string, Promise<any[] | undefined>>()
-const remoteOptionCacheTtl = 5 * 60 * 1000
 
 export function FormCascader({
   item,
@@ -197,16 +188,16 @@ export function FormCascader({
         level > 0 && String(item.meta?.childUse || '').trim() !== ''
       const params = buildParams(parentId, level)
       const cacheKey = buildRemoteOptionCacheKey(api, params)
-      const cached = getCachedRemoteOptions(cacheKey)
+      const cached = getCachedRemoteOptionResult<CascaderOption[]>(cacheKey)
       if (cached) {
         return cached
       }
 
       setLoadingLevel(level)
-      const pending = remoteOptionPendingCache.get(cacheKey)
+      const pending = getRemoteOptionPromise<CascaderOption[]>(cacheKey)
       if (pending) {
         try {
-          return await pending
+          return (await pending) || []
         } finally {
           setLoadingLevel((current) => (current === level ? null : current))
         }
@@ -219,14 +210,14 @@ export function FormCascader({
           }
 
           const nextOptions = normalizeRemoteOptions(result.data, childLevel)
-          setCachedRemoteOptions(cacheKey, nextOptions)
+          setCachedRemoteOptionResult(cacheKey, nextOptions)
           return nextOptions
         })
         .finally(() => {
-          remoteOptionPendingCache.delete(cacheKey)
+          deleteRemoteOptionPromise(cacheKey)
         })
 
-      remoteOptionPendingCache.set(cacheKey, nextRequest)
+      setRemoteOptionPromise(cacheKey, nextRequest)
       try {
         return await nextRequest
       } finally {
@@ -571,26 +562,7 @@ function isEmptyCascaderValue(value: any) {
 }
 
 function buildRemoteOptionCacheKey(api: string, params: Record<string, any>) {
-  return `${api}?${JSON.stringify(params)}`
-}
-
-function getCachedRemoteOptions(cacheKey: string) {
-  const cached = remoteOptionCache.get(cacheKey)
-  if (!cached) {
-    return undefined
-  }
-  if (cached.expiresAt <= Date.now()) {
-    remoteOptionCache.delete(cacheKey)
-    return undefined
-  }
-  return cached.options
-}
-
-function setCachedRemoteOptions(cacheKey: string, options: CascaderOption[]) {
-  remoteOptionCache.set(cacheKey, {
-    options,
-    expiresAt: Date.now() + remoteOptionCacheTtl,
-  })
+  return `cascader:${api}?${JSON.stringify(params)}`
 }
 
 async function fetchSelectedLeafPath(
@@ -600,12 +572,12 @@ async function fetchSelectedLeafPath(
   leafValue: string
 ) {
   const cacheKey = buildSelectedLeafPathCacheKey(api, params)
-  const cached = getCachedSelectedLeafPath(cacheKey)
+  const cached = getCachedRemoteOptionResult<any[]>(cacheKey)
   if (cached) {
     return cached
   }
 
-  const pending = selectedLeafPathPendingCache.get(cacheKey)
+  const pending = getRemoteOptionPromise<any[]>(cacheKey)
   if (pending) {
     return pending
   }
@@ -626,14 +598,14 @@ async function fetchSelectedLeafPath(
       const selectedId = selected.id ?? leafValue
       const parentId = selected?.[childParentField]
       const nextPath = parentId ? [parentId, selectedId] : [selectedId]
-      setCachedSelectedLeafPath(cacheKey, nextPath)
+      setCachedRemoteOptionResult(cacheKey, nextPath)
       return nextPath
     })
     .finally(() => {
-      selectedLeafPathPendingCache.delete(cacheKey)
+      deleteRemoteOptionPromise(cacheKey)
     })
 
-  selectedLeafPathPendingCache.set(cacheKey, nextRequest)
+  setRemoteOptionPromise(cacheKey, nextRequest)
   return nextRequest
 }
 
@@ -641,26 +613,7 @@ function buildSelectedLeafPathCacheKey(
   api: string,
   params: Record<string, any>
 ) {
-  return `${api}?selectedPath:${JSON.stringify(params)}`
-}
-
-function getCachedSelectedLeafPath(cacheKey: string) {
-  const cached = selectedLeafPathCache.get(cacheKey)
-  if (!cached) {
-    return undefined
-  }
-  if (cached.expiresAt <= Date.now()) {
-    selectedLeafPathCache.delete(cacheKey)
-    return undefined
-  }
-  return cached.values
-}
-
-function setCachedSelectedLeafPath(cacheKey: string, values: any[]) {
-  selectedLeafPathCache.set(cacheKey, {
-    values,
-    expiresAt: Date.now() + remoteOptionCacheTtl,
-  })
+  return `cascader-selected-path:${api}?${JSON.stringify(params)}`
 }
 
 function normalizeRemoteOptions(
