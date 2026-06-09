@@ -397,17 +397,17 @@ function normalizeImportStreamResult(frame: RuntimeStreamFrame) {
 }
 
 async function digestUploadFile(file: File) {
-  const buffer = await file.arrayBuffer()
   const subtle = globalThis.crypto?.subtle
-  if (subtle?.digest) {
-    try {
-      const digest = await subtle.digest('SHA-256', buffer)
-      return hexDigest(new Uint8Array(digest))
-    } catch {
-      // Fall back below for non-standard or restricted browser contexts.
-    }
+  if (!subtle?.digest) {
+    return ''
   }
-  return fallbackUploadDigest(file, new Uint8Array(buffer))
+
+  try {
+    const digest = await subtle.digest('SHA-256', await file.arrayBuffer())
+    return hexDigest(new Uint8Array(digest))
+  } catch {
+    return ''
+  }
 }
 
 function hexDigest(bytes: Uint8Array) {
@@ -415,32 +415,4 @@ function hexDigest(bytes: Uint8Array) {
     .map((value) => value.toString(16).padStart(2, '0'))
     .join('')
     .slice(0, 32)
-}
-
-function fallbackUploadDigest(file: File, bytes: Uint8Array) {
-  const seed = new TextEncoder().encode(
-    `${file.name}\u0000${file.type}\u0000${file.size}\u0000${file.lastModified}`
-  )
-  const hashes = [
-    0x811c9dc5,
-    0x811c9dc5 ^ 0x9e3779b9,
-    0x811c9dc5 ^ 0x85ebca6b,
-    0x811c9dc5 ^ 0xc2b2ae35,
-  ]
-  updateFallbackHashes(hashes, seed)
-  updateFallbackHashes(hashes, bytes)
-  return hashes
-    .map((value) => (value >>> 0).toString(16).padStart(8, '0'))
-    .join('')
-    .slice(0, 32)
-}
-
-function updateFallbackHashes(hashes: number[], bytes: Uint8Array) {
-  for (let index = 0; index < bytes.length; index += 1) {
-    const value = bytes[index]
-    hashes[0] = Math.imul(hashes[0] ^ value, 0x01000193)
-    hashes[1] = Math.imul(hashes[1] ^ (value + index), 0x01000193)
-    hashes[2] = Math.imul(hashes[2] + value + index, 0x85ebca6b)
-    hashes[3] = Math.imul(hashes[3] ^ ((value << (index % 8)) >>> 0), 0xc2b2ae35)
-  }
 }
