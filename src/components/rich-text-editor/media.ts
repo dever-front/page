@@ -1,4 +1,5 @@
 import { createElement } from 'react'
+import type { NodeConfig } from '@tiptap/core'
 import { mergeAttributes, Node, ReactNodeViewRenderer } from '@tiptap/react'
 import type { ResourceUploadRule } from '@/lib/resource'
 import { resolveResourceKind } from '@/lib/resource'
@@ -17,6 +18,10 @@ const EDITOR_MEDIA_NODE_NAMES: Record<EditorMediaKind, string> = {
   image: richTextMediaNodeNames.image,
   video: richTextMediaNodeNames.video,
   audio: richTextMediaNodeNames.audio,
+}
+
+type MarkdownNodeConfig = Partial<NodeConfig> & {
+  renderMarkdown?: (node: Record<string, any>) => string
 }
 
 export const editorMediaExtensions = [
@@ -47,6 +52,14 @@ export const editorMediaExtensions = [
     renderHTML({ HTMLAttributes }) {
       return ['img', buildEditorMediaHTMLAttributes(HTMLAttributes)]
     },
+    renderMarkdown(node: Record<string, any>) {
+      const src = String(node.attrs?.src || '').trim()
+      if (!src) {
+        return ''
+      }
+      const alt = escapeMarkdownText(String(node.attrs?.alt || node.attrs?.title || '').trim())
+      return `![${alt}](${src})`
+    },
     addNodeView() {
       return ReactNodeViewRenderer((props) =>
         createElement(EditorMediaNodeView, {
@@ -57,7 +70,7 @@ export const editorMediaExtensions = [
         })
       )
     },
-  }),
+  } as MarkdownNodeConfig),
   Node.create({
     name: richTextMediaNodeNames.video,
     group: 'block',
@@ -89,6 +102,9 @@ export const editorMediaExtensions = [
         ),
       ]
     },
+    renderMarkdown(node: Record<string, any>) {
+      return renderMediaMarkdownLink(node, '视频')
+    },
     addNodeView() {
       return ReactNodeViewRenderer((props) =>
         createElement(EditorMediaNodeView, {
@@ -99,7 +115,7 @@ export const editorMediaExtensions = [
         })
       )
     },
-  }),
+  } as MarkdownNodeConfig),
   Node.create({
     name: richTextMediaNodeNames.audio,
     group: 'block',
@@ -130,6 +146,9 @@ export const editorMediaExtensions = [
         ),
       ]
     },
+    renderMarkdown(node: Record<string, any>) {
+      return renderMediaMarkdownLink(node, '音频')
+    },
     addNodeView() {
       return ReactNodeViewRenderer((props) =>
         createElement(EditorMediaNodeView, {
@@ -140,7 +159,7 @@ export const editorMediaExtensions = [
         })
       )
     },
-  }),
+  } as MarkdownNodeConfig),
 ]
 
 export function normalizeEditorUploadRules(rules: ResourceUploadRule[]) {
@@ -272,4 +291,16 @@ function normalizeInlineStyle(value: unknown) {
   return String(value || '')
     .trim()
     .replace(/;+\s*$/, '')
+}
+
+function renderMediaMarkdownLink(node: Record<string, any>, label: string) {
+  const src = String(node.attrs?.src || '').trim()
+  if (!src) {
+    return ''
+  }
+  return `[${label}](${src})`
+}
+
+function escapeMarkdownText(value: string) {
+  return value.replace(/\\/g, '\\\\').replace(/\]/g, '\\]')
 }

@@ -35,6 +35,7 @@ import * as confirmDialogModule from '@/components/confirm-dialog'
 import * as energonContentViewModule from '@/components/energon/content-view'
 import * as energonProgressModule from '@/components/energon/progress'
 import * as siteLogoModule from '@/components/layout/site-logo'
+import * as richTextEditorModule from '@/components/rich-text-editor'
 import * as searchableOptionPickerModule from '@/components/searchable-option-picker'
 import * as streamTimingModule from '@/components/stream-timing'
 import { defineFrontPlugin, lazyNode, mergePluginNodes } from './types'
@@ -73,6 +74,7 @@ function createCompatModules(): Record<string, Record<string, any>> {
     '@/components/energon/content-view': energonContentViewModule,
     '@/components/energon/progress': energonProgressModule,
     '@/components/layout/site-logo': siteLogoModule,
+    '@/components/rich-text-editor': richTextEditorModule,
     '@/components/searchable-option-picker': searchableOptionPickerModule,
     '@/components/stream-timing': streamTimingModule,
     '@/components/ui/button': { Button, buttonVariants },

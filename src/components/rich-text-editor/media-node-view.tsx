@@ -210,7 +210,6 @@ export function EditorMediaNodeView({
             src={src}
             controls
             preload="none"
-            draggable={false}
             className="block w-full"
           />
         ) : null}
@@ -219,23 +218,17 @@ export function EditorMediaNodeView({
   )
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max)
+function normalizeMediaSizeValue(value: unknown) {
+  const text = String(value || '').trim()
+  if (/^\d+(\.\d+)?%$/.test(text)) {
+    return text
+  }
+  if (/^\d+(\.\d+)?px$/.test(text)) {
+    return text
+  }
+  return ''
 }
 
-function normalizeMediaSizeValue(value: unknown) {
-  const normalizedValue = String(value || '').trim()
-  if (!normalizedValue) {
-    return ''
-  }
-
-  if (/^\d+(\.\d+)?%$/.test(normalizedValue)) {
-    return normalizedValue
-  }
-
-  if (/^\d+(\.\d+)?px$/.test(normalizedValue)) {
-    return normalizedValue
-  }
-
-  return ''
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
 }
