@@ -188,68 +188,12 @@ function normalizeRichTextNode(value: unknown): RichTextNode | null {
   if (children.length > 0) {
     node.content = children
   }
-  if (type === 'paragraph') {
-    return normalizeMarkdownHeadingParagraph(node)
-  }
   return node
 }
 
 function normalizeRichTextNodeType(value: unknown) {
   const type = String(value || '').trim()
   return richTextNodeAliases[type] || type
-}
-
-function normalizeMarkdownHeadingParagraph(node: RichTextNode): RichTextNode {
-  if (!Array.isArray(node.content)) {
-    return node
-  }
-
-  const textIndex = node.content.findIndex(
-    (child) => child.type === 'text' && String(child.text || '').trim()
-  )
-  if (textIndex < 0) {
-    return node
-  }
-  if (node.content.slice(0, textIndex).some((child) => child.type !== 'text')) {
-    return node
-  }
-
-  const firstText = String(node.content[textIndex].text || '')
-  const match = firstText.match(
-    /^([ \t\u00a0\u3000]{0,3})(#{1,6})(?!#)([ \t\u00a0\u3000]*)(.*)$/
-  )
-  if (!match) {
-    return node
-  }
-
-  const marker = match[2] || ''
-  const gap = match[3] || ''
-  if (marker.length === 1 && gap.length === 0) {
-    return node
-  }
-
-  const nextText = (match[4] || '').trimStart()
-  if (!nextText) {
-    return node
-  }
-
-  const content = node.content.slice(textIndex)
-  const firstChild = content[0]
-  if (!firstChild) {
-    return node
-  }
-  content[0] = {
-    ...firstChild,
-    text: nextText,
-  }
-  return {
-    type: 'heading',
-    attrs: {
-      ...(node.attrs || {}),
-      level: marker.length,
-    },
-    content,
-  }
 }
 
 function normalizeRichTextMarks(marks: unknown): RichTextMark[] {
