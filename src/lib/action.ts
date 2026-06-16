@@ -538,7 +538,7 @@ async function submitCrudAction(
 ): Promise<ActionRunResult> {
   const requestConfig = resolveCrudRequestConfig(store, config, context)
   const result = await request(
-    joinFrontApi(resolveCrudActionRoute(store, path)),
+    joinFrontApi(resolveCrudActionRoute(store, config, path)),
     'post',
     {
       action: requestConfig,
@@ -586,12 +586,30 @@ async function submitCrudAction(
   }
 }
 
-function resolveCrudActionRoute(store: PageStore, path: string) {
+function resolveCrudActionRoute(
+  store: PageStore,
+  config: ActionConfig,
+  path: string
+) {
   const params = new URLSearchParams()
   params.set('path', normalizeRoutePagePath(path))
-  appendStoreRouteQueryParams(params, store)
+  if (shouldInheritCrudRouteQuery(store, config, path)) {
+    appendStoreRouteQueryParams(params, store)
+  }
 
   return `route/action?${params.toString()}`
+}
+
+function shouldInheritCrudRouteQuery(
+  store: PageStore,
+  config: ActionConfig,
+  actionPath: string
+) {
+  if (config.inheritRouteQuery !== undefined) {
+    return config.inheritRouteQuery
+  }
+
+  return isCurrentPageActionPath(store, actionPath)
 }
 
 function resolveCrudRequestConfig(
@@ -728,17 +746,17 @@ function withRoutePrimaryKey(
   if (!isPlainActionObject(payload)) {
     return payload
   }
-  if (!isCurrentPageSavePath(store, savePath)) {
+  if (!isCurrentPageActionPath(store, savePath)) {
     return payload
   }
 
   const primaryKey = String(config.pk || 'id').trim() || 'id'
-  if (hasPrimaryKeyValue(payload[primaryKey])) {
+  if (hasPrimaryKeyValue(payload[primaryKey], primaryKey)) {
     return payload
   }
 
   const routeID = readRoutePrimaryKeyValue(store, primaryKey)
-  if (!hasPrimaryKeyValue(routeID)) {
+  if (!hasPrimaryKeyValue(routeID, primaryKey)) {
     return payload
   }
 
@@ -748,16 +766,17 @@ function withRoutePrimaryKey(
   }
 }
 
-function isCurrentPageSavePath(store: PageStore, savePath: string) {
+function isCurrentPageActionPath(store: PageStore, actionPath: string) {
+  const normalizedActionPath = normalizeActionPagePath(actionPath)
   const currentPath = normalizeActionPagePath(store.getState().pagePath)
-  if (currentPath && currentPath === savePath) {
+  if (currentPath && currentPath === normalizedActionPath) {
     return true
   }
 
   const schemaPath = normalizeActionPagePath(
     String(store.getState().schema.page?.route ?? '')
   )
-  return !!schemaPath && schemaPath === savePath
+  return !!schemaPath && schemaPath === normalizedActionPath
 }
 
 function readRoutePrimaryKeyValue(store: PageStore, primaryKey: string) {
@@ -767,19 +786,24 @@ function readRoutePrimaryKeyValue(store: PageStore, primaryKey: string) {
   }
 
   const value = (query as Record<string, unknown>)[primaryKey]
-  if (hasActionValue(value)) {
-    return firstActionValue(value)
+  const primaryValue = firstPrimaryKeyValue(value, primaryKey)
+  if (primaryValue !== undefined) {
+    return primaryValue
   }
 
   if (primaryKey !== 'id') {
-    return firstActionValue((query as Record<string, unknown>).id)
+    return firstPrimaryKeyValue((query as Record<string, unknown>).id, 'id')
   }
 
   return undefined
 }
 
-function firstActionValue(value: unknown) {
-  return Array.isArray(value) ? value[0] : value
+function firstPrimaryKeyValue(value: unknown, primaryKey: string): unknown {
+  if (!Array.isArray(value)) {
+    return hasPrimaryKeyValue(value, primaryKey) ? value : undefined
+  }
+
+  return value.find((item) => hasPrimaryKeyValue(item, primaryKey))
 }
 
 function isPlainActionObject(value: unknown): value is Record<string, any> {
@@ -793,21 +817,25 @@ function hasActionValue(value: unknown) {
   return value !== undefined && value !== null && String(value).trim() !== ''
 }
 
-function hasPrimaryKeyValue(value: unknown) {
+function hasPrimaryKeyValue(value: unknown, primaryKey: string) {
   if (Array.isArray(value)) {
-    return value.some(hasPrimaryKeyValue)
+    return value.some((item) => hasPrimaryKeyValue(item, primaryKey))
   }
   if (!hasActionValue(value)) {
     return false
   }
 
   const text = String(value).trim()
-  const numberValue = Number(text)
-  if (Number.isFinite(numberValue)) {
-    return numberValue > 0
+  if (isNumericPrimaryKey(primaryKey)) {
+    return /^[1-9]\d*$/.test(text)
   }
 
   return true
+}
+
+function isNumericPrimaryKey(primaryKey: string) {
+  const key = String(primaryKey || '').trim().toLowerCase()
+  return key === 'id' || key.endsWith('_id')
 }
 
 function clearMutationCaches() {

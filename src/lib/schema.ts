@@ -57,6 +57,7 @@ export const ActionConfigSchema = z.object({
   params: z.any().optional(),
   filters: z.any().optional(),
   upsert: z.boolean().optional(),
+  inheritRouteQuery: z.boolean().optional(),
   model: z.string().optional(),
   fileName: z.string().optional(),
   sheetName: z.string().optional(),

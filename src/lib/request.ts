@@ -634,9 +634,11 @@ export async function loadPageSchema(
       }
     }
 
-    const pending = remoteSchemaPromiseCache.get(cacheKey)
-    if (pending) {
-      return await pending
+    if (!options.skipValueCache) {
+      const pending = remoteSchemaPromiseCache.get(cacheKey)
+      if (pending) {
+        return await pending
+      }
     }
 
     const routeApi = joinFrontApi('route/info')
@@ -659,12 +661,18 @@ export async function loadPageSchema(
 
     try {
       const schema = await schemaPromise
-      if (schema && cacheVersion === remoteSchemaCacheVersion) {
+      if (
+        schema &&
+        cacheVersion === remoteSchemaCacheVersion &&
+        remoteSchemaPromiseCache.get(cacheKey) === schemaPromise
+      ) {
         cachePageSchema(normalizedRoute, queryString, schema)
       }
       return schema
     } finally {
-      remoteSchemaPromiseCache.delete(cacheKey)
+      if (remoteSchemaPromiseCache.get(cacheKey) === schemaPromise) {
+        remoteSchemaPromiseCache.delete(cacheKey)
+      }
     }
   } catch (error) {
     console.error('[loadPageSchema] 加载失败:', route, error)

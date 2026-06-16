@@ -1,4 +1,5 @@
 import { getByPath, isScopedStorePath, setByPath } from '@/lib/path'
+import { appendRouteQueryParams } from '@/lib/route-context'
 import type { PageSchemaType } from '@/lib/schema'
 import type { PageStore } from '@/lib/store'
 
@@ -70,55 +71,23 @@ export function buildPageRouteWithQuery(
 
   const [pathname, rawQuery = ''] = currentRoute.split('?')
   const searchParams = new URLSearchParams(rawQuery)
-
-  for (const [key, value] of Object.entries(meta?.pageRouteQuery ?? {})) {
-    applyRouteQueryValue(searchParams, key, resolvePageMetaValue(store, value))
-  }
+  appendRouteQueryParams(searchParams, resolvePageRouteQuery(store, meta), {
+    objectMode: 'skip',
+    overwrite: true,
+    skipPath: false,
+  })
 
   const queryString = searchParams.toString()
   return queryString ? `${pathname}?${queryString}` : pathname
 }
 
-function applyRouteQueryValue(
-  searchParams: URLSearchParams,
-  key: string,
-  value: unknown
-) {
-  if (!key) {
-    return
-  }
-
-  searchParams.delete(key)
-
-  if (value == null) {
-    return
-  }
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      appendRouteQueryValue(searchParams, key, item)
-    }
-    return
-  }
-
-  appendRouteQueryValue(searchParams, key, value)
-}
-
-function appendRouteQueryValue(
-  searchParams: URLSearchParams,
-  key: string,
-  value: unknown
-) {
-  if (value == null || typeof value === 'object') {
-    return
-  }
-
-  const text = String(value)
-  if (!text.trim()) {
-    return
-  }
-
-  searchParams.append(key, text)
+function resolvePageRouteQuery(store: PageStore, meta?: PatchMeta) {
+  return Object.fromEntries(
+    Object.entries(meta?.pageRouteQuery ?? {}).map(([key, value]) => [
+      key,
+      resolvePageMetaValue(store, value),
+    ])
+  )
 }
 
 function mergePatchValue(currentValue: unknown, patchValue: unknown): unknown {
