@@ -8,7 +8,7 @@ export async function reloadStorePageSchema(store: PageStore) {
     return false
   }
 
-  const raw = await loadPageSchema(route)
+  const raw = await loadPageSchema(route, { skipValueCache: true })
   if (!raw) {
     return false
   }

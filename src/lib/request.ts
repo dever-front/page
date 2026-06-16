@@ -79,6 +79,7 @@ const remoteSchemaValueCache = new Map<
   string,
   { data: any; expiresAt: number }
 >()
+let remoteSchemaCacheVersion = 0
 const REMOTE_SCHEMA_VALUE_CACHE_TTL = 1000
 
 type BatchResult = {
@@ -647,6 +648,7 @@ export async function loadPageSchema(
       new URLSearchParams(routeQuery).entries()
     )
 
+    const cacheVersion = remoteSchemaCacheVersion
     const schemaPromise = loadPageSchemaSingle(
       routeApi,
       normalizedRoute,
@@ -657,7 +659,7 @@ export async function loadPageSchema(
 
     try {
       const schema = await schemaPromise
-      if (schema) {
+      if (schema && cacheVersion === remoteSchemaCacheVersion) {
         cachePageSchema(normalizedRoute, queryString, schema)
       }
       return schema
@@ -709,6 +711,12 @@ function cachePageSchema(
     data: schema,
     expiresAt: Date.now() + REMOTE_SCHEMA_VALUE_CACHE_TTL,
   })
+}
+
+export function clearRemotePageSchemaCache() {
+  remoteSchemaCacheVersion += 1
+  remoteSchemaPromiseCache.clear()
+  remoteSchemaValueCache.clear()
 }
 
 function schemaCacheKey(normalizedRoute: string, queryString = '') {
@@ -1031,8 +1039,7 @@ function clearFrontRuntimeCache() {
   mainBootstrapCacheToken = ''
   assistantPermissionPromise = null
   assistantPermissionCacheToken = ''
-  remoteSchemaPromiseCache.clear()
-  remoteSchemaValueCache.clear()
+  clearRemotePageSchemaCache()
   resetPageProgressCache()
 }
 

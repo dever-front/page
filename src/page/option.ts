@@ -20,6 +20,10 @@ import {
   setRemoteOptionPromise,
 } from '@/lib/remote-option-cache'
 import { joinFrontApi, request } from '@/lib/request'
+import {
+  appendStoreRouteQueryParams,
+  normalizeRoutePagePath,
+} from '@/lib/route-context'
 import type { Item, OptionItem } from '@/lib/schema'
 import { resolveSelectCreateOptionReloadPath } from '@/lib/select-create-option'
 import { type PageStore, useStorePathValue } from '@/lib/store'
@@ -445,12 +449,17 @@ function buildRemoteOptionURL(
   )) {
     params.set(key, value)
   }
-  if (isFrontRouteOptionURL(remoteUrl) && !params.has('path')) {
-    const pagePath = String(
+  if (
+    isFrontRouteOptionURL(remoteUrl) &&
+    !hasRemoteOptionParam(remoteUrl, 'path') &&
+    !params.has('path')
+  ) {
+    const pagePath = normalizeRoutePagePath(
       store.getState().pagePath || store.getState().schema.page?.route || ''
-    ).trim()
+    )
     if (pagePath) {
       params.set('path', pagePath)
+      appendStoreRouteQueryParams(params, store)
     }
   }
   if (normalizedKeyword) {
@@ -482,6 +491,15 @@ function isFrontRouteOptionURL(remoteUrl: string) {
     return parsed.pathname === runtimeOptionPath
   } catch {
     return remoteUrl.split('?')[0].endsWith(runtimeOptionPath)
+  }
+}
+
+function hasRemoteOptionParam(remoteUrl: string, key: string) {
+  try {
+    return new URL(remoteUrl, window.location.origin).searchParams.has(key)
+  } catch {
+    const [, query = ''] = remoteUrl.split('?')
+    return new URLSearchParams(query).has(key)
   }
 }
 

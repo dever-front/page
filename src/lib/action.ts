@@ -7,7 +7,11 @@
 import { createExportTask, readCurrentExportQuery } from './export-task'
 import { getByPath, isScopedStorePath } from './path'
 import { clearRemoteOptionCache } from './remote-option-cache'
-import { joinFrontApi, request } from './request'
+import { clearRemotePageSchemaCache, joinFrontApi, request } from './request'
+import {
+  appendStoreRouteQueryParams,
+  normalizeRoutePagePath,
+} from './route-context'
 import type { ActionConfig } from './schema'
 import type { PageStore } from './store'
 
@@ -236,7 +240,7 @@ async function handleRequestAction(
   }
 
   if (isMutatingRequestMethod(config.method)) {
-    clearRemoteOptionCache()
+    clearMutationCaches()
   }
 
   // 写回目标
@@ -558,7 +562,7 @@ async function submitCrudAction(
     }
   }
 
-  clearRemoteOptionCache()
+  clearMutationCaches()
 
   if (config.target) {
     store.getState().setValueByPath(config.target, result.data)
@@ -584,48 +588,10 @@ async function submitCrudAction(
 
 function resolveCrudActionRoute(store: PageStore, path: string) {
   const params = new URLSearchParams()
-  params.set('path', path)
-
-  const routeQuery = store.getState().state?.route?.query
-  if (
-    routeQuery &&
-    typeof routeQuery === 'object' &&
-    !Array.isArray(routeQuery)
-  ) {
-    for (const [key, value] of Object.entries(routeQuery)) {
-      appendCrudActionQueryValue(params, key, value)
-    }
-  }
+  params.set('path', normalizeRoutePagePath(path))
+  appendStoreRouteQueryParams(params, store)
 
   return `route/action?${params.toString()}`
-}
-
-function appendCrudActionQueryValue(
-  params: URLSearchParams,
-  key: string,
-  value: unknown
-) {
-  const queryKey = String(key || '').trim()
-  if (!queryKey || queryKey === 'path' || value == null) {
-    return
-  }
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      appendCrudActionQueryValue(params, queryKey, item)
-    }
-    return
-  }
-
-  if (typeof value === 'object') {
-    params.append(queryKey, JSON.stringify(value))
-    return
-  }
-
-  const queryValue = String(value).trim()
-  if (queryValue) {
-    params.append(queryKey, queryValue)
-  }
 }
 
 function resolveCrudRequestConfig(
@@ -767,12 +733,12 @@ function withRoutePrimaryKey(
   }
 
   const primaryKey = String(config.pk || 'id').trim() || 'id'
-  if (hasActionValue(payload[primaryKey])) {
+  if (hasPrimaryKeyValue(payload[primaryKey])) {
     return payload
   }
 
   const routeID = readRoutePrimaryKeyValue(store, primaryKey)
-  if (!hasActionValue(routeID)) {
+  if (!hasPrimaryKeyValue(routeID)) {
     return payload
   }
 
@@ -825,6 +791,28 @@ function hasActionValue(value: unknown) {
     return value.some(hasActionValue)
   }
   return value !== undefined && value !== null && String(value).trim() !== ''
+}
+
+function hasPrimaryKeyValue(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.some(hasPrimaryKeyValue)
+  }
+  if (!hasActionValue(value)) {
+    return false
+  }
+
+  const text = String(value).trim()
+  const numberValue = Number(text)
+  if (Number.isFinite(numberValue)) {
+    return numberValue > 0
+  }
+
+  return true
+}
+
+function clearMutationCaches() {
+  clearRemoteOptionCache()
+  clearRemotePageSchemaCache()
 }
 
 function resolveExportPagePath(
@@ -922,13 +910,7 @@ function resolveActionPagePath(store: PageStore, config: ActionConfig) {
 }
 
 function normalizeActionPagePath(path: string | undefined) {
-  if (!path) {
-    return ''
-  }
-
-  return String(path)
-    .replace(/[?#].*$/, '')
-    .replace(/^\/+|\/+$/g, '')
+  return normalizeRoutePagePath(path)
 }
 
 function applyRequestFieldErrors(store: PageStore, fieldErrors: unknown) {
