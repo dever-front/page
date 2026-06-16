@@ -536,12 +536,12 @@ async function submitCrudAction(
   payload: any,
   context?: ActionContext
 ): Promise<ActionRunResult> {
-  const requestConfig = resolveCrudRequestConfig(store, config, context)
+  const actionKey = resolveCrudRequestKey(config, context)
   const result = await request(
     joinFrontApi(resolveCrudActionRoute(store, config, path)),
     'post',
     {
-      action: requestConfig,
+      key: actionKey,
       payload,
     }
   )
@@ -612,43 +612,35 @@ function shouldInheritCrudRouteQuery(
   return isCurrentPageActionPath(store, actionPath)
 }
 
-function resolveCrudRequestConfig(
-  store: PageStore,
+function resolveCrudRequestKey(
   config: ActionConfig,
   context?: ActionContext
 ) {
-  if (
+  const configKey = normalizeOperationKey(String(config.key || '').trim())
+  if (configKey) {
+    return configKey
+  }
+
+  switch (
     String(config.type || '')
       .trim()
-      .toLowerCase() !== 'delete'
+      .toLowerCase()
   ) {
-    return config
-  }
-
-  const actionKey = normalizeOperationKey(
-    String(
-      config.key ||
-        context?.itemKey ||
-        context?.item?.key ||
-        context?.item?.id ||
-        ''
-    ).trim()
-  )
-  if (!actionKey) {
-    return config
-  }
-
-  if (actionKey.includes('/')) {
-    return {
-      ...config,
-      key: actionKey,
-    }
-  }
-
-  const pagePath = resolveCurrentPagePath(store)
-  return {
-    ...config,
-    key: pagePath ? `${pagePath}/${actionKey}` : actionKey,
+    case 'delete':
+      return (
+        normalizeOperationKey(
+          String(
+            context?.itemKey ||
+              context?.item?.key ||
+              context?.item?.id ||
+              ''
+          ).trim()
+        ) || 'delete'
+      )
+    case 'save':
+      return 'submit'
+    default:
+      return normalizeOperationKey(String(context?.itemKey || '').trim())
   }
 }
 
@@ -672,18 +664,6 @@ function normalizeOperationKey(key: string) {
   return String(key || '')
     .trim()
     .replace(/^\/+|\/+$/g, '')
-    .replace(/\./g, '-')
-}
-
-function resolveCurrentPagePath(store: PageStore) {
-  const storePath = normalizeActionPagePath(store.getState().pagePath)
-  if (storePath) {
-    return storePath
-  }
-
-  return normalizeActionPagePath(
-    String(store.getState().schema.page?.route ?? '')
-  )
 }
 
 // ========== 辅助函数 ==========
@@ -869,6 +849,11 @@ function resolveExportKey(config: ActionConfig, context?: ActionContext) {
     return configuredKey
   }
 
+  const actionKey = String(config.key || '').trim()
+  if (actionKey) {
+    return actionKey
+  }
+
   const contextKey = String(context?.itemKey || '').trim()
   if (contextKey) {
     return contextKey
@@ -882,6 +867,11 @@ function resolveImportKey(config: ActionConfig, context?: ActionContext) {
   const configuredKey = String(config.importKey || '').trim()
   if (configuredKey) {
     return configuredKey
+  }
+
+  const actionKey = String(config.key || '').trim()
+  if (actionKey) {
+    return actionKey
   }
 
   const contextKey = String(context?.itemKey || '').trim()

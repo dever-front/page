@@ -16,6 +16,7 @@ import {
 } from '@/lib/remote-option-cache'
 import { request } from '@/lib/request'
 import { cn } from '@/lib/utils'
+import { sanitizeRouteOptionURL, withRouteOptionContext } from '@/page/option'
 import {
   Select,
   SelectContent,
@@ -133,19 +134,15 @@ export function FormCascader({
     (parentId: any, level: number) => {
       const childLevel =
         level > 0 && String(item.meta?.childUse || '').trim() !== ''
-      const use = childLevel
-        ? String(item.meta?.childUse || '').trim()
-        : String(item.meta?.use || '').trim()
       const parentField = childLevel
         ? String(
             item.meta?.childParentField || item.meta?.parentField || 'parent_id'
           ).trim()
         : String(item.meta?.parentField || 'parent_id').trim()
       const params: Record<string, any> = {
-        type: String(item.meta?.type || 'model').trim() || 'model',
-        use,
         parentField: parentField || 'parent_id',
         parentId,
+        level,
         rootValue: item.meta?.rootValue ?? 0,
         valueField: String(item.meta?.valueField || 'id').trim() || 'id',
         labelField: String(item.meta?.labelField || 'name').trim() || 'name',
@@ -164,9 +161,10 @@ export function FormCascader({
       if (order) {
         params.order = order
       }
-      return params
+      return withRouteOptionContext(api, params, { item, store })
     },
     [
+      api,
       item.meta?.childExtraFields,
       item.meta?.childParentField,
       item.meta?.childUse,
@@ -176,9 +174,9 @@ export function FormCascader({
       item.meta?.order,
       item.meta?.parentField,
       item.meta?.rootValue,
-      item.meta?.type,
-      item.meta?.use,
       item.meta?.valueField,
+      item,
+      store,
     ]
   )
 
@@ -187,7 +185,8 @@ export function FormCascader({
       const childLevel =
         level > 0 && String(item.meta?.childUse || '').trim() !== ''
       const params = buildParams(parentId, level)
-      const cacheKey = buildRemoteOptionCacheKey(api, params)
+      const requestApi = sanitizeRouteOptionURL(api)
+      const cacheKey = buildRemoteOptionCacheKey(requestApi, params)
       const cached = getCachedRemoteOptionResult<CascaderOption[]>(cacheKey)
       if (cached) {
         return cached
@@ -203,7 +202,7 @@ export function FormCascader({
         }
       }
 
-      const nextRequest = request(api, 'get', params)
+      const nextRequest = request(requestApi, 'get', params)
         .then((result) => {
           if (result.code !== 0 || !Array.isArray(result.data)) {
             return []
@@ -255,17 +254,22 @@ export function FormCascader({
         return
       }
 
+      const requestApi = sanitizeRouteOptionURL(api)
       const leafPath = await fetchSelectedLeafPath(
-        api,
-        {
-          type: String(item.meta?.type || 'model').trim() || 'model',
-          use: childUse,
-          selected: leafValue,
-          valueField: String(item.meta?.valueField || 'id').trim() || 'id',
-          labelField: String(item.meta?.labelField || 'name').trim() || 'name',
-          extraFields: childParentField,
-          pageSize: 1,
-        },
+        requestApi,
+        withRouteOptionContext(
+          api,
+          {
+            level: 1,
+            selected: leafValue,
+            valueField: String(item.meta?.valueField || 'id').trim() || 'id',
+            labelField:
+              String(item.meta?.labelField || 'name').trim() || 'name',
+            extraFields: childParentField,
+            pageSize: 1,
+          },
+          { item, store }
+        ),
         childParentField,
         leafValue
       )
@@ -287,11 +291,12 @@ export function FormCascader({
     item.meta?.defaultParentId,
     item.meta?.defaultParentValue,
     item.meta?.labelField,
-    item.meta?.type,
     item.meta?.valueField,
+    item,
     leafValueMode,
     rowRelationLeafId,
     rowRelationParentId,
+    store,
     value,
   ])
 

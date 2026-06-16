@@ -40,7 +40,7 @@ export type ResolvedNodeOption = {
 export function useNodeOption(
   store: PageStore,
   optionConfig?: Item['option'],
-  item?: Pick<Item, 'id' | 'type' | 'mode' | 'meta' | 'value'>,
+  item?: Pick<Item, 'id' | 'key' | 'type' | 'mode' | 'meta' | 'value'>,
   row?: Record<string, any>
 ): ResolvedNodeOption {
   const staticOption = useMemo(() => {
@@ -50,6 +50,10 @@ export function useNodeOption(
     return undefined
   }, [optionConfig])
 
+  const objectRemoteOption = useMemo(
+    () => resolveObjectRemoteOptionSource(optionConfig),
+    [optionConfig]
+  )
   const rawPathOption = useStorePathValue(
     store,
     typeof optionConfig === 'string' && !isRemoteOptionSource(optionConfig)
@@ -61,6 +65,8 @@ export function useNodeOption(
   const remoteUrl =
     typeof optionConfig === 'string' && isRemoteOptionSource(optionConfig)
       ? optionConfig
+      : objectRemoteOption
+        ? joinFrontApi('route/option')
       : ''
   const resetVersion = useStore(store, (state) => state.resetVersion)
   const reloadPaths = useMemo(() => resolveOptionReloadPaths(item), [item])
@@ -420,6 +426,14 @@ function isRemoteOptionSource(optionConfig: string) {
   return normalized.startsWith('/') || /^https?:\/\//i.test(normalized)
 }
 
+function resolveObjectRemoteOptionSource(optionConfig?: Item['option']) {
+  return (
+    optionConfig != null &&
+    typeof optionConfig === 'object' &&
+    !Array.isArray(optionConfig)
+  )
+}
+
 function buildRemoteOptionRequestKey(
   remoteCacheKey: string,
   keyword?: string,
@@ -436,32 +450,36 @@ function buildRemoteOptionURL(
   remoteUrl: string,
   keyword: string | undefined,
   selectedValue: unknown,
-  item: Pick<Item, 'meta'> | undefined,
+  item: Pick<Item, 'id' | 'key' | 'meta' | 'value'> | undefined,
   store: PageStore,
   row?: Record<string, any>
 ) {
   const normalizedKeyword = normalizeRemoteOptionKeyword(keyword)
   const normalizedSelected = normalizeRemoteOptionSelectedValue(selectedValue)
+  const routeOptionRequest = isFrontRouteOptionURL(remoteUrl)
+  const requestUrl = routeOptionRequest
+    ? sanitizeRouteOptionURL(remoteUrl)
+    : remoteUrl
 
-  const params = new URLSearchParams()
+  const params = routeOptionRequest
+    ? readRouteOptionSafeParams(remoteUrl)
+    : new URLSearchParams()
   for (const [key, value] of Object.entries(
     resolveOptionParams(item?.meta?.optionParams, { store, row })
   )) {
     params.set(key, value)
   }
   if (
-    isFrontRouteOptionURL(remoteUrl) &&
+    routeOptionRequest &&
     !hasRemoteOptionParam(remoteUrl, 'path') &&
     !params.has('path')
   ) {
-    const pagePath = normalizeRoutePagePath(
-      store.getState().pagePath || store.getState().schema.page?.route || ''
-    )
+    const pagePath = routeOptionPathWithQuery(store)
     if (pagePath) {
       params.set('path', pagePath)
-      appendStoreRouteQueryParams(params, store)
     }
   }
+  applyRouteOptionKeyParam(routeOptionRequest, params, item)
   if (normalizedKeyword) {
     const keywordParam =
       String(item?.meta?.optionKeywordParam || 'keyword').trim() || 'keyword'
@@ -472,13 +490,183 @@ function buildRemoteOptionURL(
       String(item?.meta?.optionSelectedParam || 'selected').trim() || 'selected'
     params.set(selectedParam, normalizedSelected)
   }
+  if (routeOptionRequest) {
+    retainRouteOptionParams(params)
+  }
 
   const query = params.toString()
   if (!query) {
-    return remoteUrl
+    return requestUrl
   }
 
-  return `${remoteUrl}${remoteUrl.includes('?') ? '&' : '?'}${query}`
+  return `${requestUrl}${requestUrl.includes('?') ? '&' : '?'}${query}`
+}
+
+export function sanitizeRouteOptionURL(api: string) {
+  if (!isFrontRouteOptionURL(api)) {
+    return api
+  }
+  try {
+    const parsed = new URL(api, window.location.origin)
+    return parsed.pathname
+  } catch {
+    return api.split('?')[0]
+  }
+}
+
+export function withRouteOptionContext(
+  api: string,
+  params: Record<string, any> | undefined,
+  context: {
+    item?: Pick<Item, 'id' | 'key' | 'meta' | 'value'>
+    store: PageStore
+  }
+) {
+  const nextParams: Record<string, any> = { ...(params || {}) }
+  if (!isFrontRouteOptionURL(api)) {
+    return nextParams
+  }
+  retainRouteOptionObjectParams(nextParams)
+
+  if (!hasParamValue(nextParams.path)) {
+    const pagePath = routeOptionPathWithQuery(context.store)
+    if (pagePath) {
+      nextParams.path = pagePath
+    }
+  }
+
+  if (!hasParamValue(nextParams.key)) {
+    const optionKey = resolveRouteOptionKey(context.item)
+    if (optionKey) {
+      nextParams.key = optionKey
+    }
+  }
+
+  return nextParams
+}
+
+const routeOptionParamAllowList = new Set([
+  'path',
+  'key',
+  'keyword',
+  'selected',
+  'parentId',
+  'level',
+])
+
+function retainRouteOptionParams(params: URLSearchParams) {
+  for (const key of Array.from(params.keys())) {
+    if (!routeOptionParamAllowList.has(key)) {
+      params.delete(key)
+    }
+  }
+}
+
+function retainRouteOptionObjectParams(params: Record<string, any>) {
+  for (const key of Object.keys(params)) {
+    if (!routeOptionParamAllowList.has(key)) {
+      delete params[key]
+    }
+  }
+}
+
+function routeOptionPathWithQuery(store: PageStore) {
+  const pagePath = normalizeRoutePagePath(
+    store.getState().pagePath || store.getState().schema.page?.route || ''
+  )
+  if (!pagePath) {
+    return ''
+  }
+
+  const routeParams = new URLSearchParams()
+  appendStoreRouteQueryParams(routeParams, store)
+  const query = routeParams.toString()
+  return query ? `${pagePath}?${query}` : pagePath
+}
+
+function applyRouteOptionKeyParam(
+  routeOptionRequest: boolean,
+  params: URLSearchParams,
+  item: Pick<Item, 'id' | 'key' | 'meta' | 'value'> | undefined
+) {
+  if (
+    !routeOptionRequest ||
+    params.has('key')
+  ) {
+    return
+  }
+
+  const optionKey = resolveRouteOptionKey(item)
+  if (optionKey) {
+    params.set('key', optionKey)
+  }
+}
+
+function resolveRouteOptionKey(
+  item: Pick<Item, 'id' | 'key' | 'meta' | 'value'> | undefined
+) {
+  const meta = item?.meta ?? {}
+  for (const candidate of [
+    meta.optionKey,
+    (item as Record<string, any> | undefined)?.optionKey,
+    item?.key,
+    item?.id,
+    item?.value,
+  ]) {
+    const key = normalizeRouteOptionKey(candidate)
+    if (key) {
+      return key
+    }
+  }
+  return ''
+}
+
+function normalizeRouteOptionKey(value: unknown) {
+  return String(value ?? '')
+    .trim()
+    .replace(/^data\.option\./, '')
+    .replace(/^option\./, '')
+}
+
+function hasParamValue(value: unknown) {
+  return String(value ?? '').trim() !== ''
+}
+
+function readRouteOptionSafeParams(api: string) {
+  const params = new URLSearchParams()
+  try {
+    const parsed = new URL(api, window.location.origin)
+    for (const key of [
+      'path',
+      'key',
+      'keyword',
+      'selected',
+      'parentId',
+      'level',
+    ]) {
+      const value = parsed.searchParams.get(key)
+      if (value != null && value !== '') {
+        params.set(key, value)
+      }
+    }
+  } catch {
+    const [, query = ''] = api.split('?')
+    const source = new URLSearchParams(query)
+    for (const key of [
+      'path',
+      'key',
+      'keyword',
+      'selected',
+      'parentId',
+      'level',
+    ]) {
+      const value = source.get(key)
+      if (value != null && value !== '') {
+        params.set(key, value)
+      }
+    }
+  }
+  return params
 }
 
 function isFrontRouteOptionURL(remoteUrl: string) {

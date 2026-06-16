@@ -68,7 +68,7 @@ export const ActionConfigSchema = z.object({
   styleDefs: z.record(z.string(), z.any()).optional(),
   before: z.any().optional(),
   after: z.any().optional(),
-  then: z.union([z.string(), z.array(z.string())]).optional(),
+  then: z.any().optional(),
 })
 
 export const ActionMapSchema = z.record(z.string(), ActionConfigSchema)
@@ -89,6 +89,28 @@ export const OptionItemSchema = z
   .object({
     id: z.union([z.string(), z.number()]),
     value: z.string(),
+  })
+  .passthrough()
+
+export const OptionConfigSchema = z
+  .object({
+    key: z.string().optional(),
+    type: z.string().optional(),
+    use: z.string().optional(),
+    model: z.string().optional(),
+    service: z.string().optional(),
+    filters: z.record(z.string(), z.any()).optional(),
+    searchFields: z.array(z.string()).optional(),
+    extraFields: z.array(z.string()).optional(),
+    valueField: z.string().optional(),
+    labelField: z.string().optional(),
+    parentField: z.string().optional(),
+    leafField: z.string().optional(),
+    order: z.string().optional(),
+    pageSize: z.number().optional(),
+    page: z.number().optional(),
+    tree: z.boolean().optional(),
+    rootValue: z.any().optional(),
   })
   .passthrough()
 
@@ -149,7 +171,9 @@ export const ItemSchema: z.ZodType<any> = z.object({
   placeholder: z.string().optional(),
   info: z.string().optional(),
   value: z.string().optional(),
-  option: z.union([z.array(OptionItemSchema), z.string()]).optional(),
+  option: z
+    .union([z.array(OptionItemSchema), z.string(), OptionConfigSchema])
+    .optional(),
   mode: z.enum(['form', 'table', 'search']).optional(),
   type: z.string(),
   meta: z.record(z.string(), z.any()).optional(),

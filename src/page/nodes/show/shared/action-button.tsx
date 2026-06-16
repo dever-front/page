@@ -45,6 +45,8 @@ type ActionButtonMeta = {
   hiddenCondition?: unknown
   hiddenWhen?: unknown
   icon?: string
+  id?: string
+  key?: string
   label?: string
   meta?: {
     confirm?: unknown
@@ -88,7 +90,12 @@ export function ActionButton({
   const navigate = useNavigate()
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const actionContext = context ?? (record ? { row: record } : undefined)
+  const actionContext = {
+    ...(context || {}),
+    ...(record ? { row: record } : {}),
+    item: buttonMeta,
+    itemKey: buttonMeta.key || buttonMeta.id || buttonMeta.stateKey,
+  }
 
   if (isActionButtonHidden(buttonMeta, record, actionContext)) {
     return null

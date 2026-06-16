@@ -32,7 +32,11 @@ import {
 } from '@/lib/form-control'
 import { validatePageSchema, type Item, type PageSchemaType } from '@/lib/schema'
 import { useStorePathValue } from '@/lib/store'
-import { useNodeOption } from '@/page/option'
+import {
+  sanitizeRouteOptionURL,
+  useNodeOption,
+  withRouteOptionContext,
+} from '@/page/option'
 import { FormInput } from './input'
 import { FormNumber } from './number'
 import { FormPassword } from './password'
@@ -860,6 +864,7 @@ function formatArrayOutputValue(rows: Record<string, any>[], outputFormat: strin
 
 type FillFromOptionConfig = {
   source: string
+  optionKey: string
   targetField: string
   valueField: string
   defaultRow: Record<string, any>
@@ -878,6 +883,9 @@ function normalizeFillFromOptionConfig(value: unknown): FillFromOptionConfig | n
   }
   return {
     source,
+    optionKey:
+      String(raw.optionKey || raw.key || raw.value || targetField).trim() ||
+      targetField,
     targetField,
     valueField: String(raw.valueField || 'id').trim() || 'id',
     defaultRow: raw.defaultRow && typeof raw.defaultRow === 'object' && !Array.isArray(raw.defaultRow)
@@ -980,12 +988,27 @@ function decodeFallbackSourceValue(value: unknown) {
 
 async function loadFillOptions(config: FillFromOptionConfig, store: NodeItemProps['store']) {
   if (isRemoteOptionSource(config.source)) {
-    const params = resolveOptionParams(config.params, { store })
-    if (config.params && Object.keys(params).length < Object.keys(config.params).length) {
+    const params = withRouteOptionContext(
+      config.source,
+      resolveOptionParams(config.params, { store }),
+      {
+        item: {
+          id: config.optionKey,
+          key: config.optionKey,
+          meta: {},
+          value: config.optionKey,
+        },
+        store,
+      }
+    )
+    if (
+      config.params &&
+      Object.keys(params).length < Object.keys(config.params).length
+    ) {
       return []
     }
     const result = await request(
-      config.source,
+      sanitizeRouteOptionURL(config.source),
       'get',
       params
     )

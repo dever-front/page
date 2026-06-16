@@ -4,6 +4,7 @@ import { getByPath } from '@/lib/path'
 import { request } from '@/lib/request'
 import type { OptionItem } from '@/lib/schema'
 import { useStorePathValue } from '@/lib/store'
+import { sanitizeRouteOptionURL, withRouteOptionContext } from '@/page/option'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -39,6 +40,12 @@ export function FormComboMapping({
   ).trim()
   const optionSource = String(item.meta?.optionSource || '').trim()
   const paramSource = String(item.meta?.paramSource || '').trim()
+  const optionSourceKey = String(
+    item.meta?.optionSourceKey || 'combo.optionSource'
+  ).trim()
+  const paramSourceKey = String(
+    item.meta?.paramSourceKey || 'combo.paramSource'
+  ).trim()
   const addText = String(item.meta?.addText || '添加字段值')
   const addAllText = String(item.meta?.addAllText || '添加全部字段值')
   const clearText = String(item.meta?.clearText || '清空')
@@ -61,10 +68,26 @@ export function FormComboMapping({
         setParamLabels({})
         return
       }
-      const result = await request(paramSource, 'get', {
-        selected: JSON.stringify(paramIDs),
-        pageSize: Math.max(paramIDs.length, 20),
-      })
+      const result = await request(
+        sanitizeRouteOptionURL(paramSource),
+        'get',
+        withRouteOptionContext(
+          paramSource,
+          {
+            selected: JSON.stringify(paramIDs),
+            pageSize: Math.max(paramIDs.length, 20),
+          },
+          {
+            item: {
+              id: paramSourceKey,
+              key: paramSourceKey,
+              meta: {},
+              value: paramSourceKey,
+            },
+            store,
+          }
+        )
+      )
       if (cancelled || result.code !== 0 || !Array.isArray(result.data)) {
         return
       }
@@ -83,7 +106,7 @@ export function FormComboMapping({
     return () => {
       cancelled = true
     }
-  }, [paramIDs, paramSource])
+  }, [paramIDs, paramSource, paramSourceKey, store])
 
   useEffect(() => {
     let cancelled = false
@@ -100,9 +123,25 @@ export function FormComboMapping({
 
       const loadedEntries = await Promise.all(
         missingParamIDs.map(async (paramID) => {
-          const result = await request(optionSource, 'get', {
-            parentId: paramID,
-          })
+          const result = await request(
+            sanitizeRouteOptionURL(optionSource),
+            'get',
+            withRouteOptionContext(
+              optionSource,
+              {
+                parentId: paramID,
+              },
+              {
+                item: {
+                  id: optionSourceKey,
+                  key: optionSourceKey,
+                  meta: {},
+                  value: optionSourceKey,
+                },
+                store,
+              }
+            )
+          )
           const options =
             result.code === 0 && Array.isArray(result.data)
               ? (result.data as OptionItem[])
@@ -127,7 +166,7 @@ export function FormComboMapping({
     return () => {
       cancelled = true
     }
-  }, [optionSource, paramIDs, paramOptions])
+  }, [optionSource, optionSourceKey, paramIDs, paramOptions, store])
 
   const commitRows = useCallback(
     (nextRows: ComboRow[]) => {

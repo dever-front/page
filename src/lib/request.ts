@@ -81,6 +81,7 @@ const remoteSchemaValueCache = new Map<
 >()
 let remoteSchemaCacheVersion = 0
 const REMOTE_SCHEMA_VALUE_CACHE_TTL = 1000
+const ROUTE_OPTION_BATCH_LIMIT = 100
 
 type BatchResult = {
   code?: number
@@ -803,17 +804,33 @@ async function flushRouteOptionBatch() {
     return
   }
 
-  try {
-    const raw = await requestRaw(batchApi, 'post', {
-      options: pending.map((item) => item.params),
-    })
-    const results = normalizeBatchResults(raw)
-    pending.forEach((item, index) => {
-      item.resolve(normalizeBatchResult(results[index]))
-    })
-  } catch {
-    await fallbackRouteOptionRequests(pending)
+  for (const chunk of chunkOptionBatch(pending, ROUTE_OPTION_BATCH_LIMIT)) {
+    try {
+      const raw = await requestRaw(batchApi, 'post', {
+        options: chunk.map((item) => item.params),
+      })
+      const results = normalizeBatchResults(raw)
+      chunk.forEach((item, index) => {
+        item.resolve(normalizeBatchResult(results[index]))
+      })
+    } catch {
+      await fallbackRouteOptionRequests(chunk)
+    }
   }
+}
+
+function chunkOptionBatch(
+  pending: OptionBatchPending[],
+  size: number
+): OptionBatchPending[][] {
+  if (pending.length <= size) {
+    return [pending]
+  }
+  const chunks: OptionBatchPending[][] = []
+  for (let index = 0; index < pending.length; index += size) {
+    chunks.push(pending.slice(index, index + size))
+  }
+  return chunks
 }
 
 async function fallbackRouteOptionRequests(pending: OptionBatchPending[]) {

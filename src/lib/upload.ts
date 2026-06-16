@@ -63,6 +63,7 @@ export type UploadDirectPayload = {
 
 type UploadInitPayload = {
   session_id: number
+  token: string
   transport: string
   chunk_size: number
   chunk_total: number
@@ -120,6 +121,7 @@ export async function uploadFileByRule(
 
   const completeResult = await request(joinFrontApi('upload/complete'), 'post', {
     session_id: payload.session_id,
+    token: payload.token,
   })
   if (completeResult.code !== 0 || !completeResult.data) {
     throw new Error(completeResult.message || '完成上传失败')
@@ -344,6 +346,7 @@ async function uploadFileByRelay(
     const end = Math.min(file.size, start + chunkSize)
     const chunk = file.slice(start, end)
     const formData = new FormData()
+    formData.append('token', payload.token)
     formData.append('file', chunk, file.name)
 
     const result = await request(

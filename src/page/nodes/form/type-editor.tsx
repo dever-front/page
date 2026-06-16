@@ -14,7 +14,11 @@ import { CONTROL_HIDDEN_WHEN_KEY } from '@/lib/page-control'
 import { joinFrontApi, request } from '@/lib/request'
 import { getStoreValueByPath, useStorePathValue } from '@/lib/store'
 import { cn } from '@/lib/utils'
-import { useNodeOption } from '@/page/option'
+import {
+  sanitizeRouteOptionURL,
+  useNodeOption,
+  withRouteOptionContext,
+} from '@/page/option'
 import type { Item, OptionItem } from '@/lib/schema'
 import type {
   AssistantFieldContext,
@@ -53,6 +57,7 @@ export function TypeEditor({ item, value, setValue, option, store, layoutId }: N
   const savePath = metaString(meta.savePath, '')
   const loadApi = metaString(meta.loadApi, '')
   const loadMethod = metaString(meta.loadMethod, 'get')
+  const loadKey = metaString(meta.loadKey || meta.optionKey, item.value || item.id)
   const fields = useMemo(() => normalizeFields(meta.fields), [meta.fields])
   const controlledFields = useMemo(() => applyTypeEditorFieldControls(fields), [fields])
   const defaultRecord = useMemo(
@@ -167,7 +172,14 @@ export function TypeEditor({ item, value, setValue, option, store, layoutId }: N
     let alive = true
     setLoading(true)
     setLoadError('')
-    request(loadApi, loadMethod, loadParams)
+    request(
+      sanitizeRouteOptionURL(loadApi),
+      loadMethod,
+      withRouteOptionContext(loadApi, loadParams, {
+        item: { id: loadKey, key: loadKey, meta: {}, value: loadKey },
+        store,
+      })
+    )
       .then((result) => {
         if (!alive) {
           return
@@ -188,7 +200,7 @@ export function TypeEditor({ item, value, setValue, option, store, layoutId }: N
     return () => {
       alive = false
     }
-  }, [contextReady, loadApi, loadMethod, loadParamsSignature])
+  }, [contextReady, loadApi, loadKey, loadMethod, loadParamsSignature, store])
 
   useEffect(() => {
     if (!selectedType) {
@@ -279,11 +291,7 @@ export function TypeEditor({ item, value, setValue, option, store, layoutId }: N
         joinFrontApi(`route/action?path=${savePath}`),
         'post',
         {
-          action: {
-            type: 'save',
-            before: meta.saveBefore,
-            upsert: meta.upsert === true,
-          },
+          key: String(meta.saveKey || 'submit').trim() || 'submit',
           payload,
         }
       )
