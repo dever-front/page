@@ -56,8 +56,8 @@ export function TeamSwitcher({
       type='button'
       className='h-12 gap-2 rounded-md p-2 text-sm group-data-[collapsible=icon]:rounded-md group-data-[collapsible=icon]:p-0! focus-visible:ring-0 data-[state=open]:ring-0'
     >
-      <div className='flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground'>
-        <SiteLogo className='size-[1.125rem]' />
+      <div className='flex aspect-square size-8 items-center justify-center rounded-lg bg-transparent text-foreground'>
+        <SiteLogo className='size-8' />
       </div>
       <div className='grid flex-1 text-start text-sm leading-tight group-data-[collapsible=icon]:hidden'>
         <span className='truncate font-semibold'>{activeTeam.name}</span>

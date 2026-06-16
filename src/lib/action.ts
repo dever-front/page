@@ -534,7 +534,7 @@ async function submitCrudAction(
 ): Promise<ActionRunResult> {
   const requestConfig = resolveCrudRequestConfig(store, config, context)
   const result = await request(
-    joinFrontApi(`route/action?path=${path}`),
+    joinFrontApi(resolveCrudActionRoute(store, path)),
     'post',
     {
       action: requestConfig,
@@ -579,6 +579,52 @@ async function submitCrudAction(
     success: true,
     data: result.data,
     message: result.message,
+  }
+}
+
+function resolveCrudActionRoute(store: PageStore, path: string) {
+  const params = new URLSearchParams()
+  params.set('path', path)
+
+  const routeQuery = store.getState().state?.route?.query
+  if (
+    routeQuery &&
+    typeof routeQuery === 'object' &&
+    !Array.isArray(routeQuery)
+  ) {
+    for (const [key, value] of Object.entries(routeQuery)) {
+      appendCrudActionQueryValue(params, key, value)
+    }
+  }
+
+  return `route/action?${params.toString()}`
+}
+
+function appendCrudActionQueryValue(
+  params: URLSearchParams,
+  key: string,
+  value: unknown
+) {
+  const queryKey = String(key || '').trim()
+  if (!queryKey || queryKey === 'path' || value == null) {
+    return
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      appendCrudActionQueryValue(params, queryKey, item)
+    }
+    return
+  }
+
+  if (typeof value === 'object') {
+    params.append(queryKey, JSON.stringify(value))
+    return
+  }
+
+  const queryValue = String(value).trim()
+  if (queryValue) {
+    params.append(queryKey, queryValue)
   }
 }
 

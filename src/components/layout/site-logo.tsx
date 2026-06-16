@@ -17,7 +17,7 @@ export function SiteLogo({ className }: SiteLogoProps) {
       <img
         src={logo}
         alt={site.name}
-        className={cn('size-6 shrink-0 object-contain', className)}
+        className={cn('size-6 shrink-0 object-contain object-center', className)}
         onError={() => setFailedLogo(logo)}
       />
     )
