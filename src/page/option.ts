@@ -24,7 +24,11 @@ import {
   appendStoreRouteQueryParams,
   normalizeRoutePagePath,
 } from '@/lib/route-context'
-import type { Item, OptionItem } from '@/lib/schema'
+import {
+  GENERATED_NODE_ID_META_KEY,
+  type Item,
+  type OptionItem,
+} from '@/lib/schema'
 import { resolveSelectCreateOptionReloadPath } from '@/lib/select-create-option'
 import { type PageStore, useStorePathValue } from '@/lib/store'
 
@@ -37,10 +41,15 @@ export type ResolvedNodeOption = {
   ) => Promise<OptionItem[] | undefined>
 }
 
+export type RouteOptionItem = Partial<Pick<
+  Item,
+  'id' | 'key' | 'meta' | 'option' | 'type' | 'mode' | 'value'
+>>
+
 export function useNodeOption(
   store: PageStore,
   optionConfig?: Item['option'],
-  item?: Pick<Item, 'id' | 'key' | 'type' | 'mode' | 'meta' | 'value'>,
+  item?: RouteOptionItem,
   row?: Record<string, any>
 ): ResolvedNodeOption {
   const staticOption = useMemo(() => {
@@ -122,12 +131,44 @@ export function useNodeOption(
     [row, rowOptionParamPaths]
   )
   const optionRequestRow = rowOptionParamPaths.length > 0 ? row : undefined
-  const remoteCacheKey = useMemo(
+  const routeOptionContextKey = useStore(
+    store,
+    useCallback(
+      (state) =>
+        JSON.stringify({
+          pagePath: state.pagePath,
+          schemaRoute: state.schema.page?.route,
+          routeQuery: state.state?.route?.query,
+        }),
+      []
+    )
+  )
+  const remoteRequestUrlBase = useMemo(
     () =>
       remoteUrl
-        ? `${resetVersion}:${remoteUrl}:${reloadKey}:${parentReloadKey}:${rowReloadKey}`
+        ? buildRemoteOptionURL(
+            remoteUrl,
+            undefined,
+            undefined,
+            item,
+            store,
+            optionRequestRow
+          )
         : '',
-    [parentReloadKey, reloadKey, remoteUrl, resetVersion, rowReloadKey]
+    [item, optionRequestRow, remoteUrl, routeOptionContextKey, store]
+  )
+  const remoteCacheKey = useMemo(
+    () =>
+      remoteRequestUrlBase
+        ? `${resetVersion}:${remoteRequestUrlBase}:${reloadKey}:${parentReloadKey}:${rowReloadKey}`
+        : '',
+    [
+      parentReloadKey,
+      reloadKey,
+      remoteRequestUrlBase,
+      resetVersion,
+      rowReloadKey,
+    ]
   )
   const [remoteOption, setRemoteOption] = useState<OptionItem[] | undefined>(
     undefined
@@ -450,7 +491,7 @@ function buildRemoteOptionURL(
   remoteUrl: string,
   keyword: string | undefined,
   selectedValue: unknown,
-  item: Pick<Item, 'id' | 'key' | 'meta' | 'value'> | undefined,
+  item: RouteOptionItem | undefined,
   store: PageStore,
   row?: Record<string, any>
 ) {
@@ -474,7 +515,7 @@ function buildRemoteOptionURL(
     !hasRemoteOptionParam(remoteUrl, 'path') &&
     !params.has('path')
   ) {
-    const pagePath = routeOptionPathWithQuery(store)
+    const pagePath = routeOptionPathWithQuery(store, item)
     if (pagePath) {
       params.set('path', pagePath)
     }
@@ -518,7 +559,7 @@ export function withRouteOptionContext(
   api: string,
   params: Record<string, any> | undefined,
   context: {
-    item?: Pick<Item, 'id' | 'key' | 'meta' | 'value'>
+    item?: RouteOptionItem
     store: PageStore
   }
 ) {
@@ -529,7 +570,7 @@ export function withRouteOptionContext(
   retainRouteOptionObjectParams(nextParams)
 
   if (!hasParamValue(nextParams.path)) {
-    const pagePath = routeOptionPathWithQuery(context.store)
+    const pagePath = routeOptionPathWithQuery(context.store, context.item)
     if (pagePath) {
       nextParams.path = pagePath
     }
@@ -548,6 +589,19 @@ export function withRouteOptionContext(
 const routeOptionParamAllowList = new Set([
   'path',
   'key',
+  'valueField',
+  'labelField',
+  'parentField',
+  'leafField',
+  'order',
+  'pageSize',
+  'page',
+  'tree',
+  'rootValue',
+  'extraFields',
+  'searchFields',
+  'filterField',
+  'filterValue',
   'keyword',
   'selected',
   'parentId',
@@ -556,7 +610,7 @@ const routeOptionParamAllowList = new Set([
 
 function retainRouteOptionParams(params: URLSearchParams) {
   for (const key of Array.from(params.keys())) {
-    if (!routeOptionParamAllowList.has(key)) {
+    if (!isAllowedRouteOptionParam(key)) {
       params.delete(key)
     }
   }
@@ -564,21 +618,32 @@ function retainRouteOptionParams(params: URLSearchParams) {
 
 function retainRouteOptionObjectParams(params: Record<string, any>) {
   for (const key of Object.keys(params)) {
-    if (!routeOptionParamAllowList.has(key)) {
+    if (!isAllowedRouteOptionParam(key)) {
       delete params[key]
     }
   }
 }
 
-function routeOptionPathWithQuery(store: PageStore) {
+function isAllowedRouteOptionParam(key: string) {
+  return (
+    routeOptionParamAllowList.has(key) ||
+    key === '_inherit' ||
+    key === '_parentPath' ||
+    key.startsWith('_parent_')
+  )
+}
+
+function routeOptionPathWithQuery(store: PageStore, item?: RouteOptionItem) {
+  const optionPath = String(item?.meta?.optionPath || '').trim()
+  const [optionPathname, optionRawQuery = ''] = optionPath.split('?')
   const pagePath = normalizeRoutePagePath(
-    store.getState().pagePath || store.getState().schema.page?.route || ''
+    optionPathname || store.getState().pagePath || store.getState().schema.page?.route || ''
   )
   if (!pagePath) {
     return ''
   }
 
-  const routeParams = new URLSearchParams()
+  const routeParams = new URLSearchParams(optionRawQuery)
   appendStoreRouteQueryParams(routeParams, store)
   const query = routeParams.toString()
   return query ? `${pagePath}?${query}` : pagePath
@@ -587,12 +652,9 @@ function routeOptionPathWithQuery(store: PageStore) {
 function applyRouteOptionKeyParam(
   routeOptionRequest: boolean,
   params: URLSearchParams,
-  item: Pick<Item, 'id' | 'key' | 'meta' | 'value'> | undefined
+  item: RouteOptionItem | undefined
 ) {
-  if (
-    !routeOptionRequest ||
-    params.has('key')
-  ) {
+  if (!routeOptionRequest || params.has('key')) {
     return
   }
 
@@ -602,23 +664,124 @@ function applyRouteOptionKeyParam(
   }
 }
 
-function resolveRouteOptionKey(
-  item: Pick<Item, 'id' | 'key' | 'meta' | 'value'> | undefined
-) {
+function resolveRouteOptionKey(item: RouteOptionItem | undefined) {
   const meta = item?.meta ?? {}
-  for (const candidate of [
+  const option = readRouteOptionObject(item?.option)
+  const hasExplicitSource = hasItemRouteOptionSource(item)
+  const stableCandidates = [
     meta.optionKey,
     (item as Record<string, any> | undefined)?.optionKey,
     item?.key,
-    item?.id,
-    item?.value,
-  ]) {
+    meta.loadKey,
+    meta.sourceKey,
+    meta.optionSourceKey,
+    meta.paramSourceKey,
+    nestedRouteOptionKey(meta.fillFromOption),
+    option?.key,
+  ]
+  const explicitID = explicitRouteOptionItemID(item)
+  const generatedID = generatedRouteOptionItemID(item)
+  const fieldCandidates = hasExplicitSource
+    ? [explicitID, item?.value, generatedID]
+    : [item?.value, explicitID, generatedID]
+  const candidates = [...stableCandidates, ...fieldCandidates]
+
+  for (const candidate of candidates) {
     const key = normalizeRouteOptionKey(candidate)
     if (key) {
       return key
     }
   }
   return ''
+}
+
+function explicitRouteOptionItemID(item: RouteOptionItem | undefined) {
+  if (!item || item.meta?.[GENERATED_NODE_ID_META_KEY] === true) {
+    return undefined
+  }
+  return item.id
+}
+
+function generatedRouteOptionItemID(item: RouteOptionItem | undefined) {
+  if (!item || item.meta?.[GENERATED_NODE_ID_META_KEY] !== true) {
+    return undefined
+  }
+  return item.id
+}
+
+const routeOptionSourceKeys = ['use', 'model', 'service', 'type']
+const routeOptionSourceMetaKeys = [
+  'use',
+  'model',
+  'service',
+  'childUse',
+  'childModel',
+  'childService',
+]
+
+function hasItemRouteOptionSource(item?: RouteOptionItem) {
+  const meta = item?.meta ?? {}
+  for (const key of routeOptionSourceMetaKeys) {
+    if (hasParamValue(meta[key])) {
+      return true
+    }
+  }
+  for (const key of routeOptionMetaSourceKeys) {
+    if (hasRouteOptionSourceValue(meta[key])) {
+      return true
+    }
+  }
+  if (hasNestedRouteOptionSource(meta.fillFromOption)) {
+    return true
+  }
+  const option = readRouteOptionObject(item?.option)
+  if (option) {
+    for (const key of routeOptionSourceKeys) {
+      if (hasParamValue(option[key])) {
+        return true
+      }
+    }
+  }
+  return hasRouteOptionSourceValue(item?.option)
+}
+
+const routeOptionMetaSourceKeys = [
+  'loadOption',
+  'loadApi',
+  'source',
+  'optionSource',
+  'optionSourceOption',
+  'paramSource',
+  'paramSourceOption',
+]
+
+function readRouteOptionObject(option: Item['option'] | undefined) {
+  if (option && typeof option === 'object' && !Array.isArray(option)) {
+    return option as Record<string, any>
+  }
+  return undefined
+}
+
+function nestedRouteOptionKey(raw: unknown) {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return (raw as Record<string, any>).optionKey
+  }
+  return undefined
+}
+
+function hasNestedRouteOptionSource(raw: unknown) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return false
+  }
+  const config = raw as Record<string, any>
+  return hasRouteOptionSourceValue(config.option) || hasRouteOptionSourceValue(config.source)
+}
+
+function hasRouteOptionSourceValue(raw: unknown) {
+  if (typeof raw === 'string') {
+    return isFrontRouteOptionURL(raw)
+  }
+  return !!raw && typeof raw === 'object' && !Array.isArray(raw)
 }
 
 function normalizeRouteOptionKey(value: unknown) {
@@ -636,32 +799,18 @@ function readRouteOptionSafeParams(api: string) {
   const params = new URLSearchParams()
   try {
     const parsed = new URL(api, window.location.origin)
-    for (const key of [
-      'path',
-      'key',
-      'keyword',
-      'selected',
-      'parentId',
-      'level',
-    ]) {
+    for (const key of parsed.searchParams.keys()) {
       const value = parsed.searchParams.get(key)
-      if (value != null && value !== '') {
+      if (isAllowedRouteOptionParam(key) && value != null && value !== '') {
         params.set(key, value)
       }
     }
   } catch {
     const [, query = ''] = api.split('?')
     const source = new URLSearchParams(query)
-    for (const key of [
-      'path',
-      'key',
-      'keyword',
-      'selected',
-      'parentId',
-      'level',
-    ]) {
+    for (const key of source.keys()) {
       const value = source.get(key)
-      if (value != null && value !== '') {
+      if (isAllowedRouteOptionParam(key) && value != null && value !== '') {
         params.set(key, value)
       }
     }

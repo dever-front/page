@@ -1,4 +1,4 @@
-import type { LayoutNode, PageSchemaType } from '@/lib/schema'
+import type { PageSchemaType } from '@/lib/schema'
 
 type NodeLike = {
   type?: unknown
@@ -25,14 +25,6 @@ export function collectSchemaNodeTypes(
   return Array.from(types)
 }
 
-export function collectLayoutPageRoutes(
-  schema: PageSchemaType | null | undefined
-) {
-  const routes = new Set<string>()
-  collectLayoutRoutes(schema?.layout, routes)
-  return Array.from(routes)
-}
-
 function collectNodeTypes(
   node: NodeLike | null | undefined,
   types: Set<string>
@@ -54,23 +46,5 @@ function addType(types: Set<string>, value: unknown) {
   const type = String(value || '').trim()
   if (type) {
     types.add(type)
-  }
-}
-
-function collectLayoutRoutes(
-  layout: LayoutNode | null | undefined,
-  routes: Set<string>
-) {
-  if (!layout || typeof layout !== 'object') {
-    return
-  }
-
-  const path = String(layout.path || '').trim()
-  if (path.startsWith('/')) {
-    routes.add(path)
-  }
-
-  for (const child of Object.values(layout.children ?? {})) {
-    collectLayoutRoutes(child, routes)
   }
 }

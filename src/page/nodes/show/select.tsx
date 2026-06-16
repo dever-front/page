@@ -31,7 +31,10 @@ export type ShowSelectProps = NodeItemProps & {
   editable?: boolean
   selectOptions?: SelectOption[]
   changeAction?: any
-  onValueChangeSuccess?: (nextValue: string, option: SelectOption) => void
+  onValueChangeSuccess?: (
+    nextValue: string | number,
+    option: SelectOption
+  ) => void
 }
 
 export function ShowSelect({
@@ -109,6 +112,7 @@ export function ShowSelect({
       <DropdownMenuContent align="start" className="min-w-[9rem]">
         {editableOptions.map((current) => {
           const optionId = String(current?.id ?? current?.value ?? '')
+          const optionValue = current?.id ?? current?.value ?? ''
           const currentId = String(currentValue.id ?? currentValue.value ?? '')
           const isCurrent = optionId === currentId
 
@@ -160,11 +164,11 @@ export function ShowSelect({
                 try {
                   const result = await runActionsWithResult(store, changeAction, {
                     row,
-                    value: optionId,
+                    value: optionValue,
                     option: current,
                   })
                   if (result.success) {
-                    onValueChangeSuccess?.(optionId, current)
+                    onValueChangeSuccess?.(optionValue, current)
                     if (!onValueChangeSuccess) {
                       await refreshCurrentPage(store)
                     }

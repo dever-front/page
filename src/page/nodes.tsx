@@ -89,7 +89,7 @@ function NodeItem({ item, store, layoutId }: NodeItemComponentProps) {
   // 解析 option
   const { option, optionLoading, ensureOptionLoaded } = useNodeOption(
     store,
-    item.option,
+    hidden ? undefined : item.option,
     item
   )
 

@@ -12,6 +12,7 @@ import {
   appendStoreRouteQueryParams,
   normalizeRoutePagePath,
 } from './route-context'
+import { buildInheritedPageRoute } from './route-inherit'
 import type { ActionConfig } from './schema'
 import type { PageStore } from './store'
 
@@ -595,9 +596,37 @@ function resolveCrudActionRoute(
   params.set('path', normalizeRoutePagePath(path))
   if (shouldInheritCrudRouteQuery(store, config, path)) {
     appendStoreRouteQueryParams(params, store)
+  } else {
+    appendInheritedCrudRouteParams(params, store, config, path)
   }
 
   return `route/action?${params.toString()}`
+}
+
+function appendInheritedCrudRouteParams(
+  params: URLSearchParams,
+  store: PageStore,
+  config: ActionConfig,
+  path: string
+) {
+  if (config.inheritRouteQuery === false) {
+    return
+  }
+
+  const inheritedRoute = buildInheritedPageRoute(path, store)
+  const queryIndex = inheritedRoute.indexOf('?')
+  if (queryIndex < 0) {
+    return
+  }
+
+  const inheritedParams = new URLSearchParams(
+    inheritedRoute.slice(queryIndex + 1)
+  )
+  for (const [key, value] of inheritedParams.entries()) {
+    if (!params.has(key)) {
+      params.append(key, value)
+    }
+  }
 }
 
 function shouldInheritCrudRouteQuery(

@@ -400,6 +400,7 @@ export function FormCascader({
   ])
 
   const allowWrap = item.meta?.wrap !== false
+  const hasVisibleLevels = displayLevels.some((options) => options.length > 0)
 
   return (
     <div
@@ -408,7 +409,7 @@ export function FormCascader({
         allowWrap ? 'flex-wrap' : 'flex-nowrap overflow-x-auto'
       )}
     >
-      {displayLevels.length === 0 ? (
+      {!hasVisibleLevels ? (
         <div
           className={cn(
             'flex h-10 w-[14rem] max-w-full min-w-[10rem] items-center rounded-md border border-input bg-background px-3 text-sm text-muted-foreground shadow-xs',

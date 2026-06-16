@@ -4,6 +4,7 @@
  */
 import { useMemo } from 'react'
 import { usePageStore, type PageStore, useStorePathValue } from '@/lib/store'
+import { buildInheritedPageRoute } from '@/lib/route-inherit'
 import { layoutRegistry } from '@/lib/registry'
 import type { LayoutNode as LayoutNodeType } from '@/lib/schema'
 import { NodeList } from './nodes'
@@ -37,6 +38,10 @@ function LayoutNodeRenderer({ layoutId, config, store }: LayoutNodeRendererProps
   }
 
   const resolvedPath = useResolvedPath(store, config.path)
+  const inheritedPath = useMemo(
+    () => (resolvedPath ? buildInheritedPageRoute(resolvedPath, store) : ''),
+    [resolvedPath, store]
+  )
 
   const childrenElements = useMemo(() => {
     if (!config.children) return null
@@ -45,9 +50,9 @@ function LayoutNodeRenderer({ layoutId, config, store }: LayoutNodeRendererProps
     ))
   }, [config.children, store])
 
-  const content = resolvedPath ? (
+  const content = inheritedPath ? (
     <Page
-      route={resolvedPath}
+      route={inheritedPath}
       parentStore={store}
       updateDocumentTitle={config.meta?.updateDocumentTitle !== false}
     />

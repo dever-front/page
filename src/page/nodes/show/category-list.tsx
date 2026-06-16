@@ -48,6 +48,7 @@ export function ShowCategoryList({
   const uncategorizedLabel = String(item.meta?.uncategorizedLabel || '未分类').trim() || '未分类'
   const selectable = item.meta?.selectable !== false
   const remote = item.meta?.remote === true
+  const syncQuery = item.meta?.syncQuery === true
   const defaultFirst = item.meta?.defaultFirst === true
   const sortable = item.meta?.sortable === true
   const sortField = String(item.meta?.sortField || 'sort').trim() || 'sort'
@@ -89,7 +90,7 @@ export function ShowCategoryList({
       const assignValue = normalizedValue || ''
       setValue(assignValue)
 
-      if (!remote || !queryKey) {
+      if (!remote || !queryKey || !syncQuery) {
         return
       }
 
@@ -103,7 +104,7 @@ export function ShowCategoryList({
         }),
       })
     },
-    [navigate, queryKey, remote, selectable, setValue]
+    [navigate, queryKey, remote, selectable, setValue, syncQuery]
   )
 
   useEffect(() => {

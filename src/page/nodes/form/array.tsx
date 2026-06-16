@@ -25,12 +25,19 @@ import { moveArrayItem } from '@/lib/array'
 import { getByPath, setByPath } from '@/lib/path'
 import { applyOptionFilters } from '@/lib/option-filter'
 import { resolveOptionParams } from '@/lib/option-params'
+import { normalizeRoutePagePath } from '@/lib/route-context'
+import { buildInheritedPageRoute } from '@/lib/route-inherit'
 import {
   isSameControlValue,
   normalizeClearOnChangePaths,
   normalizeFormRowFieldPath,
 } from '@/lib/form-control'
-import { validatePageSchema, type Item, type PageSchemaType } from '@/lib/schema'
+import {
+  GENERATED_NODE_ID_META_KEY,
+  validatePageSchema,
+  type Item,
+  type PageSchemaType,
+} from '@/lib/schema'
 import { useStorePathValue } from '@/lib/store'
 import {
   sanitizeRouteOptionURL,
@@ -96,7 +103,7 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
   const fallbackRowsSourceValue = useStorePathValue(store, fallbackRowsConfig?.source)
   const sortField = dragEnabled ? dragField : ''
   const inheritedPageRoute = useMemo(
-    () => buildInheritedFormPageRoute(pageRoute, store),
+    () => buildInheritedPageRoute(pageRoute, store),
     [pageRoute, store]
   )
   const rows = useMemo(
@@ -150,7 +157,7 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
         }
 
         const schema = validatePageSchema(rawSchema)
-        const resolved = resolveArrayRowSchema(schema, layoutId)
+        const resolved = resolveArrayRowSchema(schema, layoutId, inheritedPageRoute)
         if (!cancelled) {
           setRowSchema(resolved)
         }
@@ -513,10 +520,29 @@ function ArrayFormCell({
     allowScoped: true,
   })
   const controlRow = useStableArrayControlRow(row, sortField, fieldPath)
+  const cellItem = useMemo<Item>(
+    () => ({
+      ...item,
+      id: `${item.id || 'array-item'}-${rowKey}`,
+      mode: undefined,
+      className: cn('w-full', item.className),
+      meta: {
+        ...item.meta,
+        ...resolveArrayRouteOptionKeyPatch(item),
+        formLayout: undefined,
+        wrap: item.meta?.wrap ?? (editorType === 'form-cascader' ? false : undefined),
+        controlClassName: cn(
+          resolveArrayCellControlClassName(editorType),
+          item.meta?.controlClassName
+        ),
+      },
+    }),
+    [editorType, item, rowKey]
+  )
   const { option, optionLoading, ensureOptionLoaded } = useNodeOption(
     store,
-    item.option,
-    item,
+    cellItem.option,
+    cellItem,
     controlRow
   )
   const rowScopedOption = useMemo(() => {
@@ -557,25 +583,6 @@ function ArrayFormCell({
     void ensureOptionLoaded?.(undefined, value)
   }, [ensureOptionLoaded, value])
 
-  const cellItem = useMemo<Item>(
-    () => ({
-      ...item,
-      id: `${item.id || 'array-item'}-${rowKey}`,
-      mode: undefined,
-      className: cn('w-full', item.className),
-      meta: {
-        ...item.meta,
-        formLayout: undefined,
-        wrap: item.meta?.wrap ?? (editorType === 'form-cascader' ? false : undefined),
-        controlClassName: cn(
-          resolveArrayCellControlClassName(editorType),
-          item.meta?.controlClassName
-        ),
-      },
-    }),
-    [editorType, item, rowKey]
-  )
-
   return (
     <EditorComponent
       item={cellItem}
@@ -593,6 +600,103 @@ function ArrayFormCell({
   )
 }
 
+function resolveArrayRouteOptionKeyPatch(item: Item) {
+  const originalId = String(item.id || '').trim()
+  if (!originalId || item.meta?.[GENERATED_NODE_ID_META_KEY] === true) {
+    return {}
+  }
+  if (hasArrayRouteOptionStableKey(item) || !hasArrayRouteOptionSource(item)) {
+    return {}
+  }
+  return { optionKey: originalId }
+}
+
+function hasArrayRouteOptionStableKey(item: Item) {
+  const meta = item.meta ?? {}
+  const option = readArrayRouteOptionObject(item.option)
+  return [
+    meta.optionKey,
+    (item as Record<string, any>).optionKey,
+    item.key,
+    meta.loadKey,
+    meta.sourceKey,
+    meta.optionSourceKey,
+    meta.paramSourceKey,
+    readNestedArrayRouteOptionKey(meta.fillFromOption),
+    option?.key,
+  ].some(hasArrayRouteOptionValue)
+}
+
+function hasArrayRouteOptionSource(item: Item) {
+  const meta = item.meta ?? {}
+  const option = readArrayRouteOptionObject(item.option)
+  if ([
+    meta.use,
+    meta.model,
+    meta.service,
+    meta.childUse,
+    meta.childModel,
+    meta.childService,
+    option?.use,
+    option?.model,
+    option?.service,
+    option?.type,
+  ].some(hasArrayRouteOptionValue)) {
+    return true
+  }
+
+  if (hasNestedArrayRouteOptionSource(meta.fillFromOption)) {
+    return true
+  }
+
+  return [
+    meta.loadOption,
+    meta.loadApi,
+    meta.source,
+    meta.optionSource,
+    meta.optionSourceOption,
+    meta.paramSource,
+    meta.paramSourceOption,
+    item.option,
+  ].some(hasArrayRouteOptionSourceValue)
+}
+
+function readArrayRouteOptionObject(option: Item['option'] | undefined) {
+  if (option && typeof option === 'object' && !Array.isArray(option)) {
+    return option as Record<string, any>
+  }
+  return undefined
+}
+
+function readNestedArrayRouteOptionKey(raw: unknown) {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return (raw as Record<string, any>).optionKey
+  }
+  return undefined
+}
+
+function hasNestedArrayRouteOptionSource(raw: unknown) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return false
+  }
+  const config = raw as Record<string, any>
+  return (
+    hasArrayRouteOptionSourceValue(config.option) ||
+    hasArrayRouteOptionSourceValue(config.source)
+  )
+}
+
+function hasArrayRouteOptionSourceValue(value: unknown) {
+  if (typeof value === 'string') {
+    return value.includes('route/option')
+  }
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function hasArrayRouteOptionValue(value: unknown) {
+  return String(value ?? '').trim() !== ''
+}
+
 function resolveArrayCellControlClassName(editorType: string) {
   const base = 'h-9 rounded-lg bg-background shadow-none'
   if (editorType === 'form-cascader') {
@@ -601,65 +705,11 @@ function resolveArrayCellControlClassName(editorType: string) {
   return `${base} w-full min-w-[11rem]`
 }
 
-function buildInheritedFormPageRoute(route: string, store: NodeItemProps['store']) {
-  const currentRoute = String(route || '').trim()
-  if (!currentRoute) {
-    return ''
-  }
-
-  const [pathname, rawQuery = ''] = currentRoute.split('?')
-  const searchParams = new URLSearchParams(rawQuery)
-  const parentRoute = String(store.getState().pagePath || store.getState().schema.page?.route || '')
-  const [parentPath, parentRawQuery = ''] = parentRoute.split('?')
-  const normalizedParentPath = parentPath.replace(/[?#].*$/, '').replace(/^\/+|\/+$/g, '')
-  if (!normalizedParentPath) {
-    return currentRoute
-  }
-
-  searchParams.set('_inherit', 'form')
-  searchParams.set('_parentPath', normalizedParentPath)
-
-  for (const [key, value] of new URLSearchParams(parentRawQuery).entries()) {
-    appendParentQueryValue(searchParams, key, value)
-  }
-
-  const routeQuery = store.getState().state?.route?.query
-  if (routeQuery && typeof routeQuery === 'object' && !Array.isArray(routeQuery)) {
-    for (const [key, value] of Object.entries(routeQuery)) {
-      appendParentQueryValue(searchParams, key, value)
-    }
-  }
-
-  const queryString = searchParams.toString()
-  return queryString ? `${pathname}?${queryString}` : pathname
-}
-
-function appendParentQueryValue(
-  searchParams: URLSearchParams,
-  key: string,
-  value: unknown
-) {
-  const normalizedKey = String(key || '').trim()
-  if (!normalizedKey || value == null || value === '') {
-    return
-  }
-
-  const targetKey = `_parent_${normalizedKey}`
-  searchParams.delete(targetKey)
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      if (item != null && String(item).trim() !== '') {
-        searchParams.append(targetKey, String(item))
-      }
-    }
-    return
-  }
-
-  searchParams.set(targetKey, String(value))
-}
-
-function resolveArrayRowSchema(schema: PageSchemaType, layoutId?: string): ArrayRowSchema {
+function resolveArrayRowSchema(
+  schema: PageSchemaType,
+  layoutId?: string,
+  pageRoute?: string
+): ArrayRowSchema {
   const layoutItems =
     (layoutId && schema.nodes?.[layoutId]) ||
     Object.values(schema.nodes ?? {}).find((items) => Array.isArray(items) && items.length > 0) ||
@@ -669,7 +719,7 @@ function resolveArrayRowSchema(schema: PageSchemaType, layoutId?: string): Array
     throw new Error('子表单模板没有可用字段')
   }
 
-  const items = applyChildSchemaOptions(layoutItems, schema)
+  const items = applyChildSchemaOptions(layoutItems, schema, pageRoute)
   const formTemplate =
     schema.data?.form && typeof schema.data.form === 'object'
       ? structuredClone(schema.data.form)
@@ -681,22 +731,52 @@ function resolveArrayRowSchema(schema: PageSchemaType, layoutId?: string): Array
   }
 }
 
-function applyChildSchemaOptions(items: Item[], schema: PageSchemaType) {
+function applyChildSchemaOptions(
+  items: Item[],
+  schema: PageSchemaType,
+  pageRoute?: string
+) {
+  const optionPath = normalizeOptionPathWithQuery(pageRoute)
   return items.map((item) => {
-    if (typeof item.option !== 'string' || isRemoteOptionSource(item.option)) {
-      return item
+    const nextItem = optionPath
+      ? {
+          ...item,
+          meta: {
+            ...item.meta,
+            optionPath: item.meta?.optionPath || optionPath,
+          },
+        }
+      : item
+
+    if (typeof nextItem.option !== 'string' || isRemoteOptionSource(nextItem.option)) {
+      return nextItem
     }
 
-    const options = getByPath(schema.data ?? {}, item.option)
+    const options = getByPath(schema.data ?? {}, nextItem.option)
     if (!Array.isArray(options)) {
-      return item
+      return nextItem
     }
 
     return {
-      ...item,
+      ...nextItem,
       option: structuredClone(options),
     }
   })
+}
+
+function normalizeOptionPathWithQuery(route?: string) {
+  const currentRoute = String(route || '').trim()
+  if (!currentRoute) {
+    return ''
+  }
+
+  const [pathname, rawQuery = ''] = currentRoute.split('?')
+  const optionPath = normalizeRoutePagePath(pathname)
+  if (!optionPath) {
+    return ''
+  }
+
+  return rawQuery ? `${optionPath}?${rawQuery}` : optionPath
 }
 
 function buildArrayTemplate(items: Item[]) {

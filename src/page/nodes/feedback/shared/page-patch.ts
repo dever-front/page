@@ -1,4 +1,5 @@
 import { getByPath, isScopedStorePath, setByPath } from '@/lib/path'
+import { buildInheritedPageRoute } from '@/lib/route-inherit'
 import { appendRouteQueryParams } from '@/lib/route-context'
 import type { PageSchemaType } from '@/lib/schema'
 import type { PageStore } from '@/lib/store'
@@ -69,7 +70,8 @@ export function buildPageRouteWithQuery(
     return ''
   }
 
-  const [pathname, rawQuery = ''] = currentRoute.split('?')
+  const inheritedRoute = buildInheritedPageRoute(currentRoute, store)
+  const [pathname, rawQuery = ''] = inheritedRoute.split('?')
   const searchParams = new URLSearchParams(rawQuery)
   appendRouteQueryParams(searchParams, resolvePageRouteQuery(store, meta), {
     objectMode: 'skip',

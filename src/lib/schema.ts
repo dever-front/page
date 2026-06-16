@@ -5,6 +5,8 @@
 import { z } from 'zod'
 import { applyPageControlRules } from './page-control'
 
+export const GENERATED_NODE_ID_META_KEY = '__generatedNodeId'
+
 // ========== Action Schema ==========
 
 const RequestMethodSchema = z.preprocess(
@@ -232,10 +234,20 @@ export const NodesSchema = z
     return Object.fromEntries(
       Object.entries(nodes).map(([layoutId, items]) => [
         layoutId,
-        items.map((item, index) => ({
-          ...item,
-          id: item.id ?? `${layoutId}-${index}`,
-        })),
+        items.map((item, index) => {
+          if (item.id != null) {
+            return item
+          }
+
+          return {
+            ...item,
+            id: `${layoutId}-${index}`,
+            meta: {
+              ...item.meta,
+              [GENERATED_NODE_ID_META_KEY]: true,
+            },
+          }
+        }),
       ])
     )
   })
