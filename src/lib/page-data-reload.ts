@@ -1,6 +1,8 @@
 import { getByPath } from './path'
+import { finishPageProgress, startPageProgress } from './page-progress'
 import { normalizeRemoteSearchValue } from './remote-search'
 import { loadPageDataContainer } from './request'
+import { getActiveRouteNavigationKey, normalizeRouteKey } from './route-key'
 import type { PageStore } from './store'
 
 type PageDataPayload = {
@@ -10,6 +12,7 @@ type PageDataPayload = {
 }
 
 const DEFAULT_CONTAINER_KEY = 'table'
+let dataReloadProgressSequence = 0
 
 export async function reloadStoreDataContainer(
   store: PageStore | null | undefined,
@@ -26,24 +29,35 @@ export async function reloadStoreDataContainer(
     return false
   }
 
-  const payload = (await loadPageDataContainer(
+  const progressToken = startPageProgress(
     route,
-    containerKey,
-    buildDataContainerQuery(state.data, containerKey)
-  )) as PageDataPayload | null
-  if (!payload || !('data' in payload)) {
-    return false
-  }
+    buildDataReloadProgressKey(route, containerKey)
+  )
 
-  const currentState = store.getState()
-  currentState.setValueByPath(`data.${containerKey}`, payload.data)
-  if (payload.option && isPlainObject(payload.option)) {
-    currentState.setValueByPath('data.option', {
-      ...(currentState.data?.option ?? {}),
-      ...payload.option,
-    })
+  try {
+    const payload = (await loadPageDataContainer(
+      route,
+      containerKey,
+      buildDataContainerQuery(state.data, containerKey)
+    )) as PageDataPayload | null
+    if (!payload || !('data' in payload)) {
+      return false
+    }
+
+    const currentState = store.getState()
+    currentState.setValueByPath(`data.${containerKey}`, payload.data)
+    if (payload.option && isPlainObject(payload.option)) {
+      currentState.setValueByPath('data.option', {
+        ...(currentState.data?.option ?? {}),
+        ...payload.option,
+      })
+    }
+    return true
+  } finally {
+    if (progressToken) {
+      finishPageProgress(progressToken)
+    }
   }
-  return true
 }
 
 export function normalizeDataContainerKey(key?: string) {
@@ -88,6 +102,16 @@ function appendPageQuery(query: Record<string, unknown>, container: unknown) {
 
 function normalizeContainerKey(key: string) {
   return normalizeDataContainerKey(key)
+}
+
+function buildDataReloadProgressKey(route: string, containerKey: string) {
+  const baseKey = getActiveRouteNavigationKey() || normalizeRouteKey(route)
+  if (!baseKey) {
+    return ''
+  }
+
+  dataReloadProgressSequence += 1
+  return `${baseKey}:reload:data:${containerKey}:${dataReloadProgressSequence}`
 }
 
 function isPlainObject(value: unknown): value is Record<string, any> {
