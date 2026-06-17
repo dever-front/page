@@ -681,6 +681,33 @@ export async function loadPageSchema(
   }
 }
 
+export async function loadPageDataContainer(
+  route: string,
+  key: string,
+  params: Record<string, unknown> = {}
+) {
+  const normalizedRoute = normalizeRoute(route)
+  const dataKey = String(key || '').trim()
+  if (!normalizedRoute || !dataKey) {
+    return null
+  }
+
+  const routeApi = joinFrontApi('route/data')
+  if (!routeApi) {
+    return null
+  }
+
+  const result = await request(routeApi, 'get', {
+    ...params,
+    __route: normalizedRoute,
+    __dataKey: dataKey,
+  })
+  if (Number(result?.code ?? 0) !== 0) {
+    return null
+  }
+  return result.data ?? null
+}
+
 async function loadPageSchemaSingle(
   routeApi: string,
   normalizedRoute: string,

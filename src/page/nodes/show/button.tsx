@@ -17,8 +17,10 @@ import {
   buildRemoteSearchPatch,
   buildRemoteSearchResetPatch,
   isManualRemoteSearchLayout,
+  normalizeRemoteSearchValue,
   resetRemoteSearchValues,
 } from '@/lib/remote-search'
+import { normalizeDataContainerKey, reloadStoreDataContainer } from '@/lib/page-data-reload'
 import {
   getNavigationBackTarget,
   parseInternalNavigationHref,
@@ -64,14 +66,20 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
     }
 
     if (item.meta?.searchSubmit === true) {
+      const searchPatch = buildRemoteSearchPatch(
+        store.getState(),
+        String(item.meta?.searchLayoutId || layoutId || '').trim()
+      )
+      applySearchPatchToStore(store, searchPatch, resolveReloadDataKey(item.meta))
+      if (await reloadStoreDataContainer(store, resolveReloadDataKey(item.meta))) {
+        return true
+      }
+
       navigate({
         to: getCurrentRouterPathname(),
         search: (prev: Record<string, unknown>) => ({
           ...prev,
-          ...buildRemoteSearchPatch(
-            store.getState(),
-            String(item.meta?.searchLayoutId || layoutId || '').trim()
-          ),
+          ...searchPatch,
         }),
       })
       return true
@@ -102,12 +110,19 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
         targetPath === getCurrentRouterPathname() &&
         isManualRemoteSearchLayout(store.getState().schema, searchLayoutId)
       ) {
+        const resetPatch = buildRemoteSearchResetPatch(store.getState().schema, searchLayoutId)
+        const reloadKey = resolveReloadDataKey(item.meta)
         resetRemoteSearchValues(store, searchLayoutId)
+        applySearchPatchToStore(store, { page: undefined }, reloadKey)
+        if (await reloadStoreDataContainer(store, reloadKey)) {
+          return true
+        }
+
         navigate({
           to: targetPath,
           search: (prev: Record<string, unknown>) => ({
             ...prev,
-            ...buildRemoteSearchResetPatch(store.getState().schema, searchLayoutId),
+            ...resetPatch,
           }),
         })
         return true
@@ -211,4 +226,28 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
       ) : null}
     </>
   )
+}
+
+function resolveReloadDataKey(meta: Record<string, any> | undefined) {
+  return normalizeDataContainerKey(String(meta?.reloadDataKey || meta?.reloadKey || 'table'))
+}
+
+function applySearchPatchToStore(
+  store: NodeItemProps['store'],
+  patch: Record<string, unknown>,
+  reloadKey: string
+) {
+  for (const [key, value] of Object.entries(patch)) {
+    if (key === 'page') {
+      store.getState().setValueByPath(`data.${reloadKey}.page`, 1)
+      continue
+    }
+    if (key === 'pageSize') {
+      store.getState().setValueByPath(`data.${reloadKey}.pageSize`, value)
+      continue
+    }
+
+    const normalized = normalizeRemoteSearchValue(value)
+    store.getState().setValueByPath(`data.search.${key}`, normalized ?? '')
+  }
 }

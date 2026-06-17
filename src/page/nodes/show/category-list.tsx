@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { DragEvent, HTMLAttributes, KeyboardEvent } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 import { GripVertical } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { runActionsWithResult } from '@/lib/action'
 import { cn } from '@/lib/utils'
 import { getByPath, resolvePath, setByPath } from '@/lib/path'
-import { getCurrentRouterPathname } from '@/lib/router-path'
+import { normalizeDataContainerKey, reloadStoreDataContainer } from '@/lib/page-data-reload'
+import type { PageStore } from '@/lib/store'
 import { ActionButton } from './shared/action-button'
 import { ShowStatus } from './status'
 import type { NodeItemProps } from '../../nodes'
@@ -22,7 +22,6 @@ export function ShowCategoryList({
   optionLoading,
   store,
 }: NodeItemProps) {
-  const navigate = useNavigate()
   const optionCategories = useMemo(() => (Array.isArray(option) ? option : []), [option])
   const countField = String(item.meta?.countField || '').trim()
   const summaryCounts = useMemo(
@@ -48,7 +47,8 @@ export function ShowCategoryList({
   const uncategorizedLabel = String(item.meta?.uncategorizedLabel || '未分类').trim() || '未分类'
   const selectable = item.meta?.selectable !== false
   const remote = item.meta?.remote === true
-  const syncQuery = item.meta?.syncQuery === true
+  const syncQuery = resolveCategorySyncQuery(item.meta)
+  const reloadKey = resolveCategoryReloadKey(item.meta)
   const defaultFirst = item.meta?.defaultFirst === true
   const sortable = item.meta?.sortable === true
   const sortField = String(item.meta?.sortField || 'sort').trim() || 'sort'
@@ -81,7 +81,7 @@ export function ShowCategoryList({
   const firstCategoryID = categories[0]?.id
 
   const applyCategorySelection = useCallback(
-    (nextValue: unknown, options?: { replace?: boolean }) => {
+    async (nextValue: unknown) => {
       if (!selectable) {
         return
       }
@@ -90,21 +90,18 @@ export function ShowCategoryList({
       const assignValue = normalizedValue || ''
       setValue(assignValue)
 
-      if (!remote || !queryKey || !syncQuery) {
+      if (!remote) {
         return
       }
 
-      navigate({
-        to: getCurrentRouterPathname(),
-        replace: options?.replace === true,
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          [queryKey]: assignValue || undefined,
-          page: undefined,
-        }),
-      })
+      const targetStore = resolveCategoryTargetStore(store, item.value)
+      resetCategoryPage(targetStore, item.meta, reloadKey)
+      if (queryKey && syncQuery) {
+        replaceCategoryQuery(queryKey, assignValue)
+      }
+      await reloadStoreDataContainer(targetStore, reloadKey)
     },
-    [navigate, queryKey, remote, selectable, setValue, syncQuery]
+    [item.meta, item.value, queryKey, reloadKey, remote, selectable, setValue, store, syncQuery]
   )
 
   useEffect(() => {
@@ -120,7 +117,7 @@ export function ShowCategoryList({
       return
     }
 
-    void applyCategorySelection(firstCategoryID, { replace: true })
+    void applyCategorySelection(firstCategoryID)
   }, [
     applyCategorySelection,
     categorySignature,
@@ -424,6 +421,47 @@ function resolveCategoryQueryKey(valuePath?: string, overrideKey?: unknown) {
   const { key } = resolvePath(path)
   const segments = key.split('.').filter(Boolean)
   return segments[segments.length - 1] || ''
+}
+
+function resolveCategorySyncQuery(meta?: Record<string, any>) {
+  return meta?.syncQuery === true
+}
+
+function resolveCategoryReloadKey(meta?: Record<string, any>) {
+  return normalizeDataContainerKey(String(meta?.reloadDataKey || meta?.reloadKey || 'table'))
+}
+
+function resolveCategoryTargetStore(store: PageStore, valuePath?: string) {
+  const { owner } = resolvePath(String(valuePath || '').trim())
+  if (owner !== 'parent') {
+    return store
+  }
+  return (store.getState().parentStore as PageStore | null) ?? store
+}
+
+function resetCategoryPage(
+  store: PageStore,
+  meta: Record<string, any> | undefined,
+  reloadKey: string
+) {
+  const pagePath =
+    String(meta?.pagePath || '').trim() || `data.${reloadKey || 'table'}.page`
+  store.getState().setValueByPath(pagePath, 1)
+}
+
+function replaceCategoryQuery(queryKey: string, value: string) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const url = new URL(window.location.href)
+  if (value) {
+    url.searchParams.set(queryKey, value)
+  } else {
+    url.searchParams.delete(queryKey)
+  }
+  url.searchParams.delete('page')
+  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
 }
 
 function resolveCategoryLabel(category: Record<string, any>, labelField: string) {

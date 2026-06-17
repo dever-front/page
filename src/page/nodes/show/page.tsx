@@ -3,7 +3,6 @@
  * 将分页从表格中独立出来，便于列表和其他数据视图复用
  */
 import { useEffect, useMemo } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,20 +13,22 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn, getPageNumbers } from '@/lib/utils'
-import { getCurrentRouterPathname } from '@/lib/router-path'
+import { normalizeDataContainerKey, reloadStoreDataContainer } from '@/lib/page-data-reload'
 import type { NodeItemProps } from '../../nodes'
 import type { Item } from '@/lib/schema'
 import { useStorePathValue } from '@/lib/store'
 import { useStore } from 'zustand'
 
 export function ShowPage({ item, value, store, layoutId }: NodeItemProps) {
-  const navigate = useNavigate()
   const linkedTable = useLinkedTable(store, item.meta?.tableLayoutId ?? layoutId)
   const dataPath = item.value ?? linkedTable?.value
   const pagePath = item.meta?.pagePath ?? linkedTable?.meta?.pagePath
   const pageSizePath = item.meta?.pageSizePath ?? linkedTable?.meta?.pageSizePath
   const totalPath = item.meta?.totalPath ?? linkedTable?.meta?.totalPath
   const isRemote = item.meta?.remote === true || linkedTable?.meta?.remote === true
+  const reloadKey = normalizeDataContainerKey(
+    String(item.meta?.reloadDataKey || linkedTable?.meta?.reloadDataKey || 'table')
+  )
   const dataFromPath = useStoreValue(store, dataPath)
   const data = Array.isArray(value) ? value : dataFromPath
   const rows = Array.isArray(data) ? data : []
@@ -50,37 +51,22 @@ export function ShowPage({ item, value, store, layoutId }: NodeItemProps) {
     }
   }, [currentPage, pagePath, safePage, store])
 
-  const setPage = (nextPage: number) => {
+  const setPage = async (nextPage: number) => {
     if (!pagePath) return
-    if (isRemote) {
-      navigate({
-        to: getCurrentRouterPathname(),
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          page: nextPage <= 1 ? undefined : nextPage,
-        }),
-      })
-      return
-    }
     store.getState().setValueByPath(pagePath, nextPage)
+    if (isRemote) {
+      await reloadStoreDataContainer(store, reloadKey)
+    }
   }
 
-  const setPageSize = (nextPageSize: string) => {
+  const setPageSize = async (nextPageSize: string) => {
     if (!pageSizePath) return
-    if (isRemote) {
-      navigate({
-        to: getCurrentRouterPathname(),
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          page: undefined,
-          pageSize: Number(nextPageSize),
-        }),
-      })
-      return
-    }
     store.getState().setValueByPath(pageSizePath, Number(nextPageSize))
     if (pagePath) {
       store.getState().setValueByPath(pagePath, 1)
+    }
+    if (isRemote) {
+      await reloadStoreDataContainer(store, reloadKey)
     }
   }
 
@@ -96,7 +82,7 @@ export function ShowPage({ item, value, store, layoutId }: NodeItemProps) {
       )}
     >
       <div className="flex items-center gap-3">
-        <Select value={String(pageSize)} onValueChange={setPageSize}>
+        <Select value={String(pageSize)} onValueChange={(nextValue) => void setPageSize(nextValue)}>
           <SelectTrigger className="h-10 w-[92px] bg-background">
             <SelectValue />
           </SelectTrigger>
@@ -123,7 +109,7 @@ export function ShowPage({ item, value, store, layoutId }: NodeItemProps) {
             size="icon"
             className="size-10"
             disabled={safePage <= 1}
-            onClick={() => setPage(1)}
+            onClick={() => void setPage(1)}
           >
             <ChevronsLeft size={16} />
           </Button>
@@ -133,7 +119,7 @@ export function ShowPage({ item, value, store, layoutId }: NodeItemProps) {
             size="icon"
             className="size-10"
             disabled={safePage <= 1}
-            onClick={() => setPage(safePage - 1)}
+            onClick={() => void setPage(safePage - 1)}
           >
             <ChevronLeft size={16} />
           </Button>
@@ -149,7 +135,7 @@ export function ShowPage({ item, value, store, layoutId }: NodeItemProps) {
                 type="button"
                 variant={pageNumber === safePage ? 'default' : 'outline'}
                 className="size-10"
-                onClick={() => setPage(Number(pageNumber))}
+                onClick={() => void setPage(Number(pageNumber))}
               >
                 {pageNumber}
               </Button>
@@ -162,7 +148,7 @@ export function ShowPage({ item, value, store, layoutId }: NodeItemProps) {
             size="icon"
             className="size-10"
             disabled={safePage >= totalPages}
-            onClick={() => setPage(safePage + 1)}
+            onClick={() => void setPage(safePage + 1)}
           >
             <ChevronRight size={16} />
           </Button>
@@ -172,7 +158,7 @@ export function ShowPage({ item, value, store, layoutId }: NodeItemProps) {
             size="icon"
             className="size-10"
             disabled={safePage >= totalPages}
-            onClick={() => setPage(totalPages)}
+            onClick={() => void setPage(totalPages)}
           >
             <ChevronsRight size={16} />
           </Button>
