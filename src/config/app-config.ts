@@ -2,6 +2,7 @@ type ThemeMode = 'system' | 'light' | 'dark'
 type SidebarMode = 'inset' | 'floating' | 'sidebar'
 type LayoutMode = 'default' | 'compact' | 'full'
 type DirectionMode = 'ltr' | 'rtl'
+type ShellMode = 'app' | 'blank'
 
 export type SiteConfig = {
   name: string
@@ -24,6 +25,7 @@ export type RuntimeConfig = {
   apiPrefix: string
   skin: string
   routerMode: 'hash' | 'history'
+  shell: ShellMode
   basePath?: string
   host: string
   siteHost: string
@@ -45,6 +47,7 @@ export type RuntimeAccessConfig = {
 export type RuntimeSettingConfig = {
   skin?: string
   routerMode?: 'hash' | 'history'
+  shell?: ShellMode
   plugins?: Array<string | RuntimePluginConfig>
 }
 
@@ -96,6 +99,7 @@ const DEFAULT_APP_CONFIG: AppConfig = {
     apiPrefix: 'front',
     skin: 'default',
     routerMode: 'history',
+    shell: 'app',
     host: '',
     siteHost: '',
   },
@@ -183,6 +187,11 @@ function normalizeRuntimeConfig(
       runtime?.routerMode || defaults.routerMode,
       ['hash', 'history'],
       'history'
+    ),
+    shell: normalizeChoice(
+      runtime?.shell || defaults.shell,
+      ['app', 'blank'],
+      'app'
     ),
     plugins: normalizeRuntimePlugins(runtime?.plugins || defaults.plugins),
   }

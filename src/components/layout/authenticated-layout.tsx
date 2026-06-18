@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getDefaultSidebarOpen } from '@/config/app-config'
+import { getDefaultSidebarOpen, getRuntimeConfig } from '@/config/app-config'
 import { Page } from '@/page/page'
 import { getCookie } from '@/lib/cookies'
 import {
@@ -20,6 +20,14 @@ type AuthenticatedLayoutProps = {
 }
 
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
+  if (getRuntimeConfig().shell === 'blank') {
+    return <BlankShellLayout>{children}</BlankShellLayout>
+  }
+
+  return <AppShellLayout>{children}</AppShellLayout>
+}
+
+function AppShellLayout({ children }: AuthenticatedLayoutProps) {
   const mainRoute = systemPageRoute('main')
   const savedSidebarState = getCookie('sidebar_state')
   const defaultOpen =
@@ -95,6 +103,32 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
             />
           </AppShellProvider>
         </SidebarProvider>
+      </LayoutProvider>
+    </SearchProvider>
+  )
+}
+
+const blankMenu: any[] = []
+const blankNavGroups: any[] = []
+
+function BlankShellLayout({ children }: AuthenticatedLayoutProps) {
+  const mainRoute = systemPageRoute('main')
+  const shellValue = {
+    menu: blankMenu,
+    navGroups: blankNavGroups,
+    children,
+  }
+
+  return (
+    <SearchProvider navGroups={blankNavGroups} enableCommandMenu={false}>
+      <LayoutProvider>
+        <AppShellProvider value={shellValue}>
+          <Page
+            route={mainRoute}
+            updateDocumentTitle={false}
+            assistantScope='nested'
+          />
+        </AppShellProvider>
       </LayoutProvider>
     </SearchProvider>
   )

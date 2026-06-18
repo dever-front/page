@@ -58,7 +58,7 @@ pnpm dev
 pnpm build:backend
 ```
 
-默认会把静态文件输出到 `backend/package/front/html`，后端默认从 `/admin` 访问。
+默认会把静态文件输出到 `backend/package/front/front/html`，后端默认从 `/admin` 访问。
 打包默认使用单 bundle，减少后端托管时的大量小文件请求；如需恢复 Vite 拆分 chunk，可设置 `VITE_FRONT_BUNDLE=split`。
 访问前缀、接口前缀、站点信息和皮肤配置由 active 组件 `dever.json.front` 合并后生成的 `runtime.js` 下发。
 
@@ -73,8 +73,7 @@ backend/module/<name>/dever.json
 
 常用字段：
 
-- `front.sites.*.name/subtitle/description`：站点名称和描述
-- `front.sites.*.assets`：站点图标资源，默认映射到 `backend/config/front/assets/{siteKey}`
+- `front.sites.*.config`：站点名称、描述、URL、logo、favicon 等展示配置
 - `front.sites.*.setting.appearance`：默认主题、侧边栏、布局方向
 - `front.sites.*.setting.runtime`：皮肤、路由模式和运行时插件
 - `front.sites.*.api/page/access/entry/public`：接口前缀、页面目录、访问控制、入口和站点公开路径
@@ -93,7 +92,7 @@ backend/module/<name>/dever.json
 - `tsconfig*.json`
 - `components.json`
 
-站点 logo、favicon 等可替换资源提交到后端 `backend/config/front/assets/{siteKey}/`，不要放到前端 `public/`。
+站点 logo、favicon 等项目覆盖资源提交到后端 `backend/config/front/assets/{siteKey}/`，并在 `backend/config/front.json` 中用 `config/assets/{siteKey}/...` 引用；组件默认资源放在组件自己的 `front/assets/{siteKey}/`。
 
 - `README.md`
 
