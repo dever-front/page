@@ -555,6 +555,17 @@ export function sanitizeRouteOptionURL(api: string) {
   }
 }
 
+export function resolveRouteOptionApi(
+  configuredApi: unknown,
+  optionSource: unknown
+) {
+  const api = String(configuredApi ?? '').trim()
+  if (api) {
+    return api
+  }
+  return isRouteOptionObjectSource(optionSource) ? joinFrontApi('route/option') : ''
+}
+
 export function withRouteOptionContext(
   api: string,
   params: Record<string, any> | undefined,
@@ -589,19 +600,6 @@ export function withRouteOptionContext(
 const routeOptionParamAllowList = new Set([
   'path',
   'key',
-  'valueField',
-  'labelField',
-  'parentField',
-  'leafField',
-  'order',
-  'pageSize',
-  'page',
-  'tree',
-  'rootValue',
-  'extraFields',
-  'searchFields',
-  'filterField',
-  'filterValue',
   'keyword',
   'selected',
   'parentId',
@@ -709,12 +707,10 @@ function generatedRouteOptionItemID(item: RouteOptionItem | undefined) {
   return item.id
 }
 
-const routeOptionSourceKeys = ['use', 'model', 'service', 'type']
+const routeOptionSourceKeys = ['model', 'service']
 const routeOptionSourceMetaKeys = [
-  'use',
   'model',
   'service',
-  'childUse',
   'childModel',
   'childService',
 ]
@@ -778,9 +774,10 @@ function hasNestedRouteOptionSource(raw: unknown) {
 }
 
 function hasRouteOptionSourceValue(raw: unknown) {
-  if (typeof raw === 'string') {
-    return isFrontRouteOptionURL(raw)
-  }
+  return isRouteOptionObjectSource(raw)
+}
+
+function isRouteOptionObjectSource(raw: unknown) {
   return !!raw && typeof raw === 'object' && !Array.isArray(raw)
 }
 

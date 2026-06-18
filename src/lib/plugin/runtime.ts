@@ -58,12 +58,9 @@ export async function ensurePluginsForNodes(nodeTypes: string[]) {
   const matched = plugins.filter((plugin) =>
     pluginMatchesNodeTypes(plugin, types)
   )
-  const legacy = matched.length > 0 ? [] : plugins.filter(isLegacyPlugin)
 
   await Promise.allSettled(
-    [...matched, ...legacy].map((plugin) =>
-      loadRuntimePluginWithDependencies(plugin)
-    )
+    matched.map((plugin) => loadRuntimePluginWithDependencies(plugin))
   )
 }
 
@@ -154,10 +151,6 @@ function pluginMatchesNodeTypes(
   }
   const nodeSet = new Set(plugin.nodes)
   return nodeTypes.some((type) => nodeSet.has(type))
-}
-
-function isLegacyPlugin(plugin: RuntimePluginConfig) {
-  return !plugin.nodes?.length
 }
 
 export async function ensureRuntimeSDK() {

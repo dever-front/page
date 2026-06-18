@@ -15,6 +15,7 @@ import { joinFrontApi, request } from '@/lib/request'
 import { getStoreValueByPath, useStorePathValue } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import {
+  resolveRouteOptionApi,
   sanitizeRouteOptionURL,
   useNodeOption,
   withRouteOptionContext,
@@ -55,7 +56,7 @@ export function TypeEditor({ item, value, setValue, option, store, layoutId }: N
   const typeField = metaString(meta.typeField, 'type')
   const primaryKey = metaString(meta.primaryKey, 'id')
   const savePath = metaString(meta.savePath, '')
-  const loadApi = metaString(meta.loadApi, '')
+  const loadApi = resolveRouteOptionApi(meta.loadApi, meta.loadOption)
   const loadMethod = metaString(meta.loadMethod, 'get')
   const loadKey = metaString(meta.loadKey || meta.optionKey, item.value || item.id)
   const fields = useMemo(() => normalizeFields(meta.fields), [meta.fields])

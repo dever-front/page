@@ -14,7 +14,7 @@ import {
   setCachedRemoteOptionResult,
   setRemoteOptionPromise,
 } from '@/lib/remote-option-cache'
-import { request } from '@/lib/request'
+import { joinFrontApi, request } from '@/lib/request'
 import { cn } from '@/lib/utils'
 import { sanitizeRouteOptionURL, withRouteOptionContext } from '@/page/option'
 import {
@@ -41,7 +41,7 @@ export function FormCascader({
   error,
   row,
 }: NodeItemProps) {
-  const api = String(item.meta?.api || '').trim()
+  const api = resolveCascaderOptionApi(item.meta)
   const leafValueMode = resolveLeafValueMode(item.meta)
   const [leafPathValues, setLeafPathValues] = useState<any[]>([])
   const selectedValues = useMemo(
@@ -132,58 +132,18 @@ export function FormCascader({
 
   const buildParams = useCallback(
     (parentId: any, level: number) => {
-      const childLevel =
-        level > 0 && String(item.meta?.childUse || '').trim() !== ''
-      const parentField = childLevel
-        ? String(
-            item.meta?.childParentField || item.meta?.parentField || 'parent_id'
-          ).trim()
-        : String(item.meta?.parentField || 'parent_id').trim()
       const params: Record<string, any> = {
-        parentField: parentField || 'parent_id',
         parentId,
         level,
-        rootValue: item.meta?.rootValue ?? 0,
-        valueField: String(item.meta?.valueField || 'id').trim() || 'id',
-        labelField: String(item.meta?.labelField || 'name').trim() || 'name',
-      }
-      const extraFields = childLevel
-        ? String(item.meta?.childExtraFields || '').trim()
-        : String(item.meta?.extraFields || '').trim()
-      const leafField = String(item.meta?.leafField || 'leaf').trim()
-      const order = String(item.meta?.order || '').trim()
-      if (extraFields) {
-        params.extraFields = extraFields
-      }
-      if (leafField) {
-        params.leafField = leafField
-      }
-      if (order) {
-        params.order = order
       }
       return withRouteOptionContext(api, params, { item, store })
     },
-    [
-      api,
-      item.meta?.childExtraFields,
-      item.meta?.childParentField,
-      item.meta?.childUse,
-      item.meta?.extraFields,
-      item.meta?.labelField,
-      item.meta?.leafField,
-      item.meta?.order,
-      item.meta?.parentField,
-      item.meta?.rootValue,
-      item.meta?.valueField,
-      item,
-      store,
-    ]
+    [api, item, store]
   )
 
   const fetchLevelOptions = useCallback(
     async (parentId: any, level: number) => {
-      const childLevel =
-        level > 0 && String(item.meta?.childUse || '').trim() !== ''
+      const childLevel = level > 0 && hasCascaderOptionSource(item.meta, true)
       const params = buildParams(parentId, level)
       const requestApi = sanitizeRouteOptionURL(api)
       const cacheKey = buildRemoteOptionCacheKey(requestApi, params)
@@ -223,7 +183,7 @@ export function FormCascader({
         setLoadingLevel((current) => (current === level ? null : current))
       }
     },
-    [api, buildParams, item.meta?.childUse]
+    [api, buildParams, item.meta]
   )
 
   useEffect(() => {
@@ -234,7 +194,7 @@ export function FormCascader({
     let cancelled = false
     async function resolveLeafPath() {
       const leafValue = String(value ?? '').trim()
-      const childUse = String(item.meta?.childUse || '').trim()
+      const hasChildSource = hasCascaderOptionSource(item.meta, true)
       if (isEmptyCascaderValue(leafValue)) {
         if (keepParentOnEmptyRef.current) {
           keepParentOnEmptyRef.current = false
@@ -243,7 +203,7 @@ export function FormCascader({
         setLeafPathValues(resolveDefaultParentValues(item.meta))
         return
       }
-      if (!api || !childUse || !childParentField) {
+      if (!api || !hasChildSource || !childParentField) {
         setLeafPathValues([])
         return
       }
@@ -262,11 +222,6 @@ export function FormCascader({
           {
             level: 1,
             selected: leafValue,
-            valueField: String(item.meta?.valueField || 'id').trim() || 'id',
-            labelField:
-              String(item.meta?.labelField || 'name').trim() || 'name',
-            extraFields: childParentField,
-            pageSize: 1,
           },
           { item, store }
         ),
@@ -287,11 +242,10 @@ export function FormCascader({
   }, [
     api,
     childParentField,
-    item.meta?.childUse,
+    item.meta?.childModel,
+    item.meta?.childService,
     item.meta?.defaultParentId,
     item.meta?.defaultParentValue,
-    item.meta?.labelField,
-    item.meta?.valueField,
     item,
     leafValueMode,
     rowRelationLeafId,
@@ -321,7 +275,7 @@ export function FormCascader({
     let cancelled = false
 
     async function syncLevels() {
-      if (!api || !String(item.meta?.use || '').trim()) {
+      if (!api || !hasCascaderOptionSource(item.meta)) {
         setLevels([])
         syncSelectedLabels(fallbackLabels)
         return
@@ -391,7 +345,8 @@ export function FormCascader({
     api,
     fetchLevelOptions,
     item.meta?.rootValue,
-    item.meta?.use,
+    item.meta?.model,
+    item.meta?.service,
     fallbackLabels,
     leafValueMode,
     selectedKeys,
@@ -661,6 +616,30 @@ function resolveLeafValueMode(meta: Record<string, any> | undefined) {
     .trim()
     .toLowerCase()
   return mode === 'leaf' || mode === 'last'
+}
+
+function resolveCascaderOptionApi(meta: Record<string, any> | undefined) {
+  const configuredApi = String(meta?.api || '').trim()
+  if (configuredApi) {
+    return configuredApi
+  }
+  return hasAnyCascaderOptionSource(meta) ? joinFrontApi('route/option') : ''
+}
+
+function hasCascaderOptionSource(
+  meta: Record<string, any> | undefined,
+  childLevel = false
+) {
+  const model = childLevel ? meta?.childModel : meta?.model
+  const service = childLevel ? meta?.childService : meta?.service
+  return String(model || service || '').trim() !== ''
+}
+
+function hasAnyCascaderOptionSource(meta: Record<string, any> | undefined) {
+  return (
+    hasCascaderOptionSource(meta) ||
+    hasCascaderOptionSource(meta, true)
+  )
 }
 
 function resolveFilterPathValue(

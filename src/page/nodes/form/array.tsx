@@ -40,6 +40,7 @@ import {
 } from '@/lib/schema'
 import { useStorePathValue } from '@/lib/store'
 import {
+  resolveRouteOptionApi,
   sanitizeRouteOptionURL,
   useNodeOption,
   withRouteOptionContext,
@@ -631,16 +632,12 @@ function hasArrayRouteOptionSource(item: Item) {
   const meta = item.meta ?? {}
   const option = readArrayRouteOptionObject(item.option)
   if ([
-    meta.use,
     meta.model,
     meta.service,
-    meta.childUse,
     meta.childModel,
     meta.childService,
-    option?.use,
     option?.model,
     option?.service,
-    option?.type,
   ].some(hasArrayRouteOptionValue)) {
     return true
   }
@@ -687,9 +684,6 @@ function hasNestedArrayRouteOptionSource(raw: unknown) {
 }
 
 function hasArrayRouteOptionSourceValue(value: unknown) {
-  if (typeof value === 'string') {
-    return value.includes('route/option')
-  }
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
@@ -956,7 +950,7 @@ function normalizeFillFromOptionConfig(value: unknown): FillFromOptionConfig | n
     return null
   }
   const raw = value as Record<string, any>
-  const source = String(raw.source || '').trim()
+  const source = resolveRouteOptionApi(raw.source, raw.option)
   const targetField = String(raw.targetField || raw.field || '').trim()
   if (!source || !targetField) {
     return null

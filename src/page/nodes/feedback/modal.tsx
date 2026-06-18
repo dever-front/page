@@ -45,23 +45,10 @@ const MODAL_SIZE_CLASS_MAP: Record<string, string> = {
   '2xl': 'sm:max-w-5xl',
 }
 
-const LEGACY_DIALOG_CLASS_MAP: Record<string, string> = {
-  'sm:max-w-md': MODAL_SIZE_CLASS_MAP.sm,
-  'sm:max-w-lg': MODAL_SIZE_CLASS_MAP.md,
-  'sm:max-w-2xl': MODAL_SIZE_CLASS_MAP.lg,
-  'sm:max-w-4xl': MODAL_SIZE_CLASS_MAP.xl,
-  'sm:max-w-5xl': MODAL_SIZE_CLASS_MAP['2xl'],
-}
-
 function resolveDialogWidthClass(meta: Record<string, any> | undefined) {
-  const configuredSize = String(meta?.size || meta?.dialogSize || '').trim().toLowerCase()
+  const configuredSize = String(meta?.size || '').trim().toLowerCase()
   if (configuredSize && MODAL_SIZE_CLASS_MAP[configuredSize]) {
     return MODAL_SIZE_CLASS_MAP[configuredSize]
-  }
-
-  const legacyClassName = String(meta?.dialogClassName || '').trim()
-  if (legacyClassName && LEGACY_DIALOG_CLASS_MAP[legacyClassName]) {
-    return LEGACY_DIALOG_CLASS_MAP[legacyClassName]
   }
 
   return MODAL_SIZE_CLASS_MAP.lg

@@ -4,7 +4,11 @@ import { getByPath } from '@/lib/path'
 import { request } from '@/lib/request'
 import type { OptionItem } from '@/lib/schema'
 import { useStorePathValue } from '@/lib/store'
-import { sanitizeRouteOptionURL, withRouteOptionContext } from '@/page/option'
+import {
+  resolveRouteOptionApi,
+  sanitizeRouteOptionURL,
+  withRouteOptionContext,
+} from '@/page/option'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -38,8 +42,14 @@ export function FormComboMapping({
   const extraParamsPath = String(
     item.meta?.extraParamsPath || 'form.combo_params'
   ).trim()
-  const optionSource = String(item.meta?.optionSource || '').trim()
-  const paramSource = String(item.meta?.paramSource || '').trim()
+  const optionSource = resolveRouteOptionApi(
+    item.meta?.optionSource,
+    item.meta?.optionSourceOption
+  )
+  const paramSource = resolveRouteOptionApi(
+    item.meta?.paramSource,
+    item.meta?.paramSourceOption
+  )
   const optionSourceKey = String(
     item.meta?.optionSourceKey || 'combo.optionSource'
   ).trim()
@@ -75,7 +85,6 @@ export function FormComboMapping({
           paramSource,
           {
             selected: JSON.stringify(paramIDs),
-            pageSize: Math.max(paramIDs.length, 20),
           },
           {
             item: {

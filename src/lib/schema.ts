@@ -39,7 +39,6 @@ export const ActionConfigSchema = z.object({
   ]),
   key: z.string().optional(),
   path: z.string().optional(),
-  use: z.string().optional(),
   pk: z.string().optional(),
   target: z.string().optional(),
   exportKey: z.string().optional(),
@@ -97,8 +96,6 @@ export const OptionItemSchema = z
 export const OptionConfigSchema = z
   .object({
     key: z.string().optional(),
-    type: z.string().optional(),
-    use: z.string().optional(),
     model: z.string().optional(),
     service: z.string().optional(),
     filters: z.record(z.string(), z.any()).optional(),
@@ -123,7 +120,8 @@ export const ValidateRuleSchema = z.object({
   target: z.string().optional(),
   min: z.number().optional(),
   max: z.number().optional(),
-  use: z.string().optional(),
+  model: z.string().optional(),
+  service: z.string().optional(),
   field: z.string().optional(),
   operator: z.string().optional(),
   except: z.string().optional(),
