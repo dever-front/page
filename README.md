@@ -60,23 +60,27 @@ pnpm build:backend
 
 默认会把静态文件输出到 `backend/package/front/html`，后端默认从 `/admin` 访问。
 打包默认使用单 bundle，减少后端托管时的大量小文件请求；如需恢复 Vite 拆分 chunk，可设置 `VITE_FRONT_BUNDLE=split`。
-访问前缀、接口前缀、站点信息和皮肤配置由后端 `config/front.json` 生成的 `runtime.js` 下发。
+访问前缀、接口前缀、站点信息和皮肤配置由 active 组件 `dever.json.front` 合并后生成的 `runtime.js` 下发。
 
 ## 运行时配置
 
-主要配置在后端：
+主要配置随组件发布：
 
 ```txt
-backend/config/front.json
+backend/package/<name>/dever.json
+backend/module/<name>/dever.json
 ```
 
 常用字段：
 
-- `sites.*.name/subtitle/description`：站点名称和描述
-- `sites.*.assets`：站点图标资源，默认映射到 `backend/config/front/assets/{siteKey}`
-- `sites.*.setting.appearance`：默认主题、侧边栏、布局方向
-- `sites.*.setting.runtime`：皮肤和路由模式
-- `sites.*.api/page/access/public`：接口前缀、页面目录和访问控制
+- `front.sites.*.name/subtitle/description`：站点名称和描述
+- `front.sites.*.assets`：站点图标资源，默认映射到 `backend/config/front/assets/{siteKey}`
+- `front.sites.*.setting.appearance`：默认主题、侧边栏、布局方向
+- `front.sites.*.setting.runtime`：皮肤、路由模式和运行时插件
+- `front.sites.*.api/page/access/entry/public`：接口前缀、页面目录、访问控制、入口和站点公开路径
+- `front.public`：组件提供的全局公开后端路径
+
+`access.mode` 支持 `rbac`、`login`、`public`。`admin` 是共享站点，业务组件只追加 `auth/public`；非 `admin` 站点由一个组件定义站点壳字段，避免同名站点互相覆盖。
 
 ## Git 提交建议
 

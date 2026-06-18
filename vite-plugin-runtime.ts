@@ -14,6 +14,11 @@ type FrontConfig = {
   public?: string[]
 }
 
+type ComponentManifest = {
+  name?: string
+  front?: FrontConfig
+}
+
 type FrontSite = {
   name?: string
   subtitle?: string
@@ -26,6 +31,9 @@ type FrontSite = {
     mode?: string
     authProvider?: string
   }
+  public?: string[]
+  entry?: string
+  auth?: unknown[]
 }
 
 type FrontSiteAssets = {
@@ -60,6 +68,7 @@ type PluginSourceMetadata = {
 
 const DEFAULT_SITE_KEY = 'admin'
 const DEFAULT_API = 'front'
+const DEFAULT_ACCESS_MODE = 'rbac'
 const DEV_API_PREFIX = '/__dever_api'
 const DEFAULT_DEV_BACKEND_PORT = '8085'
 const RUNTIME_HTML_PLACEHOLDER = '<!-- dever:runtime -->'
@@ -234,7 +243,9 @@ function runtimePluginDescriptors(
   configuredPlugins?: Array<string | RuntimePluginDescriptor>
 ) {
   const configured = Array.isArray(configuredPlugins) ? configuredPlugins : []
-  const descriptors = [...configured]
+  const descriptors = configured.map((plugin) =>
+    normalizeRuntimePluginDescriptor(projectRoot, siteKey, plugin)
+  )
   const seen = new Set(configured.map(runtimePluginName).filter(Boolean))
 
   for (const pluginName of discoverSourcePluginNames(projectRoot)) {
@@ -248,6 +259,21 @@ function runtimePluginDescriptors(
   }
 
   return descriptors
+}
+
+function normalizeRuntimePluginDescriptor(
+  projectRoot: string,
+  siteKey: string,
+  plugin: string | RuntimePluginDescriptor
+): string | RuntimePluginDescriptor {
+  if (typeof plugin !== 'string') {
+    return plugin
+  }
+  const name = cleanPluginName(plugin)
+  if (name && name === plugin.trim() && !/[/?#]/.test(plugin)) {
+    return sourceRuntimePluginDescriptor(projectRoot, siteKey, name)
+  }
+  return plugin
 }
 
 function runtimePluginName(plugin: string | RuntimePluginDescriptor) {
@@ -265,6 +291,9 @@ function runtimePluginNameFromURL(value: string) {
   if (!normalized) {
     return ''
   }
+  if (cleanPluginName(normalized) === normalized && !/[/?#]/.test(normalized)) {
+    return normalized
+  }
   const parts = normalized.split('/').filter(Boolean)
   const pluginIndex = Math.max(
     parts.lastIndexOf('plugins'),
@@ -274,6 +303,14 @@ function runtimePluginNameFromURL(value: string) {
     return parts[pluginIndex + 1]
   }
   return ''
+}
+
+function cleanPluginName(value: string) {
+  const normalized = String(value || '').trim().replace(/^\/+|\/+$/g, '')
+  if (!normalized || normalized === '.' || normalized === '..') {
+    return ''
+  }
+  return normalized.includes('/') ? '' : normalized
 }
 
 function sourceRuntimePluginDescriptor(
@@ -352,8 +389,22 @@ function isPublicBackendPath(projectRoot: string, pathname: string) {
 }
 
 function runtimePublicPaths(projectRoot: string) {
-  const config = readFrontConfig(projectRoot)
-  return Array.isArray(config.public) ? config.public : []
+  const config = readFrontManifestConfig(projectRoot)
+  const paths = Array.isArray(config.public) ? [...config.public] : []
+  for (const site of Object.values(config.sites || {})) {
+    const apiPrefix = trimSlashes(site.api || DEFAULT_API)
+    if (site.access?.mode === 'public' && apiPrefix !== DEFAULT_API) {
+      paths.push(`/${apiPrefix}/*`)
+    }
+    for (const item of site.public || []) {
+      if (String(item || '').trim().startsWith('/')) {
+        paths.push(String(item || '').trim())
+        continue
+      }
+      paths.push(`/${apiPrefix}/${trimSlashes(item)}`)
+    }
+  }
+  return uniqueStrings(paths)
 }
 
 function matchBackendPathPattern(pattern: string, pathname: string) {
@@ -596,7 +647,7 @@ function requestHostname(hostHeader?: string | string[]) {
 }
 
 function defaultRuntimeSiteKey(projectRoot: string) {
-  const sites = readFrontConfig(projectRoot).sites || {}
+  const sites = readFrontManifestConfig(projectRoot).sites || {}
   if (sites[DEFAULT_SITE_KEY]) {
     return DEFAULT_SITE_KEY
   }
@@ -605,7 +656,7 @@ function defaultRuntimeSiteKey(projectRoot: string) {
 }
 
 function isRuntimeSiteKey(projectRoot: string, siteKey: string) {
-  const sites = readFrontConfig(projectRoot).sites || {}
+  const sites = readFrontManifestConfig(projectRoot).sites || {}
   if (Object.keys(sites).length === 0) {
     return siteKey === DEFAULT_SITE_KEY
   }
@@ -616,7 +667,7 @@ function loadRuntimeSite(
   projectRoot: string,
   siteKey: string
 ): FrontSite | null {
-  const config = readFrontConfig(projectRoot)
+  const config = readFrontManifestConfig(projectRoot)
   const sites =
     config.sites && Object.keys(config.sites).length > 0
       ? config.sites
@@ -872,16 +923,210 @@ function fallbackAssetPath(assetPath: string) {
   return path.posix.join('images', path.posix.basename(assetPath))
 }
 
-function readFrontConfig(projectRoot: string): FrontConfig {
-  for (const fileName of ['front.jsonc', 'front.json']) {
-    const filePath = path.join(projectRoot, 'backend', 'config', fileName)
-    if (!fs.existsSync(filePath)) {
-      continue
-    }
-    const content = stripJsonComments(fs.readFileSync(filePath, 'utf8'))
-    return JSON.parse(content) as FrontConfig
+function readFrontManifestConfig(projectRoot: string): FrontConfig {
+  const config: FrontConfig = {
+    public: [],
+    sites: {},
   }
-  return {}
+  const owners: Record<string, string> = {}
+
+  for (const manifestPath of discoverComponentManifestPaths(projectRoot)) {
+    const manifest = readComponentManifest(manifestPath)
+    const componentName = trimSlashes(
+      manifest.name || path.basename(path.dirname(manifestPath))
+    )
+    const front = manifest.front || {}
+    config.public?.push(...normalizeStringList(front.public))
+    for (const [rawSiteKey, rawSite] of Object.entries(front.sites || {})) {
+      const siteKey = trimSlashes(rawSiteKey)
+      if (!siteKey) {
+        continue
+      }
+      const current = config.sites?.[siteKey] || defaultRuntimeSite(siteKey)
+      if (hasRuntimeSiteOwnerFields(rawSite)) {
+        const owner = owners[siteKey]
+        if (owner && owner !== componentName) {
+          throw new Error(
+            `front site "${siteKey}" is defined by both ${owner} and ${componentName}`
+          )
+        }
+        owners[siteKey] = componentName
+        config.sites![siteKey] = mergeRuntimeSiteOwnerFields(
+          current,
+          rawSite,
+          siteKey
+        )
+        continue
+      }
+      config.sites![siteKey] = mergeRuntimeSiteContributions(
+        current,
+        rawSite
+      )
+    }
+  }
+
+  for (const siteKey of Object.keys(config.sites || {})) {
+    if (siteKey !== DEFAULT_SITE_KEY && !owners[siteKey]) {
+      delete config.sites![siteKey]
+    }
+  }
+  if (!config.sites || Object.keys(config.sites).length === 0) {
+    config.sites = {
+      [DEFAULT_SITE_KEY]: defaultRuntimeSite(DEFAULT_SITE_KEY),
+    }
+  }
+
+  config.public = uniqueStrings(config.public || [])
+  if (config.sites && Object.keys(config.sites).length > 0) {
+    for (const [siteKey, site] of Object.entries(config.sites)) {
+      config.sites[siteKey] = normalizeRuntimeSite(site, siteKey)
+    }
+  }
+  return config
+}
+
+function discoverComponentManifestPaths(projectRoot: string) {
+  return [
+    ...discoverComponentManifestPathsIn(
+      path.join(projectRoot, 'backend', 'package')
+    ),
+    ...discoverComponentManifestPathsIn(
+      path.join(projectRoot, 'backend', 'module')
+    ),
+  ].sort()
+}
+
+function discoverComponentManifestPathsIn(root: string) {
+  if (!fs.existsSync(root)) {
+    return []
+  }
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(root, entry.name, 'dever.json'))
+    .filter((filePath) => fs.existsSync(filePath))
+}
+
+function readComponentManifest(filePath: string): ComponentManifest {
+  const content = stripJsonComments(fs.readFileSync(filePath, 'utf8'))
+  return JSON.parse(content) as ComponentManifest
+}
+
+function defaultRuntimeSite(siteKey: string): FrontSite {
+  return {
+    api: siteKey === DEFAULT_SITE_KEY ? DEFAULT_API : siteKey,
+    access: {
+      mode: DEFAULT_ACCESS_MODE,
+      authProvider: DEFAULT_API,
+    },
+  }
+}
+
+function hasRuntimeSiteOwnerFields(site: FrontSite) {
+  return Boolean(
+    stringValue(site.name) ||
+      stringValue(site.subtitle) ||
+      stringValue(site.description) ||
+      stringValue(site.url) ||
+      stringValue(site.api) ||
+      stringValue(site.entry) ||
+      stringValue(site.assets?.logo) ||
+      stringValue(site.assets?.favicon) ||
+      stringValue(site.access?.mode) ||
+      stringValue(site.access?.authProvider) ||
+      stringValue(site.setting?.appearance?.theme) ||
+      stringValue(site.setting?.appearance?.sidebar) ||
+      stringValue(site.setting?.appearance?.layout) ||
+      stringValue(site.setting?.appearance?.direction) ||
+      stringValue(site.setting?.runtime?.skin) ||
+      stringValue(site.setting?.runtime?.routerMode) ||
+      (Array.isArray(site.setting?.runtime?.plugins) &&
+        site.setting!.runtime!.plugins!.length > 0)
+  )
+}
+
+function mergeRuntimeSiteOwnerFields(
+  current: FrontSite,
+  incoming: FrontSite,
+  siteKey: string
+): FrontSite {
+  return mergeRuntimeSiteContributions(
+    {
+      ...current,
+      ...incoming,
+      api: trimSlashes(
+        incoming.api || (siteKey === DEFAULT_SITE_KEY ? DEFAULT_API : siteKey)
+      ),
+      assets: normalizeRuntimeAssets(incoming.assets),
+      access: normalizeRuntimeAccess(incoming.access),
+      setting: normalizeRuntimeSetting(incoming.setting),
+    },
+    incoming
+  )
+}
+
+function mergeRuntimeSiteContributions(
+  current: FrontSite,
+  incoming: FrontSite
+): FrontSite {
+  return {
+    ...current,
+    public: uniqueStrings([
+      ...normalizeStringList(current.public),
+      ...normalizeStringList(incoming.public),
+    ]),
+    auth: [...(current.auth || []), ...(incoming.auth || [])],
+  }
+}
+
+function normalizeRuntimeSite(site: FrontSite, siteKey: string): FrontSite {
+  return {
+    ...site,
+    api: trimSlashes(
+      site.api || (siteKey === DEFAULT_SITE_KEY ? DEFAULT_API : siteKey)
+    ),
+    assets: normalizeRuntimeAssets(site.assets),
+    access: normalizeRuntimeAccess(site.access),
+    setting: normalizeRuntimeSetting(site.setting),
+    public: normalizeStringList(site.public),
+  }
+}
+
+function normalizeRuntimeAccess(access?: FrontSite['access']) {
+  const mode = stringValue(access?.mode)
+  return {
+    mode: ['rbac', 'login', 'public'].includes(mode)
+      ? mode
+      : DEFAULT_ACCESS_MODE,
+    authProvider: trimSlashes(access?.authProvider || DEFAULT_API),
+  }
+}
+
+function normalizeRuntimeSetting(setting?: FrontSiteSetting) {
+  return {
+    appearance: setting?.appearance || {},
+    runtime: {
+      ...(setting?.runtime || {}),
+      plugins: normalizeRuntimePluginValues(setting?.runtime?.plugins),
+    },
+  }
+}
+
+function normalizeRuntimePluginValues(
+  plugins?: Array<string | RuntimePluginDescriptor>
+) {
+  return Array.isArray(plugins) ? plugins : undefined
+}
+
+function normalizeStringList(values?: unknown[]) {
+  if (!Array.isArray(values)) {
+    return []
+  }
+  return uniqueStrings(values.map((value) => String(value || '')))
+}
+
+function stringValue(value: unknown) {
+  return String(value || '').trim()
 }
 
 function stripJsonComments(content: string) {
