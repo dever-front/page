@@ -129,8 +129,20 @@ function NodeItem({ item, store, layoutId }: NodeItemComponentProps) {
   )
 }
 
+const silentFallbackNodeTypes = new Set([
+  'app-skip-to-main',
+  'app-sidebar',
+  'app-topbar',
+  'app-outlet',
+  'app-assistant',
+])
+
 function NodeFallback({ item }: { item: Item }) {
-  if (String(item.type || '').startsWith('feedback-')) {
+  const nodeType = String(item.type || '')
+  if (
+    nodeType.startsWith('feedback-') ||
+    silentFallbackNodeTypes.has(nodeType)
+  ) {
     return null
   }
 
