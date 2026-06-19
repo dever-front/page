@@ -135,6 +135,19 @@ const silentFallbackNodeTypes = new Set([
   'app-topbar',
   'app-outlet',
   'app-assistant',
+  'show-base',
+  'show-title',
+  'show-rich',
+  'show-text',
+  'show-date',
+  'show-link',
+  'show-button',
+  'show-button-group',
+  'show-tag',
+  'show-select',
+  'show-status',
+  'show-icon',
+  'show-tooltip',
 ])
 
 function NodeFallback({ item }: { item: Item }) {
