@@ -227,7 +227,7 @@ function NodeFallback({ item }: { item: Item }) {
     return <Skeleton className="h-10 w-full" />
   }
 
-  return <Skeleton className="h-10 w-full" />
+  return null
 }
 
 function MissingNodeFallback({
