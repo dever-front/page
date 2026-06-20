@@ -255,7 +255,8 @@ export function FormUpload({ item, value, setValue, error, store }: NodeItemProp
             maxResults={assistantMaxResults}
             disabled={assistantGenerateDisabled}
             className={resolveUploadAIGenerateClassName(uploadType)}
-            size={isMediaUploadType(uploadType) ? 'default' : 'sm'}
+            size={isMediaUploadType(uploadType) ? 'icon' : 'sm'}
+            iconOnly={isMediaUploadType(uploadType)}
             onGenerated={handleGeneratedFiles}
           />
         ),
@@ -386,6 +387,7 @@ function renderUploadBody({
               label={uploading ? '上传中...' : uploadActionLabel}
               disabled={disabled}
               onClick={onSelect}
+              adornment={aiGenerateAction}
             />
             <UploadActionTile
               icon={<FolderOpen className="size-8" />}
@@ -393,7 +395,6 @@ function renderUploadBody({
               disabled={disabled}
               onClick={onOpenPicker}
             />
-            {aiGenerateAction}
           </div>
         </div>
       )
@@ -559,13 +560,15 @@ function UploadActionTile({
   label,
   disabled,
   onClick,
+  adornment,
 }: {
   icon: ReactNode
   label: string
   disabled?: boolean
   onClick: () => void
+  adornment?: ReactNode
 }) {
-  return (
+  const tile = (
     <button
       type="button"
       disabled={disabled}
@@ -578,6 +581,17 @@ function UploadActionTile({
       <span className="text-sm font-medium">{label}</span>
     </button>
   )
+
+  if (!adornment) {
+    return tile
+  }
+
+  return (
+    <div className="relative size-36">
+      {tile}
+      <div className="absolute right-2 top-2 z-10">{adornment}</div>
+    </div>
+  )
 }
 
 function resolveUploadAssistantMediaKind(kind: string): AssistantMediaKind {
@@ -589,7 +603,7 @@ function resolveUploadAssistantMediaKind(kind: string): AssistantMediaKind {
 
 function resolveUploadAIGenerateClassName(uploadType: string) {
   if (isMediaUploadType(uploadType)) {
-    return 'flex size-36 flex-col items-center justify-center gap-3 rounded-2xl border-dashed px-3 py-0 text-muted-foreground'
+    return 'size-8 rounded-full border-border/80 bg-background/95 p-0 text-muted-foreground shadow-sm hover:bg-background hover:text-foreground'
   }
   return 'gap-1.5'
 }
