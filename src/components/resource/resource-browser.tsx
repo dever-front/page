@@ -253,6 +253,7 @@ export function ResourceBrowser({
           bizKey: matchedRule.bizKey || normalizedBizKey,
           bizName: matchedRule.bizName || normalizedBizName,
           categoryId: uploadCategoryId,
+          transport: matchedRule.transport,
           onProgress: (loaded, totalSize) => {
             const percent = Math.min(100, Math.round((loaded / Math.max(totalSize, 1)) * 100))
             setProgressText(`${current.name} ${percent}%`)

@@ -26,6 +26,7 @@ export default defineConfig(async () => {
   const frontBase = process.env.VITE_FRONT_BASE || '/'
   const frontOutDir = process.env.VITE_FRONT_OUT_DIR || 'dist'
   const singleBundle = isSingleBundleMode(process.env.VITE_FRONT_BUNDLE)
+  const allowAllHosts = process.env.VITE_ALLOW_ALL_HOSTS === '1'
   const enablePolling =
     process.env.VITE_FORCE_POLLING === '1' ||
     process.env.CHOKIDAR_USEPOLLING === 'true'
@@ -113,7 +114,7 @@ export default defineConfig(async () => {
     server: {
       host: '0.0.0.0',
       port: 5173,
-      allowedHosts: true,
+      allowedHosts: allowAllHosts ? true : undefined,
       fs: {
         allow: [path.resolve(__dirname), path.resolve(projectRoot, 'backend')],
       },

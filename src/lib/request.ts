@@ -187,6 +187,55 @@ function resolveRuntimeOrigin() {
   }
 }
 
+function resolveRuntimeHeaderOrigins() {
+  if (typeof window === 'undefined') {
+    return new Set<string>()
+  }
+
+  const { host, siteHost } = getRuntimeConfig()
+  const origins = [host, siteHost]
+    .map((value) => resolveConfiguredOrigin(value))
+    .filter(Boolean)
+
+  return new Set(origins)
+}
+
+function resolveConfiguredOrigin(value?: string) {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  const normalizedValue = String(value || '').trim()
+  if (!normalizedValue || normalizedValue.startsWith('/')) {
+    return ''
+  }
+
+  try {
+    return new URL(normalizedValue, window.location.origin).origin
+  } catch {
+    return ''
+  }
+}
+
+function shouldAttachRuntimeHeaders(url?: string) {
+  if (!url || typeof window === 'undefined') {
+    return true
+  }
+
+  try {
+    const parsed = new URL(url, window.location.origin)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false
+    }
+    if (parsed.origin === window.location.origin) {
+      return true
+    }
+    return resolveRuntimeHeaderOrigins().has(parsed.origin)
+  } catch {
+    return false
+  }
+}
+
 export function resolveRequestUrl(api: string) {
   if (/^https?:\/\//i.test(api)) {
     return api
@@ -308,6 +357,7 @@ function applySiteContextHeader(headers: Record<string, string>) {
 export function buildRuntimeRequestHeaders(options?: {
   accept?: string
   contentType?: string | false
+  url?: string
 }) {
   const headers: Record<string, string> = {}
   const contentType = options?.contentType ?? 'application/json'
@@ -317,6 +367,11 @@ export function buildRuntimeRequestHeaders(options?: {
   if (options?.accept) {
     headers.Accept = options.accept
   }
+
+  if (!shouldAttachRuntimeHeaders(options?.url)) {
+    return headers
+  }
+
   applyAccessTokenHeader(headers)
   applyClientPageHeader(headers)
   applySiteContextHeader(headers)
@@ -364,15 +419,15 @@ export async function requestRaw(
   const isGetMethod = normalizedMethod === 'get'
   const isFormData =
     typeof FormData !== 'undefined' && params instanceof FormData
+  let url = resolveRequestUrl(api)
   const headers = buildRuntimeRequestHeaders({
     contentType: isFormData ? false : 'application/json',
+    url,
   })
   const options: RequestInit = {
     method: fetchMethod,
     headers,
   }
-
-  let url = resolveRequestUrl(api)
 
   if (isGetMethod && params && !isFormData) {
     url = appendQueryString(url, params)
@@ -573,16 +628,16 @@ export async function requestBlob(
     const isGetMethod = normalizedMethod === 'get'
     const isFormData =
       typeof FormData !== 'undefined' && params instanceof FormData
-    const headers: Record<string, string> = {}
-    applyAccessTokenHeader(headers)
-    applyClientPageHeader(headers)
-    applySiteContextHeader(headers)
+    let url = resolveRequestUrl(api)
+    const headers = buildRuntimeRequestHeaders({
+      contentType: false,
+      url,
+    })
     const options: RequestInit = {
       method: normalizedMethod.toUpperCase(),
       headers,
     }
 
-    let url = resolveRequestUrl(api)
     if (isGetMethod && params && !isFormData) {
       url = appendQueryString(url, params)
     } else if (params) {

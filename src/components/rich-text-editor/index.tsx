@@ -423,6 +423,7 @@ export function RichTextEditor({
           bizKey: uploadRule.bizKey,
           bizName: uploadRule.bizName,
           categoryId: uploadRule.categoryId,
+          transport: uploadRule.transport,
           onProgress: (loaded, total) => {
             const percent = Math.min(100, Math.round((loaded / Math.max(total, 1)) * 100))
             setProgressText(`${current.name || '剪贴板图片'} ${percent}%`)
@@ -461,6 +462,7 @@ export function RichTextEditor({
           bizKey: uploadRule.bizKey,
           bizName: uploadRule.bizName,
           categoryId: uploadRule.categoryId,
+          transport: uploadRule.transport,
           onProgress: (loaded, total) => {
             const percent = Math.min(100, Math.round((loaded / Math.max(total, 1)) * 100))
             setProgressText(`${current.name} ${percent}%`)

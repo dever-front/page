@@ -65,12 +65,14 @@ export async function analyzeImportFile(params: {
   path: string
   importKey: string
   fileId: number
+  fileHash: string
   sheetName?: string
 }) {
   const result = await request(joinFrontApi('import/analyze'), 'post', {
     path: params.path,
     importKey: params.importKey,
     fileId: params.fileId,
+    fileHash: params.fileHash,
     sheetName: params.sheetName || '',
   })
 
@@ -85,6 +87,7 @@ export async function createImportTask(params: {
   path: string
   importKey: string
   fileId: number
+  fileHash: string
   sheetName: string
   mappings: ImportMapping[]
   matchFields: string[]
@@ -95,6 +98,7 @@ export async function createImportTask(params: {
     path: params.path,
     importKey: params.importKey,
     fileId: params.fileId,
+    fileHash: params.fileHash,
     sheetName: params.sheetName,
     mappings: JSON.stringify(params.mappings || []),
     matchFields: JSON.stringify(params.matchFields || []),

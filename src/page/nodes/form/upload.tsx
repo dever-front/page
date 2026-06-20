@@ -169,6 +169,7 @@ export function FormUpload({ item, value, setValue, error, store }: NodeItemProp
           bizKey: uploadRule.bizKey,
           bizName: uploadRule.bizName,
           categoryId: uploadRule.categoryId,
+          transport: uploadRule.transport,
           onProgress: (loaded, total) => {
             const percent = Math.min(100, Math.round((loaded / Math.max(total, 1)) * 100))
             setProgress(`${current.name} ${percent}%`)

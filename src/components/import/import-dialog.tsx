@@ -65,7 +65,7 @@ export function ImportDialog({
   const [uploading, setUploading] = useState(false)
   const [loadingAnalysis, setLoadingAnalysis] = useState(false)
   const [submitLoading, setSubmitLoading] = useState(false)
-  const [uploadedFile, setUploadedFile] = useState<{ id: number; name: string } | null>(null)
+  const [uploadedFile, setUploadedFile] = useState<{ id: number; name: string; hash: string } | null>(null)
   const [analysis, setAnalysis] = useState<ImportAnalyzeResult | null>(null)
   const [sheetName, setSheetName] = useState('')
   const [mappingByColumn, setMappingByColumn] = useState<Record<number, string>>({})
@@ -159,7 +159,11 @@ export function ImportDialog({
     return counts
   }, [mappingByColumn])
 
-  const handleAnalyze = async (fileId: number, nextSheetName?: string) => {
+  const handleAnalyze = async (
+    fileId: number,
+    nextSheetName?: string,
+    fileHash = uploadedFile?.hash || ''
+  ) => {
     if (!payload) {
       return
     }
@@ -171,6 +175,7 @@ export function ImportDialog({
         path: payload.path,
         importKey: payload.importKey,
         fileId,
+        fileHash,
         sheetName: nextSheetName || '',
       })
       setAnalysis(result)
@@ -207,20 +212,25 @@ export function ImportDialog({
   const handleChooseFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const currentFile = event.target.files?.[0]
     event.target.value = ''
-    if (!currentFile) {
+    if (!currentFile || !payload) {
       return
     }
 
     setUploading(true)
     setMessage('')
     try {
-      const uploaded = await uploadFileByRule(uploadRuleId, currentFile, { kind: 'file' })
+      const uploaded = await uploadFileByRule(uploadRuleId, currentFile, {
+        kind: 'file',
+        bizKey: buildImportFileBizKey(payload.path, payload.importKey),
+        bizName: title || '导入文件',
+      })
       const file = {
         id: Number(uploaded.id || 0),
         name: String(uploaded.name || currentFile.name).trim(),
+        hash: String(uploaded.hash || '').trim(),
       }
       setUploadedFile(file)
-      await handleAnalyze(file.id)
+      await handleAnalyze(file.id, '', file.hash)
     } catch (error: any) {
       setMessage(error?.message || '上传文件失败')
     } finally {
@@ -240,6 +250,7 @@ export function ImportDialog({
         path: payload.path,
         importKey: payload.importKey,
         fileId: uploadedFile.id,
+        fileHash: uploadedFile.hash,
         sheetName,
         mappings,
         matchFields,
@@ -693,4 +704,25 @@ function getMissingPolicyOptions(field: ImportAnalyzeResult['fields'][number]) {
     { value: 'error', label: '报错' },
     { value: 'create', label: '自动新建' },
   ]
+}
+
+function buildImportFileBizKey(pagePath: string, importKey: string) {
+  const pageSegment = normalizeImportFileBizSegment(pagePath)
+  const keySegment = normalizeImportFileBizSegment(importKey)
+  if (!pageSegment || !keySegment) {
+    return ''
+  }
+  return `${pageSegment}.import.${keySegment}`
+}
+
+function normalizeImportFileBizSegment(value: string) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[?#].*$/, '')
+    .replace(/\\/g, '/')
+    .replace(/^[/\\.]+|[/\\.]+$/g, '')
+    .replace(/\//g, '.')
+    .replace(/\.+/g, '.')
+    .replace(/^\.+|\.+$/g, '')
 }

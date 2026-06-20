@@ -15,6 +15,7 @@ import {
   normalizeClearOnChangePaths,
 } from '@/lib/form-control'
 import { getNodeComponent } from '@/lib/registry'
+import { getRuntimeNodeLoadError } from '@/lib/plugin/runtime'
 import type { Item, OptionItem } from '@/lib/schema'
 import { usePageStore, type PageStore, useStorePathValue } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -72,13 +73,6 @@ type NodeItemComponentProps = {
 }
 
 function NodeItem({ item, store, layoutId }: NodeItemComponentProps) {
-  // 从注册表查找节点组件
-  const NodeComponent = getNodeComponent(item.type)
-  if (!NodeComponent) {
-    console.warn('[Nodes] 未注册的节点类型:', item.type)
-    return null
-  }
-
   // 绑定 value
   const value = useNodeValue(store, item.value)
   const setValue = useNodeSetValue(store, item)
@@ -101,6 +95,9 @@ function NodeItem({ item, store, layoutId }: NodeItemComponentProps) {
     [store]
   )
 
+  // 从注册表查找节点组件
+  const NodeComponent = getNodeComponent(item.type)
+
   // 组装 props
   const props: NodeItemProps = {
     item,
@@ -117,6 +114,14 @@ function NodeItem({ item, store, layoutId }: NodeItemComponentProps) {
 
   if (hidden) {
     return null
+  }
+
+  if (!NodeComponent) {
+    const message =
+      getRuntimeNodeLoadError(item.type) ||
+      `未注册的节点类型：${String(item.type || '').trim()}`
+    console.warn('[Nodes] 未注册的节点类型:', item.type, message)
+    return <MissingNodeFallback item={item} message={message} />
   }
 
   // 统一 mode 包裹
@@ -223,6 +228,32 @@ function NodeFallback({ item }: { item: Item }) {
   }
 
   return <Skeleton className="h-10 w-full" />
+}
+
+function MissingNodeFallback({
+  item,
+  message,
+}: {
+  item: Item
+  message: string
+}) {
+  const content = message || `未注册的节点类型：${String(item.type || '').trim()}`
+
+  if (item.mode === 'form') {
+    return (
+      <ModeWrapper item={item}>
+        <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          {content}
+        </p>
+      </ModeWrapper>
+    )
+  }
+
+  return (
+    <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+      {content}
+    </div>
+  )
 }
 
 // ========== Mode 包裹 ==========

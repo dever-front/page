@@ -1,12 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { lazyRouteComponent } from '@/lib/lazy-route'
-
-const ComingSoon = lazyRouteComponent(() =>
-  import('@/components/coming-soon').then((mod) => ({
-    default: mod.ComingSoon,
-  }))
-)
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/_authenticated/help-center/')({
-  component: ComingSoon,
+  beforeLoad: () => {
+    throw redirect({ to: '/' })
+  },
 })

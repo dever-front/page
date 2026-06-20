@@ -31,6 +31,7 @@ export type UploadRequestOptions = {
   bizKey?: string
   bizName?: string
   categoryId?: string | number
+  transport?: string
   onProgress?: (loaded: number, total: number) => void
 }
 
@@ -101,13 +102,18 @@ export async function uploadFileByRule(
   file: File,
   options?: UploadRequestOptions
 ) {
-  const hash = await digestUploadFile(file)
-  const initPayload = buildUploadInitPayload(ruleId, file, hash, options)
-  const initResult = await request(
+  let hash = shouldDigestBeforeInit(options) ? await digestUploadFile(file) : ''
+  let initPayload = buildUploadInitPayload(ruleId, file, hash, options)
+  let initResult = await request(
     joinFrontApi('upload/init'),
     'post',
     initPayload
   )
+  if (shouldRetryInitWithHash(initResult, hash)) {
+    hash = await digestUploadFile(file)
+    initPayload = buildUploadInitPayload(ruleId, file, hash, options)
+    initResult = await request(joinFrontApi('upload/init'), 'post', initPayload)
+  }
   if (initResult.code !== 0 || !initResult.data) {
     throw new Error(initResult.message || '初始化上传失败')
   }
@@ -211,6 +217,25 @@ function buildUploadInitPayload(
   }
 
   return payload
+}
+
+function shouldDigestBeforeInit(options?: UploadRequestOptions) {
+  return normalizeUploadTransport(options?.transport) === 'direct'
+}
+
+function shouldRetryInitWithHash(
+  result: { code?: number; message?: string },
+  currentHash: string
+) {
+  if (currentHash || Number(result?.code ?? 0) === 0) {
+    return false
+  }
+
+  return /hash|哈希|文件标识/i.test(String(result?.message || ''))
+}
+
+function normalizeUploadTransport(value?: string) {
+  return String(value || '').trim().toLowerCase()
 }
 
 function buildImportRemotePayload(

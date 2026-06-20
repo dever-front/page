@@ -226,6 +226,7 @@ function PowerParamControl({
       for (const file of (multiple ? selected.slice(0, remaining) : selected.slice(0, 1))) {
         const uploaded = await uploadFileByRule(ruleId, file, {
           kind: resourceRule?.kind || resolveFileResourceKind(file),
+          transport: resourceRule?.transport,
         })
         nextFiles = multiple ? [...nextFiles, uploaded] : [uploaded]
       }
@@ -678,6 +679,7 @@ function resolveParamResourceRule(
     ruleId,
     accept: accept || undefined,
     kind,
+    transport: String(uploadRuleMeta?.transport || '').trim() || undefined,
   }
 }
 

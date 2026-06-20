@@ -23,11 +23,16 @@ declare global {
 }
 
 const runtimeNodes: NodeComponentRegistry = {}
+const runtimeNodeLoadErrors = new Map<string, string>()
 const loadingPlugins = new Map<string, Promise<void>>()
 let sdkPromise: Promise<void> | null = null
 
 export function getRuntimePluginNodes() {
   return runtimeNodes
+}
+
+export function getRuntimeNodeLoadError(nodeType: string) {
+  return runtimeNodeLoadErrors.get(normalizeNodeType(nodeType)) || ''
 }
 
 export function installRuntimeGlobal() {
@@ -45,7 +50,10 @@ function registerRuntimePlugin(plugin: DeverFrontPlugin) {
   if (!plugin?.name) {
     return
   }
-  Object.assign(runtimeNodes, plugin.nodes)
+  Object.assign(runtimeNodes, plugin.nodes || {})
+  Object.keys(plugin.nodes || {}).forEach((nodeType) => {
+    runtimeNodeLoadErrors.delete(normalizeNodeType(nodeType))
+  })
 }
 
 export async function ensurePluginsForNodes(nodeTypes: string[]) {
@@ -59,9 +67,31 @@ export async function ensurePluginsForNodes(nodeTypes: string[]) {
     pluginMatchesNodeTypes(plugin, types)
   )
 
-  await Promise.allSettled(
+  markMissingPluginNodes(types, matched)
+
+  const results = await Promise.allSettled(
     matched.map((plugin) => loadRuntimePluginWithDependencies(plugin))
   )
+
+  results.forEach((result, index) => {
+    const plugin = matched[index]
+    if (!plugin) {
+      return
+    }
+
+    if (result.status === 'rejected') {
+      markPluginNodes(
+        plugin,
+        types,
+        result.reason instanceof Error
+          ? result.reason.message
+          : '插件加载失败'
+      )
+      return
+    }
+
+    markUnregisteredPluginNodes(plugin, types)
+  })
 }
 
 async function loadRuntimePluginWithDependencies(
@@ -94,6 +124,11 @@ async function loadRuntimePluginWithDependencies(
     }
   })()
 
+  promise.catch(() => {
+    if (loadingPlugins.get(key) === promise) {
+      loadingPlugins.delete(key)
+    }
+  })
   loadingPlugins.set(key, promise)
   return promise
 }
@@ -111,7 +146,9 @@ async function loadRuntimePlugin(plugin: RuntimePluginConfig) {
     : await loadManifestEntry(plugin.manifest || '')
 
   if (!entry?.file) {
-    return
+    throw new Error(
+      `插件 ${plugin.name || plugin.manifest || plugin.entry} 缺少前端入口`
+    )
   }
 
   const baseUrl = plugin.manifest
@@ -127,15 +164,19 @@ async function loadRuntimePlugin(plugin: RuntimePluginConfig) {
 
 async function loadManifestEntry(manifestUrl: string) {
   if (!manifestUrl) {
-    return undefined
+    throw new Error('插件缺少 manifest 地址')
   }
 
   const response = await fetch(manifestUrl, { credentials: 'same-origin' })
   if (!response.ok) {
-    return undefined
+    throw new Error(`插件 manifest 加载失败(${response.status})`)
   }
 
-  return findManifestEntry(await response.json())
+  const entry = findManifestEntry(await response.json())
+  if (!entry?.file) {
+    throw new Error('插件 manifest 缺少入口文件')
+  }
+  return entry
 }
 
 function runtimePluginConfigs() {
@@ -196,7 +237,7 @@ function resolveRuntimeAsset(baseUrl: string, file: string) {
 
 function loadStyle(url: string) {
   return new Promise<void>((resolve) => {
-    if (document.querySelector(`link[href="${url}"]`)) {
+    if (hasHeadAsset('link', 'href', url)) {
       resolve()
       return
     }
@@ -205,14 +246,18 @@ function loadStyle(url: string) {
     link.rel = 'stylesheet'
     link.href = url
     link.onload = () => resolve()
-    link.onerror = () => resolve()
+    link.onerror = () => {
+      console.warn('[plugin] 样式加载失败:', url)
+      link.remove()
+      resolve()
+    }
     document.head.appendChild(link)
   })
 }
 
 function loadScript(url: string, module: boolean) {
-  return new Promise<void>((resolve) => {
-    if (document.querySelector(`script[src="${url}"]`)) {
+  return new Promise<void>((resolve, reject) => {
+    if (hasHeadAsset('script', 'src', url)) {
       resolve()
       return
     }
@@ -224,9 +269,93 @@ function loadScript(url: string, module: boolean) {
     }
     script.async = false
     script.onload = () => resolve()
-    script.onerror = () => resolve()
+    script.onerror = () => {
+      script.remove()
+      reject(new Error(`插件脚本加载失败: ${url}`))
+    }
     document.head.appendChild(script)
   })
+}
+
+function hasHeadAsset(
+  tagName: 'link' | 'script',
+  attribute: string,
+  url: string
+) {
+  return Array.from(document.head.getElementsByTagName(tagName)).some(
+    (element) => element.getAttribute(attribute) === url
+  )
+}
+
+function markMissingPluginNodes(
+  nodeTypes: string[],
+  plugins: RuntimePluginConfig[]
+) {
+  const matchedTypes = new Set<string>()
+  plugins.forEach((plugin) => {
+    ;(plugin.nodes || []).forEach((nodeType) => {
+      const normalizedNodeType = normalizeNodeType(nodeType)
+      if (nodeTypes.includes(normalizedNodeType)) {
+        matchedTypes.add(normalizedNodeType)
+      }
+    })
+  })
+
+  nodeTypes.forEach((nodeType) => {
+    const normalizedNodeType = normalizeNodeType(nodeType)
+    if (runtimeNodes[normalizedNodeType]) {
+      runtimeNodeLoadErrors.delete(normalizedNodeType)
+      return
+    }
+    if (!matchedTypes.has(normalizedNodeType)) {
+      runtimeNodeLoadErrors.set(
+        normalizedNodeType,
+        `未找到提供节点 ${normalizedNodeType} 的插件`
+      )
+    }
+  })
+}
+
+function markPluginNodes(
+  plugin: RuntimePluginConfig,
+  requestedTypes: string[],
+  message: string
+) {
+  const requestedTypeSet = new Set(requestedTypes)
+  ;(plugin.nodes || []).forEach((nodeType) => {
+    const normalizedNodeType = normalizeNodeType(nodeType)
+    if (
+      requestedTypeSet.has(normalizedNodeType) &&
+      !runtimeNodes[normalizedNodeType]
+    ) {
+      runtimeNodeLoadErrors.set(normalizedNodeType, message)
+    }
+  })
+}
+
+function markUnregisteredPluginNodes(
+  plugin: RuntimePluginConfig,
+  requestedTypes: string[]
+) {
+  const requestedTypeSet = new Set(requestedTypes)
+  ;(plugin.nodes || []).forEach((nodeType) => {
+    const normalizedNodeType = normalizeNodeType(nodeType)
+    if (!requestedTypeSet.has(normalizedNodeType)) {
+      return
+    }
+    if (runtimeNodes[normalizedNodeType]) {
+      runtimeNodeLoadErrors.delete(normalizedNodeType)
+      return
+    }
+    runtimeNodeLoadErrors.set(
+      normalizedNodeType,
+      `插件 ${plugin.name || plugin.manifest || plugin.entry} 已加载但未注册节点 ${normalizedNodeType}`
+    )
+  })
+}
+
+function normalizeNodeType(value: string) {
+  return String(value || '').trim()
 }
 
 function uniqueStrings(values: string[]) {

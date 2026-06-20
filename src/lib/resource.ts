@@ -38,6 +38,7 @@ export type ResourceUploadRule = {
   bizKey?: string
   bizName?: string
   categoryId?: string | number
+  transport?: string
 }
 
 export function normalizeResourceSourceName(value: unknown) {
@@ -526,6 +527,7 @@ export function normalizeResourceUploadRules(value: unknown) {
       bizKey: String(item?.bizKey || item?.biz_key || '').trim() || undefined,
       bizName: normalizeResourceSourceName(item?.bizName || item?.biz_name) || undefined,
       categoryId: item?.categoryId ?? item?.category_id,
+      transport: String(item?.transport || '').trim() || undefined,
     }))
     .filter((item) => item.ruleId > 0)
 }
@@ -555,6 +557,7 @@ export function mergeResourceUploadRules(
   return (Array.isArray(rules) ? rules : []).map((item) => {
     const meta = ruleMetas.get(Number(item.ruleId))
     const accept = String(item.accept || meta?.accept || '').trim() || undefined
+    const transport = String(item.transport || meta?.transport || '').trim() || undefined
     const kind =
       String(item.kind || '').trim() ||
       resolveResourceKind({
@@ -565,6 +568,7 @@ export function mergeResourceUploadRules(
       ...item,
       accept,
       kind,
+      transport,
     }
   })
 }

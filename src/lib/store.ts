@@ -224,17 +224,6 @@ export function usePageStore(): PageStore {
   return store
 }
 
-/**
- * 自定义 hook: 从 store 中选取值
- */
-export function usePageStoreValue<T>(
-  selector: (state: PageStoreState) => T
-): T {
-  const store = usePageStore()
-  // 直接从 store 获取值（需要配合 zustand 的 useStore）
-  return selector(store.getState())
-}
-
 export function useStorePathValue(store: PageStore, path?: string) {
   const resolved = resolveStorePath(store, path)
   const fallbackStore = resolved.targetStore ?? store

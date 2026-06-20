@@ -34,23 +34,22 @@ export async function readRuntimeStreamEvents<TOutput = Record<string, any>>(
   onFrame: (frame: RuntimeStreamFrame<TOutput>) => boolean | void,
   signal?: AbortSignal
 ) {
-  const response = await fetch(
-    streamRequestUrl(api, {
-      request_id: requestID,
-      last_id: lastID,
-      block: blockMs,
-      transport: 'sse',
+  const url = streamRequestUrl(api, {
+    request_id: requestID,
+    last_id: lastID,
+    block: blockMs,
+    transport: 'sse',
+  })
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: buildRuntimeRequestHeaders({
+      accept: 'text/event-stream',
+      contentType: false,
+      url,
     }),
-    {
-      method: 'GET',
-      headers: buildRuntimeRequestHeaders({
-        accept: 'text/event-stream',
-        contentType: false,
-      }),
-      credentials: 'include',
-      signal,
-    }
-  )
+    credentials: 'include',
+    signal,
+  })
   if (!response.ok) {
     throw new Error(`读取运行流失败(${response.status})`)
   }

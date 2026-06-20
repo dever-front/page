@@ -1,10 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { lazyRouteComponent } from '@/lib/lazy-route'
-
-const SignUp = lazyRouteComponent(() =>
-  import('@/features/auth/sign-up').then((mod) => ({ default: mod.SignUp }))
-)
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/(auth)/sign-up')({
-  component: SignUp,
+  beforeLoad: () => {
+    throw redirect({ to: '/sign-in' })
+  },
 })
