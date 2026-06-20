@@ -14,21 +14,33 @@ import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { common, createLowlight } from 'lowlight'
 import {
+  AlignCenter,
+  AlignJustify,
+  AlignLeft,
+  AlignRight,
   Bold,
+  CaseSensitive,
   Code2,
+  Columns3,
   Eraser,
   FileImage,
   Heading1,
   Heading2,
   Heading3,
   Italic,
+  Link2,
+  Link2Off,
   List,
   ListOrdered,
   Music4,
+  Palette,
   Quote,
   Redo2,
+  Rows3,
   SquareCode,
   Strikethrough,
+  Table2,
+  Trash2,
   Underline as UnderlineIcon,
   Undo2,
   Video,
@@ -40,8 +52,22 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  normalizeRichTextHexColor,
+  richTextFontSizes,
+  richTextHighlightColors,
+  richTextTextColors,
+  type RichTextTextStyleAttrs,
+} from '@/lib/rich-text-style'
+import {
+  isSafeRichTextHref,
+  normalizeRichTextHref,
+} from '@/lib/rich-text-link'
 import type { UploadFileItem } from '@/lib/upload'
 import { uploadFileByRule } from '@/lib/upload'
 import { cn } from '@/lib/utils'
@@ -54,6 +80,7 @@ import {
   type EditorUploadRule,
 } from './media'
 import { editorTableExtensions } from './table'
+import { RichTextStyleMark, RichTextTextAlign } from './style'
 import {
   inputValue,
   normalizeRichTextEditorValue,
@@ -69,6 +96,7 @@ type TiptapEditor = NonNullable<ReturnType<typeof useEditor>>
 type ToolbarItem = {
   icon: LucideIcon
   label: string
+  markdown?: boolean
   isActive: (editor: TiptapEditor) => boolean
   run: (editor: TiptapEditor) => void
 }
@@ -96,12 +124,123 @@ type RichTextEditorProps = {
 
 const EDITOR_MEDIA_CONTROLS: Array<{
   kind: EditorMediaKind
-  icon: typeof FileImage
+  icon: LucideIcon
   label: string
 }> = [
   { kind: 'image', icon: FileImage, label: '图片' },
   { kind: 'video', icon: Video, label: '视频' },
   { kind: 'audio', icon: Music4, label: '音频' },
+]
+
+const TOOLBAR_BUTTON_CLASS =
+  'h-7 shrink-0 rounded-md px-2 text-muted-foreground hover:text-foreground'
+
+const HEADING_OPTIONS: Array<{
+  label: string
+  icon: LucideIcon
+  isActive: (editor: TiptapEditor) => boolean
+  run: (editor: TiptapEditor) => void
+}> = [
+  {
+    label: '一级标题',
+    icon: Heading1,
+    isActive: (editor) => editor.isActive('heading', { level: 1 }),
+    run: (editor) => editor.chain().focus().toggleHeading({ level: 1 }).run(),
+  },
+  {
+    label: '二级标题',
+    icon: Heading2,
+    isActive: (editor) => editor.isActive('heading', { level: 2 }),
+    run: (editor) => editor.chain().focus().toggleHeading({ level: 2 }).run(),
+  },
+  {
+    label: '三级标题',
+    icon: Heading3,
+    isActive: (editor) => editor.isActive('heading', { level: 3 }),
+    run: (editor) => editor.chain().focus().toggleHeading({ level: 3 }).run(),
+  },
+]
+
+const ALIGN_OPTIONS: Array<{
+  label: string
+  value: string
+  icon: LucideIcon
+}> = [
+  { label: '左对齐', value: 'left', icon: AlignLeft },
+  { label: '居中', value: 'center', icon: AlignCenter },
+  { label: '右对齐', value: 'right', icon: AlignRight },
+  { label: '两端对齐', value: 'justify', icon: AlignJustify },
+]
+
+const INLINE_FORMAT_OPTIONS: ToolbarItem[] = [
+  {
+    icon: Bold,
+    label: '加粗',
+    markdown: true,
+    isActive: (editor) => editor.isActive('bold'),
+    run: (editor) => editor.chain().focus().toggleBold().run(),
+  },
+  {
+    icon: Italic,
+    label: '斜体',
+    markdown: true,
+    isActive: (editor) => editor.isActive('italic'),
+    run: (editor) => editor.chain().focus().toggleItalic().run(),
+  },
+  {
+    icon: UnderlineIcon,
+    label: '下划线',
+    isActive: (editor) => editor.isActive('underline'),
+    run: (editor) => editor.chain().focus().toggleUnderline().run(),
+  },
+  {
+    icon: Strikethrough,
+    label: '删除线',
+    markdown: true,
+    isActive: (editor) => editor.isActive('strike'),
+    run: (editor) => editor.chain().focus().toggleStrike().run(),
+  },
+  {
+    icon: Code2,
+    label: '行内代码',
+    markdown: true,
+    isActive: (editor) => editor.isActive('code'),
+    run: (editor) => editor.chain().focus().toggleCode().run(),
+  },
+  {
+    icon: SquareCode,
+    label: '代码块',
+    markdown: true,
+    isActive: (editor) => editor.isActive('codeBlock'),
+    run: (editor) => editor.chain().focus().toggleCodeBlock().run(),
+  },
+  {
+    icon: Quote,
+    label: '引用',
+    markdown: true,
+    isActive: (editor) => editor.isActive('blockquote'),
+    run: (editor) => editor.chain().focus().toggleBlockquote().run(),
+  },
+]
+
+const LIST_OPTIONS: Array<{
+  label: string
+  icon: LucideIcon
+  isActive: (editor: TiptapEditor) => boolean
+  run: (editor: TiptapEditor) => void
+}> = [
+  {
+    label: '无序列表',
+    icon: List,
+    isActive: (editor) => editor.isActive('bulletList'),
+    run: (editor) => editor.chain().focus().toggleBulletList().run(),
+  },
+  {
+    label: '有序列表',
+    icon: ListOrdered,
+    isActive: (editor) => editor.isActive('orderedList'),
+    run: (editor) => editor.chain().focus().toggleOrderedList().run(),
+  },
 ]
 
 const editorLowlight = createLowlight(common)
@@ -142,6 +281,7 @@ export function RichTextEditor({
   renderAiGenerate,
 }: RichTextEditorProps) {
   const format = resolveRichTextContentFormat(contentFormat)
+  const richControlsEnabled = format === 'json'
   const normalizedMinHeight = Math.max(Number(minHeight) || 220, 80)
   const normalizedMaxHeight = Math.max(Number(maxHeight) || 560, normalizedMinHeight + 120)
   const contentMaxHeight = Math.max(normalizedMaxHeight - 56, normalizedMinHeight)
@@ -157,20 +297,46 @@ export function RichTextEditor({
     () => uploadRules.map((current) => current.kind),
     [uploadRules]
   )
+  const inlineFormatOptions = useMemo(
+    () =>
+      richControlsEnabled
+        ? INLINE_FORMAT_OPTIONS
+        : INLINE_FORMAT_OPTIONS.filter((option) => option.markdown),
+    [richControlsEnabled]
+  )
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [activeUploadKind, setActiveUploadKind] = useState<EditorMediaKind | ''>('')
   const [activePickerKind, setActivePickerKind] = useState<EditorMediaKind | ''>('')
   const [uploadingKind, setUploadingKind] = useState<EditorMediaKind | ''>('')
   const [uploadMessage, setUploadMessage] = useState('')
   const [progressText, setProgressText] = useState('')
+  const [linkPopoverOpen, setLinkPopoverOpen] = useState(false)
+  const [linkHref, setLinkHref] = useState('')
+  const selectionRef = useRef<{ from: number; to: number } | null>(null)
 
   const editorExtensions = useMemo(
     () => [
       StarterKit.configure({
         codeBlock: false,
         heading: { levels: [1, 2, 3] },
+        link: {
+          autolink: true,
+          linkOnPaste: true,
+          openOnClick: false,
+          defaultProtocol: 'https',
+          protocols: ['http', 'https', 'mailto'],
+          HTMLAttributes: {
+            rel: 'noreferrer',
+            target: '_blank',
+          },
+          isAllowedUri: (url, context) =>
+            isSafeRichTextHref(url) &&
+            (String(url || '').trim().startsWith('/') || context.defaultValidate(url)),
+        },
       }),
       Underline,
+      RichTextStyleMark,
+      RichTextTextAlign,
       CodeBlockLowlight.configure({
         lowlight: editorLowlight,
         defaultLanguage: null,
@@ -210,7 +376,7 @@ export function RichTextEditor({
     editorProps: {
       attributes: {
         class:
-          'tiptap-editor relative text-sm leading-7 outline-none [&_.hljs-attr]:text-sky-700 [&_.hljs-attribute]:text-sky-700 [&_.hljs-built_in]:text-violet-700 [&_.hljs-comment]:text-slate-500 [&_.hljs-keyword]:text-pink-700 [&_.hljs-literal]:text-indigo-700 [&_.hljs-meta]:text-slate-500 [&_.hljs-name]:text-emerald-700 [&_.hljs-number]:text-indigo-700 [&_.hljs-params]:text-slate-700 [&_.hljs-property]:text-sky-700 [&_.hljs-punctuation]:text-slate-500 [&_.hljs-regexp]:text-rose-700 [&_.hljs-selector-class]:text-emerald-700 [&_.hljs-selector-id]:text-emerald-700 [&_.hljs-string]:text-amber-700 [&_.hljs-symbol]:text-violet-700 [&_.hljs-tag]:text-emerald-700 [&_.hljs-title]:text-violet-700 [&_.hljs-type]:text-violet-700 [&_.hljs-variable]:text-orange-700 [&_audio]:my-4 [&_audio]:block [&_audio]:w-full [&_audio]:max-w-md [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_code]:rounded-md [&_code]:bg-slate-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.9em] [&_code]:text-slate-900 [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_img]:my-4 [&_img]:block [&_img]:max-w-full [&_img]:rounded-lg [&_li]:ml-4 [&_ol]:list-decimal [&_p]:min-h-6 [&_pre]:my-4 [&_pre]:max-h-[460px] [&_pre]:overflow-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-slate-200 [&_pre]:bg-slate-50 [&_pre]:px-4 [&_pre]:py-3 [&_pre]:shadow-inner [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-sm [&_pre_code]:leading-6 [&_pre_code]:text-slate-900 [&_table]:my-4 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:bg-muted/50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_ul]:list-disc [&_video]:my-4 [&_video]:block [&_video]:max-w-full [&_video]:rounded-lg [&_video]:bg-black/90',
+          'tiptap-editor relative text-sm leading-7 outline-none [&_.hljs-attr]:text-sky-700 [&_.hljs-attribute]:text-sky-700 [&_.hljs-built_in]:text-violet-700 [&_.hljs-comment]:text-slate-500 [&_.hljs-keyword]:text-pink-700 [&_.hljs-literal]:text-indigo-700 [&_.hljs-meta]:text-slate-500 [&_.hljs-name]:text-emerald-700 [&_.hljs-number]:text-indigo-700 [&_.hljs-params]:text-slate-700 [&_.hljs-property]:text-sky-700 [&_.hljs-punctuation]:text-slate-500 [&_.hljs-regexp]:text-rose-700 [&_.hljs-selector-class]:text-emerald-700 [&_.hljs-selector-id]:text-emerald-700 [&_.hljs-string]:text-amber-700 [&_.hljs-symbol]:text-violet-700 [&_.hljs-tag]:text-emerald-700 [&_.hljs-title]:text-violet-700 [&_.hljs-type]:text-violet-700 [&_.hljs-variable]:text-orange-700 [&_audio]:my-4 [&_audio]:block [&_audio]:w-full [&_audio]:max-w-md [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_code]:rounded-md [&_code]:bg-slate-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.9em] [&_code]:text-slate-900 [&_h1]:mt-4 [&_h1]:mb-2.5 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5 [&_h3]:text-sm [&_h3]:font-semibold [&_img]:my-4 [&_img]:block [&_img]:max-w-full [&_img]:rounded-lg [&_li]:ml-4 [&_ol]:list-decimal [&_p]:min-h-6 [&_pre]:my-4 [&_pre]:max-h-[460px] [&_pre]:overflow-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-slate-200 [&_pre]:bg-slate-50 [&_pre]:px-4 [&_pre]:py-3 [&_pre]:shadow-inner [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-sm [&_pre_code]:leading-6 [&_pre_code]:text-slate-900 [&_table]:my-4 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:bg-muted/50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_ul]:list-disc [&_video]:my-4 [&_video]:block [&_video]:max-w-full [&_video]:rounded-lg [&_video]:bg-black/90',
         style: `min-height:${normalizedMinHeight}px`,
       },
       handlePaste: (_view, event) => {
@@ -256,104 +422,30 @@ export function RichTextEditor({
       return
     }
 
+    selectionRef.current = null
     editor.commands.setContent(parseRichTextEditorContent(value, format), {
       emitUpdate: false,
       contentType: format,
     })
   }, [editor, format, onChange, value])
 
-  const toolbarItems: ToolbarItem[] = useMemo(
-    () => [
-      {
-        icon: Bold,
-        label: '加粗',
-        isActive: (currentEditor) => currentEditor.isActive('bold'),
-        run: (currentEditor) => currentEditor.chain().focus().toggleBold().run(),
-      },
-      {
-        icon: Italic,
-        label: '斜体',
-        isActive: (currentEditor) => currentEditor.isActive('italic'),
-        run: (currentEditor) => currentEditor.chain().focus().toggleItalic().run(),
-      },
-      {
-        icon: UnderlineIcon,
-        label: '下划线',
-        isActive: (currentEditor) => currentEditor.isActive('underline'),
-        run: (currentEditor) => currentEditor.chain().focus().toggleUnderline().run(),
-      },
-      {
-        icon: Strikethrough,
-        label: '删除线',
-        isActive: (currentEditor) => currentEditor.isActive('strike'),
-        run: (currentEditor) => currentEditor.chain().focus().toggleStrike().run(),
-      },
-      {
-        icon: Code2,
-        label: '行内区块',
-        isActive: (currentEditor) => currentEditor.isActive('code'),
-        run: (currentEditor) => currentEditor.chain().focus().toggleCode().run(),
-      },
-      {
-        icon: SquareCode,
-        label: '区块',
-        isActive: (currentEditor) => currentEditor.isActive('codeBlock'),
-        run: (currentEditor) => currentEditor.chain().focus().toggleCodeBlock().run(),
-      },
-      {
-        icon: Heading1,
-        label: '一级标题',
-        isActive: (currentEditor) => currentEditor.isActive('heading', { level: 1 }),
-        run: (currentEditor) =>
-          currentEditor.chain().focus().toggleHeading({ level: 1 }).run(),
-      },
-      {
-        icon: Heading2,
-        label: '二级标题',
-        isActive: (currentEditor) => currentEditor.isActive('heading', { level: 2 }),
-        run: (currentEditor) =>
-          currentEditor.chain().focus().toggleHeading({ level: 2 }).run(),
-      },
-      {
-        icon: Heading3,
-        label: '三级标题',
-        isActive: (currentEditor) => currentEditor.isActive('heading', { level: 3 }),
-        run: (currentEditor) =>
-          currentEditor.chain().focus().toggleHeading({ level: 3 }).run(),
-      },
-      {
-        icon: List,
-        label: '无序列表',
-        isActive: (currentEditor) => currentEditor.isActive('bulletList'),
-        run: (currentEditor) => currentEditor.chain().focus().toggleBulletList().run(),
-      },
-      {
-        icon: ListOrdered,
-        label: '有序列表',
-        isActive: (currentEditor) => currentEditor.isActive('orderedList'),
-        run: (currentEditor) => currentEditor.chain().focus().toggleOrderedList().run(),
-      },
-      {
-        icon: Quote,
-        label: '引用',
-        isActive: (currentEditor) => currentEditor.isActive('blockquote'),
-        run: (currentEditor) => currentEditor.chain().focus().toggleBlockquote().run(),
-      },
-      {
-        icon: Undo2,
-        label: '撤销',
-        isActive: () => false,
-        run: (currentEditor) => currentEditor.chain().focus().undo().run(),
-      },
-      {
-        icon: Redo2,
-        label: '重做',
-        isActive: () => false,
-        run: (currentEditor) => currentEditor.chain().focus().redo().run(),
-      },
-    ],
-    []
-  )
+  useEffect(() => {
+    if (!editor) {
+      return
+    }
+
+    const rememberNonEmptySelection = () => {
+      const { from, to } = editor.state.selection
+      if (from !== to) {
+        selectionRef.current = { from, to }
+      }
+    }
+
+    editor.on('selectionUpdate', rememberNonEmptySelection)
+    return () => {
+      editor.off('selectionUpdate', rememberNonEmptySelection)
+    }
+  }, [editor])
 
   const openUploadPicker = (kind: EditorMediaKind) => {
     if (disabled) {
@@ -403,6 +495,118 @@ export function RichTextEditor({
     if (hasInserted) {
       setUploadMessage('')
     }
+  }
+
+  const applyRichTextStyle = (attrs: RichTextTextStyleAttrs) => {
+    if (!editor || disabled) {
+      return
+    }
+    restoreRememberedSelection()
+    editor.chain().focus().setRichTextStyle(attrs).run()
+  }
+
+  const applyTextAlign = (align: string) => {
+    if (!editor || disabled) {
+      return
+    }
+    restoreRememberedSelection()
+    editor.chain().focus().setRichTextAlign(align).run()
+  }
+
+  const openLinkEditor = () => {
+    if (!editor || disabled) {
+      return
+    }
+    restoreRememberedSelection()
+    setLinkHref(String(editor.getAttributes('link')?.href || ''))
+    setLinkPopoverOpen(true)
+  }
+
+  const applyLink = () => {
+    if (!editor || disabled) {
+      return
+    }
+    const href = normalizeRichTextHref(linkHref)
+    restoreRememberedSelection()
+    if (!href) {
+      editor.chain().focus().extendMarkRange('link').unsetLink().run()
+      setLinkPopoverOpen(false)
+      return
+    }
+    if (!isSafeRichTextHref(href)) {
+      setUploadMessage('链接只支持 http、https、mailto 或站内路径。')
+      return
+    }
+
+    const chain = editor.chain().focus()
+    if (editor.state.selection.empty && !editor.isActive('link')) {
+      chain.insertContent({
+        type: 'text',
+        text: href,
+        marks: [{ type: 'link', attrs: { href } }],
+      }).run()
+    } else {
+      chain.extendMarkRange('link').setLink({ href }).run()
+    }
+    setUploadMessage('')
+    setLinkPopoverOpen(false)
+  }
+
+  const removeLink = () => {
+    if (!editor || disabled) {
+      return
+    }
+    restoreRememberedSelection()
+    editor.chain().focus().extendMarkRange('link').unsetLink().run()
+    setLinkPopoverOpen(false)
+  }
+
+  const rememberCurrentSelection = () => {
+    if (!editor) {
+      return
+    }
+    const { from, to } = editor.state.selection
+    if (from !== to) {
+      selectionRef.current = { from, to }
+      return
+    }
+    if (editor.isFocused) {
+      selectionRef.current = null
+    }
+  }
+
+  const restoreRememberedSelection = () => {
+    if (!editor) {
+      return false
+    }
+
+    const { from: currentFrom, to: currentTo } = editor.state.selection
+    if (currentFrom !== currentTo) {
+      selectionRef.current = { from: currentFrom, to: currentTo }
+      return true
+    }
+
+    if (!selectionRef.current) {
+      return false
+    }
+
+    const docSize = editor.state.doc.content.size
+    const from = Math.max(0, Math.min(selectionRef.current.from, docSize))
+    const to = Math.max(0, Math.min(selectionRef.current.to, docSize))
+    if (from === to) {
+      selectionRef.current = null
+      return false
+    }
+    editor.commands.setTextSelection({ from, to })
+    return true
+  }
+
+  const runEditorAction = (run: (currentEditor: TiptapEditor) => void) => {
+    if (!editor || disabled) {
+      return
+    }
+    restoreRememberedSelection()
+    run(editor)
   }
 
   async function uploadPastedImages(files: File[]) {
@@ -498,68 +702,165 @@ export function RichTextEditor({
         accept={activeUploadKind ? uploadRuleMap.get(activeUploadKind)?.accept : undefined}
         onChange={handleChooseMedia}
       />
-      <div className="flex flex-wrap items-center gap-1 border-b border-border/70 bg-muted/35 px-2.5 py-2">
-        {toolbarItems.map(({ icon: Icon, label, isActive, run }) => (
-          <Button
-            key={label}
-            type="button"
-            variant={editor && isActive(editor) ? 'secondary' : 'ghost'}
-            size="xs"
-            className="h-7 rounded-md px-2 text-muted-foreground hover:text-foreground"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              if (!editor || disabled) {
-                return
-              }
-              run(editor)
-            }}
-            disabled={disabled || !editor}
-            title={label}
-          >
-            <Icon className="size-3.5" />
-            <span className="sr-only">{label}</span>
-          </Button>
-        ))}
-        {uploadKinds.length > 0 ? <div className="mx-1 h-4 w-px bg-border/70" /> : null}
-        {EDITOR_MEDIA_CONTROLS.map(({ kind, icon, label }) =>
-          uploadKinds.includes(kind) ? (
-            <EditorMediaMenuButton
-              key={kind}
+      <div className="overflow-x-auto border-b border-border/70 bg-muted/35">
+        <div className="flex min-w-max items-center gap-1 px-2.5 py-2">
+          {HEADING_OPTIONS.map(({ icon, label, isActive, run }) => (
+            <EditorToolbarButton
+              key={label}
               icon={icon}
               label={label}
-              disabled={disabled || !editor || !!uploadingKind}
-              onUpload={() => openUploadPicker(kind)}
-              onSelectResource={() => openResourcePicker(kind)}
-              aiGenerate={renderAiGenerate?.({
-                kind,
-                disabled: !!disabled || !editor || !!uploadingKind,
-                onGenerated: (items) => insertMediaItems(kind, items),
-              })}
+              active={!!editor && isActive(editor)}
+              disabled={disabled || !editor}
+              onPressStart={rememberCurrentSelection}
+              onClick={() => runEditorAction(run)}
             />
-          ) : null
-        )}
-        {(uploadKinds.length > 0 || toolbarItems.length > 0) ? (
+          ))}
+          {richControlsEnabled ? (
+            <EditorFontSizeMenu
+              disabled={disabled || !editor}
+              onPressStart={rememberCurrentSelection}
+              onSelect={applyRichTextStyle}
+            />
+          ) : null}
           <div className="mx-1 h-4 w-px bg-border/70" />
-        ) : null}
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          className="h-7 rounded-md px-2 text-muted-foreground hover:text-foreground"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => {
-            if (!editor || disabled) {
-              return
+          <EditorInlineFormatMenu
+            editor={editor}
+            disabled={disabled || !editor}
+            options={inlineFormatOptions}
+            onPressStart={rememberCurrentSelection}
+            onRun={runEditorAction}
+          />
+          {richControlsEnabled ? (
+            <>
+              <EditorColorMenu
+                disabled={disabled || !editor}
+                onPressStart={rememberCurrentSelection}
+                onSelect={applyRichTextStyle}
+              />
+              <EditorAlignMenu
+                editor={editor}
+                disabled={disabled || !editor}
+                onPressStart={rememberCurrentSelection}
+                onSelect={applyTextAlign}
+              />
+            </>
+          ) : null}
+          <EditorListMenu
+            editor={editor}
+            disabled={disabled || !editor}
+            onPressStart={rememberCurrentSelection}
+            onRun={runEditorAction}
+          />
+          <Popover open={linkPopoverOpen} onOpenChange={setLinkPopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant={editor?.isActive('link') ? 'secondary' : 'ghost'}
+                size="xs"
+                className={TOOLBAR_BUTTON_CLASS}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  rememberCurrentSelection()
+                }}
+                onClick={openLinkEditor}
+                disabled={disabled || !editor}
+                title="链接"
+              >
+                <Link2 className="size-3.5" />
+                <span className="sr-only">链接</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-80 p-3">
+              <form
+                className="space-y-3"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  applyLink()
+                }}
+              >
+                <Input
+                  value={linkHref}
+                  onChange={(event) => setLinkHref(event.target.value)}
+                  placeholder="https://example.com 或 /path"
+                  autoFocus
+                />
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={removeLink}
+                    disabled={!editor?.isActive('link')}
+                  >
+                    <Link2Off className="size-4" />
+                    取消链接
+                  </Button>
+                  <Button type="submit" size="sm">
+                    应用
+                  </Button>
+                </div>
+              </form>
+            </PopoverContent>
+          </Popover>
+          {richControlsEnabled
+            ? EDITOR_MEDIA_CONTROLS.filter((control) => uploadKinds.includes(control.kind)).map(
+                ({ kind, icon: Icon, label }) => (
+                  <EditorMediaButton
+                    key={kind}
+                    icon={Icon}
+                    label={label}
+                    kind={kind}
+                    disabled={disabled || !editor || !!uploadingKind}
+                    onUpload={openUploadPicker}
+                    onSelectResource={openResourcePicker}
+                    renderAiGenerate={() =>
+                      renderAiGenerate?.({
+                        kind,
+                        disabled: !!disabled || !editor || !!uploadingKind,
+                        onGenerated: (items) => insertMediaItems(kind, items),
+                      })
+                    }
+                  />
+                )
+              )
+            : null}
+          {richControlsEnabled ? (
+            <EditorTableMenu editor={editor} disabled={disabled || !editor} />
+          ) : null}
+          <div className="mx-1 h-4 w-px bg-border/70" />
+          <EditorToolbarButton
+            icon={Undo2}
+            label="撤销"
+            disabled={disabled || !editor}
+            onClick={() => editor?.chain().focus().undo().run()}
+          />
+          <EditorToolbarButton
+            icon={Redo2}
+            label="重做"
+            disabled={disabled || !editor}
+            onClick={() => editor?.chain().focus().redo().run()}
+          />
+          <EditorToolbarButton
+            icon={Eraser}
+            label="清除格式"
+            disabled={disabled || !editor}
+            onPressStart={rememberCurrentSelection}
+            onClick={() =>
+              runEditorAction((currentEditor) =>
+                currentEditor
+                  .chain()
+                  .focus()
+                  .clearNodes()
+                  .unsetAllMarks()
+                  .clearRichTextAlign()
+                  .run()
+              )
             }
-            editor.chain().focus().clearNodes().unsetAllMarks().run()
-          }}
-          disabled={disabled || !editor}
-          title="清除格式"
-        >
-          <Eraser className="size-3.5" />
-          <span className="sr-only">清除格式</span>
-        </Button>
-        {assistantAdornment ? <div className="ms-auto">{assistantAdornment}</div> : null}
+          />
+          {assistantAdornment ? (
+            <div className="ms-auto shrink-0">{assistantAdornment}</div>
+          ) : null}
+        </div>
       </div>
       {progressText || uploadMessage ? (
         <div className="space-y-1 border-b border-border/70 bg-muted/15 px-4 py-2">
@@ -637,20 +938,49 @@ function clipboardImageFiles(data: DataTransfer | null) {
     .filter((file): file is File => file != null)
 }
 
-function EditorMediaMenuButton({
+function EditorToolbarButton({
   icon: Icon,
   label,
+  active,
   disabled,
-  onUpload,
-  onSelectResource,
-  aiGenerate,
+  onPressStart,
+  onClick,
 }: {
-  icon: typeof FileImage
+  icon: LucideIcon
   label: string
+  active?: boolean
   disabled?: boolean
-  onUpload: () => void
-  onSelectResource: () => void
-  aiGenerate?: ReactNode
+  onPressStart?: () => void
+  onClick: () => void
+}) {
+  return (
+    <Button
+      type="button"
+      variant={active ? 'secondary' : 'ghost'}
+      size="xs"
+      className={TOOLBAR_BUTTON_CLASS}
+      onMouseDown={(event) => {
+        event.preventDefault()
+        onPressStart?.()
+      }}
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+    >
+      <Icon className="size-3.5" />
+      <span className="sr-only">{label}</span>
+    </Button>
+  )
+}
+
+function EditorFontSizeMenu({
+  disabled,
+  onPressStart,
+  onSelect,
+}: {
+  disabled?: boolean
+  onPressStart?: () => void
+  onSelect: (attrs: { fontSize?: string | null }) => void
 }) {
   return (
     <DropdownMenu modal={false}>
@@ -659,7 +989,389 @@ function EditorMediaMenuButton({
           type="button"
           variant="ghost"
           size="xs"
-          className="h-7 rounded-md px-2 text-muted-foreground hover:text-foreground"
+          className={TOOLBAR_BUTTON_CLASS}
+          onMouseDown={(event) => {
+            event.preventDefault()
+            onPressStart?.()
+          }}
+          disabled={disabled}
+          title="字号"
+        >
+          <CaseSensitive className="size-3.5" />
+          <span className="sr-only">字号</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        <DropdownMenuItem onSelect={() => onSelect({ fontSize: null })}>
+          默认字号
+        </DropdownMenuItem>
+        {richTextFontSizes.map((fontSize) => (
+          <DropdownMenuItem
+            key={fontSize.value}
+            onSelect={() => onSelect({ fontSize: fontSize.value })}
+          >
+            <span style={{ fontSize: fontSize.value }}>{fontSize.label}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function EditorInlineFormatMenu({
+  editor,
+  disabled,
+  options,
+  onPressStart,
+  onRun,
+}: {
+  editor: TiptapEditor | null
+  disabled?: boolean
+  options: ToolbarItem[]
+  onPressStart?: () => void
+  onRun: (run: (currentEditor: TiptapEditor) => void) => void
+}) {
+  const activeOption = editor
+    ? options.find((option) => option.isActive(editor))
+    : undefined
+  const TriggerIcon = activeOption?.icon || Bold
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant={activeOption ? 'secondary' : 'ghost'}
+          size="xs"
+          className={TOOLBAR_BUTTON_CLASS}
+          onMouseDown={(event) => {
+            event.preventDefault()
+            onPressStart?.()
+          }}
+          disabled={disabled}
+          title="行内格式"
+        >
+          <TriggerIcon className="size-3.5" />
+          <span className="sr-only">行内格式</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {options.map(({ icon: Icon, label, isActive, run }) => (
+          <DropdownMenuItem
+            key={label}
+            onSelect={() => onRun(run)}
+            className={cn(editor && isActive(editor) && 'bg-accent text-accent-foreground')}
+          >
+            <Icon className="size-4" />
+            {label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function EditorColorMenu({
+  disabled,
+  onPressStart,
+  onSelect,
+}: {
+  disabled?: boolean
+  onPressStart?: () => void
+  onSelect: (attrs: { color?: string | null; backgroundColor?: string | null }) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [textColor, setTextColor] = useState(richTextTextColors[0] || '#111827')
+  const [highlightColor, setHighlightColor] = useState(richTextHighlightColors[0] || '#fef3c7')
+  const applyTextColor = (color: string) => {
+    const normalized = normalizeRichTextHexColor(color)
+    if (!normalized) {
+      return
+    }
+    setTextColor(normalized)
+    onSelect({ color: normalized })
+  }
+  const applyHighlightColor = (backgroundColor: string) => {
+    const normalized = normalizeRichTextHexColor(backgroundColor)
+    if (!normalized) {
+      return
+    }
+    setHighlightColor(normalized)
+    onSelect({ backgroundColor: normalized })
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          className={TOOLBAR_BUTTON_CLASS}
+          onMouseDown={(event) => {
+            event.preventDefault()
+            onPressStart?.()
+          }}
+          disabled={disabled}
+          title="颜色和高亮"
+        >
+          <Palette className="size-3.5" />
+          <span className="sr-only">颜色和高亮</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-3">
+        <ColorPickerSection
+          label="文字颜色"
+          value={textColor}
+          onChange={applyTextColor}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mb-2 h-7 w-full justify-start px-2 text-xs"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onSelect({ color: null })}
+        >
+          清除文字颜色
+        </Button>
+        <ColorSwatches
+          colors={richTextTextColors}
+          onSelect={applyTextColor}
+        />
+        <div className="my-3 h-px bg-border/70" />
+        <ColorPickerSection
+          label="背景高亮"
+          value={highlightColor}
+          onChange={applyHighlightColor}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mb-2 h-7 w-full justify-start px-2 text-xs"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onSelect({ backgroundColor: null })}
+        >
+          清除背景高亮
+        </Button>
+        <ColorSwatches
+          colors={richTextHighlightColors}
+          onSelect={applyHighlightColor}
+        />
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function ColorPickerSection({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (color: string) => void
+}) {
+  const [draft, setDraft] = useState(value)
+
+  useEffect(() => {
+    setDraft(value)
+  }, [value])
+
+  const applyDraft = () => {
+    const normalized = normalizeRichTextHexColor(draft)
+    if (!normalized) {
+      setDraft(value)
+      return
+    }
+    onChange(normalized)
+  }
+
+  return (
+    <form
+      className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground"
+      onSubmit={(event) => {
+        event.preventDefault()
+        applyDraft()
+      }}
+    >
+      <span>{label}</span>
+      <span className="flex items-center gap-2">
+        <input
+          type="color"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-8 w-10 cursor-pointer rounded-md border border-border bg-transparent p-0.5"
+          title={label}
+        />
+        <Input
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={applyDraft}
+          className="h-8 w-24 font-mono text-xs uppercase"
+          spellCheck={false}
+        />
+      </span>
+    </form>
+  )
+}
+
+function ColorSwatches({
+  colors,
+  onSelect,
+}: {
+  colors: string[]
+  onSelect: (color: string) => void
+}) {
+  return (
+    <div className="grid grid-cols-7 gap-1 px-2 pb-2">
+      {colors.map((color) => (
+        <button
+          key={color}
+          type="button"
+          className="size-5 rounded-full border border-border shadow-xs"
+          style={{ backgroundColor: color }}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onSelect(color)}
+          title={color}
+        />
+      ))}
+    </div>
+  )
+}
+
+function EditorAlignMenu({
+  editor,
+  disabled,
+  onPressStart,
+  onSelect,
+}: {
+  editor: TiptapEditor | null
+  disabled?: boolean
+  onPressStart?: () => void
+  onSelect: (align: string) => void
+}) {
+  const active = editor
+    ? ALIGN_OPTIONS.find((option) =>
+        ['paragraph', 'heading', 'tableCell', 'tableHeader'].some((type) =>
+          editor.isActive(type, { textAlign: option.value })
+        )
+      )
+    : undefined
+  const TriggerIcon = active?.icon || AlignLeft
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant={active ? 'secondary' : 'ghost'}
+          size="xs"
+          className={TOOLBAR_BUTTON_CLASS}
+          onMouseDown={(event) => {
+            event.preventDefault()
+            onPressStart?.()
+          }}
+          disabled={disabled}
+          title="对齐"
+        >
+          <TriggerIcon className="size-3.5" />
+          <span className="sr-only">对齐</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {ALIGN_OPTIONS.map(({ icon: Icon, label, value }) => (
+          <DropdownMenuItem
+            key={value}
+            onSelect={() => onSelect(value)}
+            className={cn(active?.value === value && 'bg-accent text-accent-foreground')}
+          >
+            <Icon className="size-4" />
+            {label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function EditorListMenu({
+  editor,
+  disabled,
+  onPressStart,
+  onRun,
+}: {
+  editor: TiptapEditor | null
+  disabled?: boolean
+  onPressStart?: () => void
+  onRun: (run: (currentEditor: TiptapEditor) => void) => void
+}) {
+  const activeOption = editor ? LIST_OPTIONS.find((option) => option.isActive(editor)) : undefined
+  const TriggerIcon = activeOption?.icon || List
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant={activeOption ? 'secondary' : 'ghost'}
+          size="xs"
+          className={TOOLBAR_BUTTON_CLASS}
+          onMouseDown={(event) => {
+            event.preventDefault()
+            onPressStart?.()
+          }}
+          disabled={disabled}
+          title="列表"
+        >
+          <TriggerIcon className="size-3.5" />
+          <span className="sr-only">列表</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {LIST_OPTIONS.map(({ icon: Icon, label, isActive, run }) => (
+          <DropdownMenuItem
+            key={label}
+            onSelect={() => onRun(run)}
+            className={cn(editor && isActive(editor) && 'bg-accent text-accent-foreground')}
+          >
+            <Icon className="size-4" />
+            {label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function EditorMediaButton({
+  icon: Icon,
+  label,
+  kind,
+  disabled,
+  onUpload,
+  onSelectResource,
+  renderAiGenerate,
+}: {
+  icon: LucideIcon
+  label: string
+  kind: EditorMediaKind
+  disabled?: boolean
+  onUpload: (kind: EditorMediaKind) => void
+  onSelectResource: (kind: EditorMediaKind) => void
+  renderAiGenerate: () => ReactNode
+}) {
+  const aiGenerate = renderAiGenerate()
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          className={TOOLBAR_BUTTON_CLASS}
           onMouseDown={(event) => event.preventDefault()}
           disabled={disabled}
           title={label}
@@ -669,14 +1381,174 @@ function EditorMediaMenuButton({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        <DropdownMenuItem onSelect={onUpload}>
+        <DropdownMenuLabel className="flex items-center gap-2">
+          <Icon className="size-4" />
+          {label}
+        </DropdownMenuLabel>
+        <DropdownMenuItem onSelect={() => onUpload(kind)}>
           上传{label}
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onSelectResource}>
+        <DropdownMenuItem onSelect={() => onSelectResource(kind)}>
           从资源库选择{label}
         </DropdownMenuItem>
         {aiGenerate ? <div className="px-1 py-0.5">{aiGenerate}</div> : null}
       </DropdownMenuContent>
     </DropdownMenu>
   )
+}
+
+function EditorTableMenu({
+  editor,
+  disabled,
+}: {
+  editor: TiptapEditor | null
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState('3')
+  const [cols, setCols] = useState('3')
+  const [withHeaderRow, setWithHeaderRow] = useState(true)
+  const inTable = !!editor?.isActive('table')
+  const insertTable = () => {
+    if (!editor || disabled) {
+      return
+    }
+
+    const nextRows = normalizeTableDimension(rows)
+    const nextCols = normalizeTableDimension(cols)
+    setRows(String(nextRows))
+    setCols(String(nextCols))
+    editor
+      .chain()
+      .focus()
+      .insertRichTextTable({ rows: nextRows, cols: nextCols, withHeaderRow })
+      .run()
+    setOpen(false)
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant={inTable ? 'secondary' : 'ghost'}
+          size="xs"
+          className={TOOLBAR_BUTTON_CLASS}
+          onMouseDown={(event) => event.preventDefault()}
+          disabled={disabled}
+          title="表格"
+        >
+          <Table2 className="size-3.5" />
+          <span className="sr-only">表格</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-3">
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            insertTable()
+          }}
+        >
+          <div className="grid grid-cols-2 gap-2">
+            <label className="space-y-1 text-xs text-muted-foreground">
+              行数
+              <Input
+                type="number"
+                min={1}
+                max={12}
+                step={1}
+                value={rows}
+                onChange={(event) => setRows(event.target.value)}
+              />
+            </label>
+            <label className="space-y-1 text-xs text-muted-foreground">
+              列数
+              <Input
+                type="number"
+                min={1}
+                max={12}
+                step={1}
+                value={cols}
+                onChange={(event) => setCols(event.target.value)}
+              />
+            </label>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={withHeaderRow}
+              onChange={(event) => setWithHeaderRow(event.target.checked)}
+              className="size-4 rounded border-border"
+            />
+            首行表头
+          </label>
+          <Button type="submit" size="sm" className="w-full">
+            插入表格
+          </Button>
+        </form>
+        <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border/70 pt-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!inTable}
+            onClick={() => editor?.chain().focus().addRichTextTableRowAfter().run()}
+          >
+            <Rows3 className="size-4" />
+            添加行
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!inTable}
+            onClick={() => editor?.chain().focus().addRichTextTableColumnAfter().run()}
+          >
+            <Columns3 className="size-4" />
+            添加列
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!inTable}
+            onClick={() => editor?.chain().focus().deleteRichTextTableRow().run()}
+          >
+            <Rows3 className="size-4" />
+            删除行
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!inTable}
+            onClick={() => editor?.chain().focus().deleteRichTextTableColumn().run()}
+          >
+            <Columns3 className="size-4" />
+            删除列
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            className="col-span-2"
+            disabled={!inTable}
+            onClick={() => editor?.chain().focus().deleteRichTextTable().run()}
+          >
+            <Trash2 className="size-4" />
+            删除表格
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function normalizeTableDimension(value: unknown) {
+  const size = Number(value)
+  if (!Number.isFinite(size)) {
+    return 3
+  }
+  return Math.max(1, Math.min(12, Math.round(size)))
 }

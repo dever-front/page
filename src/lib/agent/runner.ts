@@ -29,9 +29,9 @@ export type AgentStreamStatus<TOutput = Record<string, unknown>> =
 export type AgentStreamResult<TOutput = Record<string, unknown>> =
   RuntimeStreamResult<TOutput>
 
-const DEFAULT_REQUEST_API = '/bot/agent/run'
-const DEFAULT_STREAM_API = '/bot/agent/stream'
-const DEFAULT_STOP_API = '/bot/agent/stop'
+const DEFAULT_REQUEST_API = '/bot/admin/agent/run'
+const DEFAULT_STREAM_API = '/bot/admin/agent/stream'
+const DEFAULT_STOP_API = '/bot/admin/agent/stop'
 
 export async function runAgentStream<TOutput = Record<string, unknown>>({
   agent,

@@ -7,6 +7,11 @@ import {
   type RichTextMark,
   type RichTextNode,
 } from '@/lib/rich-text'
+import {
+  richTextTextAlignToCss,
+  richTextTextStyleToCss,
+} from '@/lib/rich-text-style'
+import { safeRichTextHref } from '@/lib/rich-text-link'
 import { cn } from '@/lib/utils'
 
 type RichTextViewProps = {
@@ -89,7 +94,7 @@ function renderRichTextNode(node: RichTextNode | null | undefined, key: string):
     case 'hardBreak':
       return <br key={key} />
     case 'heading':
-      return createElement(headingTag(node), { key }, children)
+      return createElement(headingTag(node), { key, style: blockStyle(node) }, children)
     case 'horizontalRule':
       return <hr key={key} />
     case 'listItem':
@@ -97,16 +102,16 @@ function renderRichTextNode(node: RichTextNode | null | undefined, key: string):
     case 'orderedList':
       return <ol key={key}>{children}</ol>
     case 'paragraph':
-      return <p key={key}>{children}</p>
+      return <p key={key} style={blockStyle(node)}>{children}</p>
     case 'agentAbilityPlaceholder':
     case 'agentTaskPlaceholder':
       return renderRichTextPlaceholder(node, key)
     case 'table':
       return <table key={key}>{children}</table>
     case 'tableCell':
-      return <td key={key}>{children}</td>
+      return <td key={key} style={blockStyle(node)}>{children}</td>
     case 'tableHeader':
-      return <th key={key}>{children}</th>
+      return <th key={key} style={blockStyle(node)}>{children}</th>
     case 'tableRow':
       return <tr key={key}>{children}</tr>
     case 'text':
@@ -148,17 +153,31 @@ function renderRichTextMark(mark: RichTextMark | null | undefined, children: Rea
       return <em key={key}>{children}</em>
     case 'link':
       return (
-        <a key={key} href={safeHref(mark.attrs?.href)} target="_blank" rel="noreferrer">
+        <a key={key} href={safeRichTextHref(mark.attrs?.href)} target="_blank" rel="noreferrer">
           {children}
         </a>
       )
     case 'strike':
       return <s key={key}>{children}</s>
+    case 'textStyle':
+      return renderTextStyleMark(mark, children, key)
     case 'underline':
       return <u key={key}>{children}</u>
     default:
       return <Fragment key={key}>{children}</Fragment>
   }
+}
+
+function renderTextStyleMark(mark: RichTextMark, children: ReactNode, key: string) {
+  const style = richTextTextStyleToCss(mark.attrs) as CSSProperties
+  if (Object.keys(style).length === 0) {
+    return <Fragment key={key}>{children}</Fragment>
+  }
+  return (
+    <span key={key} style={style}>
+      {children}
+    </span>
+  )
 }
 
 function renderRichTextImage(node: RichTextNode, key: string) {
@@ -260,6 +279,10 @@ function headingTag(node: RichTextNode) {
   return `h${normalized}`
 }
 
+function blockStyle(node: RichTextNode): CSSProperties | undefined {
+  return richTextTextAlignToCss(node.attrs?.textAlign) as CSSProperties | undefined
+}
+
 function mediaAttrs(node: RichTextNode): {
   src: string
   style?: CSSProperties
@@ -270,12 +293,4 @@ function mediaAttrs(node: RichTextNode): {
     src,
     style: maxWidth ? { maxWidth } : undefined,
   }
-}
-
-function safeHref(value: unknown) {
-  const href = String(value || '').trim()
-  if (/^(https?:|mailto:|\/)/i.test(href)) {
-    return href
-  }
-  return '#'
 }

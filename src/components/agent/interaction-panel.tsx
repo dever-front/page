@@ -48,7 +48,7 @@ type AgentInteractionPanelProps = {
 
 export function AgentInteractionPanel({
   interaction,
-  paramApi = '/bot/energon/power_params',
+  paramApi = '/bot/admin/energon/power_params',
   disabled,
   readonly,
   hideHeader,
