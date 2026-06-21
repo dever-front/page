@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import type { NodeConfig } from '@tiptap/core'
+import type { Editor, NodeConfig } from '@tiptap/core'
 import { mergeAttributes, Node, ReactNodeViewRenderer } from '@tiptap/react'
 import type { ResourceUploadRule } from '@/lib/resource'
 import { resolveResourceKind } from '@/lib/resource'
@@ -208,32 +208,80 @@ export function buildEditorMediaInsertContent(
   file: UploadFileItem,
   kind: EditorMediaKind
 ) {
-  const src = String(file.url || file.open_url || file.download || '').trim()
+  const src = resolveEditorMediaFileSource(file)
   if (!src) {
     return []
   }
 
-  const name = String(file.name || '').trim()
   return [
     {
       type: resolveEditorMediaNodeName(kind),
-      attrs:
-        kind === 'image'
-          ? {
-              src,
-              alt: name,
-              title: name,
-              maxWidth: defaultRichTextMediaMaxWidth(kind),
-            }
-          : {
-              src,
-              maxWidth: defaultRichTextMediaMaxWidth(kind),
-            },
+      attrs: buildEditorMediaAttrs(file, kind),
     },
     {
       type: 'paragraph',
     },
   ]
+}
+
+export function replaceEditorMediaSource(
+  editor: Editor,
+  kind: EditorMediaKind,
+  sourceUrl: string,
+  file: UploadFileItem
+) {
+  const nextSrc = resolveEditorMediaFileSource(file)
+  if (!nextSrc || !sourceUrl) {
+    return false
+  }
+
+  const mediaNodeName = resolveEditorMediaNodeName(kind)
+  const nextAttrs = buildEditorMediaAttrs(file, kind)
+  let transaction = editor.state.tr
+  let changed = false
+
+  editor.state.doc.descendants((node, position) => {
+    if (
+      node.type.name !== mediaNodeName ||
+      String(node.attrs.src || '').trim() !== sourceUrl
+    ) {
+      return
+    }
+
+    transaction = transaction.setNodeMarkup(position, undefined, {
+      ...node.attrs,
+      ...nextAttrs,
+      maxWidth: node.attrs.maxWidth || nextAttrs.maxWidth,
+    })
+    changed = true
+  })
+
+  if (changed) {
+    editor.view.dispatch(transaction)
+  }
+
+  return changed
+}
+
+export function resolveEditorMediaFileSource(file: UploadFileItem) {
+  return String(file.url || file.open_url || file.download || '').trim()
+}
+
+function buildEditorMediaAttrs(file: UploadFileItem, kind: EditorMediaKind) {
+  const src = resolveEditorMediaFileSource(file)
+  const name = String(file.name || '').trim()
+
+  return kind === 'image'
+    ? {
+        src,
+        alt: name,
+        title: name,
+        maxWidth: defaultRichTextMediaMaxWidth(kind),
+      }
+    : {
+        src,
+        maxWidth: defaultRichTextMediaMaxWidth(kind),
+      }
 }
 
 function resolveEditorMediaKind(rule: ResourceUploadRule) {

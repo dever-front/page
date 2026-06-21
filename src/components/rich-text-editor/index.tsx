@@ -14,12 +14,14 @@ import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { common, createLowlight } from 'lowlight'
 import {
+  AlertCircle,
   AlignCenter,
   AlignJustify,
   AlignLeft,
   AlignRight,
   Bold,
   CaseSensitive,
+  CheckCircle2,
   Code2,
   Columns3,
   Eraser,
@@ -32,6 +34,7 @@ import {
   Link2Off,
   List,
   ListOrdered,
+  Loader2,
   Music4,
   Palette,
   Quote,
@@ -43,7 +46,9 @@ import {
   Trash2,
   Underline as UnderlineIcon,
   Undo2,
+  UploadCloud,
   Video,
+  X,
   type LucideIcon,
 } from 'lucide-react'
 import { ResourcePickerDialogLazy } from '@/components/resource/lazy-dialogs'
@@ -68,17 +73,25 @@ import {
   isSafeRichTextHref,
   normalizeRichTextHref,
 } from '@/lib/rich-text-link'
+import { normalizeUploadItem } from '@/lib/resource'
 import type { UploadFileItem } from '@/lib/upload'
-import { uploadFileByRule } from '@/lib/upload'
+import { importRemoteFileByRuleStream, uploadFileByRule } from '@/lib/upload'
 import { cn } from '@/lib/utils'
 import {
   buildEditorMediaInsertContent,
   editorMediaExtensions,
+  replaceEditorMediaSource,
   resolveEditorMediaLabel,
   resolveEditorUploadLabel,
   type EditorMediaKind,
   type EditorUploadRule,
 } from './media'
+import {
+  normalizePastedRichTextHTML,
+  pastedMediaAssetKey,
+  pastedMediaKindLabel,
+  type PastedRemoteMediaAsset,
+} from './paste-html'
 import { editorTableExtensions } from './table'
 import { RichTextStyleMark, RichTextTextAlign } from './style'
 import {
@@ -120,6 +133,15 @@ type RichTextEditorProps = {
     disabled: boolean
     onGenerated: (items: UploadFileItem[]) => void
   }) => ReactNode
+}
+
+type RemoteAssetTransferStatus = 'pending' | 'uploading' | 'done' | 'error'
+
+type RemoteAssetTransferState = {
+  status: RemoteAssetTransferStatus
+  message?: string
+  progress?: number | null
+  uploaded?: UploadFileItem
 }
 
 const EDITOR_MEDIA_CONTROLS: Array<{
@@ -310,6 +332,8 @@ export function RichTextEditor({
   const [uploadingKind, setUploadingKind] = useState<EditorMediaKind | ''>('')
   const [uploadMessage, setUploadMessage] = useState('')
   const [progressText, setProgressText] = useState('')
+  const [pastedRemoteAssets, setPastedRemoteAssets] = useState<PastedRemoteMediaAsset[]>([])
+  const [remoteAssetState, setRemoteAssetState] = useState<Record<string, RemoteAssetTransferState>>({})
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false)
   const [linkHref, setLinkHref] = useState('')
   const selectionRef = useRef<{ from: number; to: number } | null>(null)
@@ -380,8 +404,21 @@ export function RichTextEditor({
         style: `min-height:${normalizedMinHeight}px`,
       },
       handlePaste: (_view, event) => {
-        if (disabled || event.clipboardData?.getData('text/html')?.trim()) {
+        if (disabled) {
           return false
+        }
+
+        const html = event.clipboardData?.getData('text/html')?.trim()
+        if (html) {
+          const pasted = normalizePastedRichTextHTML(html)
+          if (!pasted.html.trim()) {
+            return false
+          }
+
+          event.preventDefault()
+          editor?.chain().focus().insertContent(pasted.html).run()
+          appendPastedRemoteAssets(pasted.assets)
+          return true
         }
 
         const files = clipboardImageFiles(event.clipboardData)
@@ -494,6 +531,124 @@ export function RichTextEditor({
 
     if (hasInserted) {
       setUploadMessage('')
+    }
+  }
+
+  const appendPastedRemoteAssets = (assets: PastedRemoteMediaAsset[]) => {
+    if (!Array.isArray(assets) || assets.length === 0) {
+      return
+    }
+
+    assets.forEach((asset) => {
+      const uploaded = remoteAssetState[pastedMediaAssetKey(asset)]?.uploaded
+      if (uploaded && editor) {
+        replaceEditorMediaSource(editor, asset.kind, asset.sourceUrl, uploaded)
+      }
+    })
+
+    setPastedRemoteAssets((current) => {
+      const records = new Map(current.map((asset) => [pastedMediaAssetKey(asset), asset]))
+      assets.forEach((asset) => {
+        const key = pastedMediaAssetKey(asset)
+        if (!remoteAssetState[key]?.uploaded) {
+          records.set(key, asset)
+        }
+      })
+      return Array.from(records.values())
+    })
+
+    setRemoteAssetState((current) => {
+      const next = { ...current }
+      assets.forEach((asset) => {
+        const key = pastedMediaAssetKey(asset)
+        if (!next[key]) {
+          next[key] = { status: 'pending' }
+        }
+      })
+      return next
+    })
+  }
+
+  const clearPastedRemoteAssets = () => {
+    setPastedRemoteAssets([])
+    setRemoteAssetState({})
+  }
+
+  const transferPastedRemoteAssets = async () => {
+    if (!editor) {
+      return
+    }
+
+    const queue = pastedRemoteAssets.filter((asset) => {
+      const state = remoteAssetState[pastedMediaAssetKey(asset)]
+      return (
+        state?.status !== 'done' &&
+        state?.status !== 'uploading' &&
+        !!uploadRuleMap.get(asset.kind)
+      )
+    })
+    if (queue.length === 0) {
+      return
+    }
+
+    for (const [index, asset] of queue.entries()) {
+      const uploadRule = uploadRuleMap.get(asset.kind)
+      if (!uploadRule) {
+        continue
+      }
+
+      const key = pastedMediaAssetKey(asset)
+      const defaultMessage = `正在转存${pastedMediaKindLabel(asset.kind)} ${index + 1}/${queue.length}`
+      setRemoteAssetState((current) => ({
+        ...current,
+        [key]: {
+          status: 'uploading',
+          message: defaultMessage,
+          progress: null,
+        },
+      }))
+
+      try {
+        const uploaded = normalizeUploadItem(
+          await importRemoteFileByRuleStream(uploadRule.ruleId, asset.sourceUrl, {
+            kind: uploadRule.kind || asset.kind,
+            name: asset.name,
+            bizKey: uploadRule.bizKey,
+            bizName: uploadRule.bizName,
+            categoryId: uploadRule.categoryId,
+            onStatus: (status) => {
+              setRemoteAssetState((current) => ({
+                ...current,
+                [key]: {
+                  status: 'uploading',
+                  message: status.message || defaultMessage,
+                  progress: status.progress,
+                },
+              }))
+            },
+          })
+        )
+
+        replaceEditorMediaSource(editor, asset.kind, asset.sourceUrl, uploaded)
+        setRemoteAssetState((current) => ({
+          ...current,
+          [key]: {
+            status: 'done',
+            message: `${pastedMediaKindLabel(asset.kind)}已转存`,
+            progress: 100,
+            uploaded,
+          },
+        }))
+      } catch (transferError) {
+        setRemoteAssetState((current) => ({
+          ...current,
+          [key]: {
+            status: 'error',
+            message: transferError instanceof Error ? transferError.message : '转存失败',
+            progress: null,
+          },
+        }))
+      }
     }
   }
 
@@ -862,6 +1017,14 @@ export function RichTextEditor({
           ) : null}
         </div>
       </div>
+      <RemoteAssetTransferBanner
+        assets={pastedRemoteAssets}
+        states={remoteAssetState}
+        uploadRuleMap={uploadRuleMap}
+        disabled={disabled || !editor}
+        onTransfer={() => void transferPastedRemoteAssets()}
+        onDismiss={clearPastedRemoteAssets}
+      />
       {progressText || uploadMessage ? (
         <div className="space-y-1 border-b border-border/70 bg-muted/15 px-4 py-2">
           {progressText ? (
@@ -936,6 +1099,183 @@ function clipboardImageFiles(data: DataTransfer | null) {
     .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
     .map((item) => item.getAsFile())
     .filter((file): file is File => file != null)
+}
+
+function RemoteAssetTransferBanner({
+  assets,
+  states,
+  uploadRuleMap,
+  disabled,
+  onTransfer,
+  onDismiss,
+}: {
+  assets: PastedRemoteMediaAsset[]
+  states: Record<string, RemoteAssetTransferState>
+  uploadRuleMap: Map<EditorMediaKind, EditorUploadRule>
+  disabled?: boolean
+  onTransfer: () => void
+  onDismiss: () => void
+}) {
+  if (assets.length === 0) {
+    return null
+  }
+
+  const activeState = assets
+    .map((asset) => states[pastedMediaAssetKey(asset)])
+    .find((state) => state?.status === 'uploading')
+  const doneCount = assets.filter(
+    (asset) => states[pastedMediaAssetKey(asset)]?.status === 'done'
+  ).length
+  const failedCount = assets.filter(
+    (asset) => states[pastedMediaAssetKey(asset)]?.status === 'error'
+  ).length
+  const pendingAssets = assets.filter(
+    (asset) => states[pastedMediaAssetKey(asset)]?.status !== 'done'
+  )
+  const transferableCount = pendingAssets.filter((asset) =>
+    uploadRuleMap.has(asset.kind)
+  ).length
+  const missingRuleCount = pendingAssets.length - transferableCount
+  const transferring = !!activeState
+  const completed = doneCount > 0 && doneCount === assets.length
+  const message = resolveRemoteAssetBannerMessage({
+    assets,
+    pendingAssets,
+    activeState,
+    completed,
+  })
+  const detail = resolveRemoteAssetBannerDetail({
+    failedCount,
+    missingRuleCount,
+    doneCount,
+    totalCount: assets.length,
+  })
+
+  return (
+    <div
+      className={cn(
+        'flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2.5 text-sm',
+        completed
+          ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100'
+          : 'border-amber-500/25 bg-amber-500/10 text-amber-950 dark:text-amber-100'
+      )}
+    >
+      <div className="flex min-w-0 flex-1 items-start gap-2">
+        {completed ? (
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
+        ) : transferring ? (
+          <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-amber-700 dark:text-amber-200" />
+        ) : (
+          <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-200" />
+        )}
+        <div className="min-w-0">
+          <p className="font-medium leading-5">{message}</p>
+          {detail ? (
+            <p className="mt-0.5 text-xs opacity-80">{detail}</p>
+          ) : null}
+          {transferring && activeState?.progress != null ? (
+            <div className="mt-2 h-1.5 w-56 max-w-full overflow-hidden rounded-full bg-background/70">
+              <div
+                className="h-full rounded-full bg-amber-600 transition-[width] dark:bg-amber-300"
+                style={{ width: `${activeState.progress}%` }}
+              />
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {!completed && transferableCount > 0 ? (
+          <Button
+            type="button"
+            size="sm"
+            variant={failedCount > 0 ? 'destructive' : 'outline'}
+            className="h-8 bg-background/80"
+            disabled={disabled || transferring}
+            onClick={onTransfer}
+          >
+            {transferring ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <UploadCloud className="size-4" />
+            )}
+            {failedCount > 0 ? '重试转存' : '转存全部'}
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-8"
+          onClick={onDismiss}
+          title="关闭提示"
+        >
+          <X className="size-4" />
+          <span className="sr-only">关闭提示</span>
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function resolveRemoteAssetBannerMessage({
+  assets,
+  pendingAssets,
+  activeState,
+  completed,
+}: {
+  assets: PastedRemoteMediaAsset[]
+  pendingAssets: PastedRemoteMediaAsset[]
+  activeState?: RemoteAssetTransferState
+  completed: boolean
+}) {
+  if (activeState?.message) {
+    return activeState.message
+  }
+  if (completed) {
+    return `已转存 ${assets.length} 个外部资源。`
+  }
+  return `检测到 ${formatRemoteAssetCounts(pendingAssets)} 来自外部链接，建议转存到资源库。`
+}
+
+function resolveRemoteAssetBannerDetail({
+  failedCount,
+  missingRuleCount,
+  doneCount,
+  totalCount,
+}: {
+  failedCount: number
+  missingRuleCount: number
+  doneCount: number
+  totalCount: number
+}) {
+  const details: string[] = []
+  if (doneCount > 0 && doneCount < totalCount) {
+    details.push(`${doneCount} 个已转存`)
+  }
+  if (failedCount > 0) {
+    details.push(`${failedCount} 个转存失败`)
+  }
+  if (missingRuleCount > 0) {
+    details.push(`${missingRuleCount} 个缺少对应上传规则`)
+  }
+  return details.join('，')
+}
+
+function formatRemoteAssetCounts(assets: PastedRemoteMediaAsset[]) {
+  const counts = new Map<EditorMediaKind, number>()
+  assets.forEach((asset) => {
+    counts.set(asset.kind, (counts.get(asset.kind) || 0) + 1)
+  })
+
+  const parts: string[] = []
+  const mediaKinds: EditorMediaKind[] = ['image', 'video', 'audio']
+  mediaKinds.forEach((kind) => {
+    const count = counts.get(kind) || 0
+    if (count > 0) {
+      parts.push(`${count} 个${pastedMediaKindLabel(kind)}`)
+    }
+  })
+  return parts.join('、') || `${assets.length} 个资源`
 }
 
 function EditorToolbarButton({

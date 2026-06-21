@@ -1,6 +1,24 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { Bot, Loader2, Send, Square } from 'lucide-react'
+import {
+  Bot,
+  Brain,
+  History,
+  Loader2,
+  Plus,
+  Send,
+  Square,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EnergonContentView } from '@/components/energon/content-view'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -12,6 +30,11 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import {
   applyAssistantFrontAction,
@@ -44,6 +67,17 @@ import {
 } from '@/lib/assistant/reference'
 import { loadAssistantPermissionContextSafe } from '@/lib/assistant/permission'
 import { mergeAssistantTaskReferences } from '@/lib/assistant/task'
+import {
+  assistantSessionContextKey,
+  clearAssistantSession,
+  deleteAssistantMemory,
+  listAssistantSessions,
+  loadAssistantSession,
+  saveAssistantMemory,
+  saveAssistantMessage,
+  type AssistantMemoryRecord,
+  type AssistantSessionRecord,
+} from '@/lib/assistant/session'
 import { stripRouterBasePath } from '@/lib/router-path'
 import {
   cancelStreamTiming,
@@ -63,6 +97,8 @@ import {
   AssistantReferencePicker,
 } from './reference-picker'
 import { AssistantInteractionDialog } from './interaction-dialog'
+
+const ASSISTANT_AGENT_KEY = 'front-assistant'
 
 type AssistantDrawerProps = {
   open: boolean
@@ -92,6 +128,44 @@ type SendOptions = {
   answeredInteractionData?: Record<string, unknown>
 }
 
+type AssistantHeaderIconButtonProps = {
+  label: string
+  active?: boolean
+  disabled?: boolean
+  onClick: () => void
+  children: ReactNode
+}
+
+function AssistantHeaderIconButton({
+  label,
+  active = false,
+  disabled = false,
+  onClick,
+  children,
+}: AssistantHeaderIconButtonProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">
+          <Button
+            type="button"
+            size="icon"
+            variant={active ? 'secondary' : 'ghost'}
+            disabled={disabled}
+            onClick={onClick}
+          >
+            {children}
+            <span className="sr-only">{label}</span>
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="z-[95]">
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
   const navigate = useNavigate()
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -107,6 +181,16 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
   const [permissionContext, setPermissionContext] =
     useState<AssistantPermissionContext | null>(null)
   const [permissionLoading, setPermissionLoading] = useState(false)
+  const [sessionID, setSessionID] = useState(0)
+  const [sessionLoading, setSessionLoading] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [sessions, setSessions] = useState<AssistantSessionRecord[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [memoryOpen, setMemoryOpen] = useState(false)
+  const [memories, setMemories] = useState<AssistantMemoryRecord[]>([])
+  const [memoryTitle, setMemoryTitle] = useState('')
+  const [memoryContent, setMemoryContent] = useState('')
+  const [memorySaving, setMemorySaving] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
 
@@ -149,6 +233,14 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
     )
   }, [interactionDialogMessageID, messages, pendingInteractionMessage])
   const contextText = assistantContextSummary(pageContext)
+  const sessionContextKey = useMemo(
+    () =>
+      assistantSessionContextKey('front-assistant', {
+        scope: 'global',
+      }),
+    []
+  )
+  const sessionTitle = 'AI 助理会话'
   const now = useStreamClock(running || timing?.status === 'running')
 
   const updateRunStatus = (
@@ -163,9 +255,127 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
     )
   }
 
+  const applyAssistantSessionPayload = useCallback(
+    (payload: Awaited<ReturnType<typeof loadAssistantSession>>) => {
+      setSessionID(payload.session?.id || 0)
+      setMessages(restoreChatMessages(payload.messages))
+      setMemories(payload.memories)
+    },
+    []
+  )
+
+  const loadDrawerSession = useCallback(
+    async (options: { sessionID?: number; newSession?: boolean } = {}) => {
+      setSessionLoading(true)
+      try {
+        const payload = await loadAssistantSession({
+          sessionID: options.sessionID,
+          newSession: options.newSession,
+          agentKey: ASSISTANT_AGENT_KEY,
+          contextKey: sessionContextKey,
+          title: sessionTitle,
+          limit: 80,
+        })
+        applyAssistantSessionPayload(payload)
+        return payload.session?.id || 0
+      } finally {
+        setSessionLoading(false)
+      }
+    },
+    [applyAssistantSessionPayload, sessionContextKey, sessionTitle]
+  )
+
+  const ensureDrawerSession = useCallback(async () => {
+    if (sessionID > 0) {
+      return sessionID
+    }
+    return await loadDrawerSession()
+  }, [loadDrawerSession, sessionID])
+
+  const refreshAssistantSessions = useCallback(async () => {
+    setSessionsLoading(true)
+    try {
+      const rows = await listAssistantSessions({
+        agentKey: ASSISTANT_AGENT_KEY,
+        contextKey: sessionContextKey,
+        limit: 50,
+      })
+      setSessions(rows)
+    } finally {
+      setSessionsLoading(false)
+    }
+  }, [sessionContextKey])
+
+  const startNewSession = useCallback(async () => {
+    await loadDrawerSession({ newSession: true })
+    setInput('')
+    setReferences([])
+    setReferenceMessage('')
+    setHistoryOpen(false)
+  }, [loadDrawerSession])
+
+  const clearCurrentSession = useCallback(async () => {
+    if (sessionID <= 0) {
+      setMessages([])
+      return
+    }
+    setSessionLoading(true)
+    try {
+      const payload = await clearAssistantSession(sessionID)
+      applyAssistantSessionPayload(payload)
+    } finally {
+      setSessionLoading(false)
+    }
+  }, [applyAssistantSessionPayload, sessionID])
+
+  const openSessionFromHistory = useCallback(
+    async (id: number) => {
+      await loadDrawerSession({ sessionID: id })
+      setHistoryOpen(false)
+    },
+    [loadDrawerSession]
+  )
+
+  const saveMemory = useCallback(async () => {
+    const title = memoryTitle.trim()
+    const content = memoryContent.trim()
+    if (!title || !content) {
+      return
+    }
+    setMemorySaving(true)
+    try {
+      const memory = await saveAssistantMemory({
+        agentKey: ASSISTANT_AGENT_KEY,
+        contextKey: sessionContextKey,
+        title,
+        content,
+        tags: [],
+      })
+      if (memory) {
+        setMemories((current) => [memory, ...current])
+      }
+      setMemoryTitle('')
+      setMemoryContent('')
+    } finally {
+      setMemorySaving(false)
+    }
+  }, [memoryContent, memoryTitle, sessionContextKey])
+
+  const removeMemory = useCallback(async (id: number) => {
+    await deleteAssistantMemory(id)
+    setMemories((current) => current.filter((memory) => memory.id !== id))
+  }, [])
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
   }, [messages, running])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    void loadDrawerSession()
+  }, [loadDrawerSession, open])
 
   useEffect(() => {
     if (pendingInteractionMessage?.id) {
@@ -259,6 +469,22 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
       setPermissionContext,
       setPermissionLoading
     )
+    let activeSessionID = 0
+    try {
+      activeSessionID = await ensureDrawerSession()
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : '加载 AI 助理会话失败'
+      setMessages((current) => [
+        ...current,
+        {
+          id: createMessageID(),
+          role: 'assistant',
+          content: message,
+        },
+      ])
+      return
+    }
 
     const userMessage: ChatMessage = {
       id: createMessageID(),
@@ -308,11 +534,25 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
     let finishStatus: Exclude<StreamTimingStatus, 'running'> = 'done'
 
     try {
+      await recordAssistantMessage({
+        sessionID: activeSessionID,
+        agentKey: ASSISTANT_AGENT_KEY,
+        contextKey: sessionContextKey,
+        role: 'user',
+        text: userMessage.content,
+        kind: options.messageKind || 'chat',
+        content: {
+          data: options.messageData,
+          input: options.input || {},
+          task: mergeAssistantTaskReferences(options.task, runReferences),
+        },
+      })
       let finalOutput: Record<string, unknown> = {}
       const finalText = await runAssistantAgent({
         text,
         input: options.input,
         task: mergeAssistantTaskReferences(options.task, runReferences),
+        assistantSessionID: activeSessionID,
         context: runPageContext,
         permissionContext: runPermissionContext,
         history,
@@ -351,6 +591,19 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
           interaction_answered: false,
         }))
       )
+      await recordAssistantMessage({
+        sessionID: activeSessionID,
+        agentKey: ASSISTANT_AGENT_KEY,
+        contextKey: sessionContextKey,
+        role: 'assistant',
+        text: visibleText,
+        kind: interaction ? 'interaction' : 'chat',
+        content: {
+          interaction,
+          interaction_answered: false,
+        },
+        output: buildAssistantMessageOutput(finalOutput, visibleText) || finalOutput,
+      })
       if (interaction) {
         updateRunStatus('等待补充信息')
         return
@@ -382,6 +635,16 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
           content: message,
         }))
       )
+      await recordAssistantMessage({
+        sessionID: activeSessionID,
+        agentKey: ASSISTANT_AGENT_KEY,
+        contextKey: sessionContextKey,
+        role: 'assistant',
+        text: message,
+        kind: 'error',
+        output: { error: message },
+        status: 2,
+      })
     } finally {
       if (controller.signal.aborted) {
         finishStatus = 'canceled'
@@ -471,7 +734,7 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
         layerClassName="z-[90]"
         side="right"
         className="w-full gap-0 p-0 sm:max-w-xl"
-        showCloseButton
+        showCloseButton={false}
       >
         <div
           data-assistant-layer="true"
@@ -488,10 +751,76 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
                   {contextText}
                 </SheetDescription>
               </div>
+              <div className="ms-auto flex items-center gap-1">
+                <AssistantHeaderIconButton
+                  label="历史会话"
+                  active={historyOpen}
+                  disabled={running || sessionLoading}
+                  onClick={() => {
+                    const nextOpen = !historyOpen
+                    setHistoryOpen(nextOpen)
+                    if (nextOpen) {
+                      void refreshAssistantSessions()
+                    }
+                  }}
+                >
+                  <History className="size-4" />
+                </AssistantHeaderIconButton>
+                <AssistantHeaderIconButton
+                  label="长期记忆"
+                  active={memoryOpen}
+                  disabled={running || sessionLoading}
+                  onClick={() => setMemoryOpen((current) => !current)}
+                >
+                  <Brain className="size-4" />
+                </AssistantHeaderIconButton>
+                <AssistantHeaderIconButton
+                  label="新建会话"
+                  disabled={running || sessionLoading}
+                  onClick={() => void startNewSession()}
+                >
+                  <Plus className="size-4" />
+                </AssistantHeaderIconButton>
+                <AssistantHeaderIconButton
+                  label="清空当前会话"
+                  disabled={running || sessionLoading || messages.length === 0}
+                  onClick={() => void clearCurrentSession()}
+                >
+                  <Trash2 className="size-4" />
+                </AssistantHeaderIconButton>
+                <AssistantHeaderIconButton
+                  label="关闭助理"
+                  onClick={() => onOpenChange(false)}
+                >
+                  <X className="size-4" />
+                </AssistantHeaderIconButton>
+              </div>
             </div>
           </SheetHeader>
 
           <div className="flex min-h-0 flex-1 flex-col">
+            {historyOpen ? (
+              <AssistantSessionPanel
+                sessions={sessions}
+                activeID={sessionID}
+                loading={sessionsLoading}
+                disabled={running || sessionLoading}
+                onOpen={(id) => void openSessionFromHistory(id)}
+              />
+            ) : null}
+            {memoryOpen ? (
+              <AssistantMemoryPanel
+                memories={memories}
+                title={memoryTitle}
+                content={memoryContent}
+                saving={memorySaving}
+                disabled={running || sessionLoading}
+                onTitleChange={setMemoryTitle}
+                onContentChange={setMemoryContent}
+                onSave={() => void saveMemory()}
+                onDelete={(id) => void removeMemory(id)}
+              />
+            ) : null}
             <ScrollArea className="min-h-0 flex-1">
               <div className="space-y-4 px-5 py-4">
                 {messages.length === 0 ? (
@@ -670,6 +999,36 @@ function buildAssistantHistory(messages: ChatMessage[]): AssistantMessage[] {
   }))
 }
 
+async function recordAssistantMessage(
+  input: Parameters<typeof saveAssistantMessage>[0]
+) {
+  try {
+    await saveAssistantMessage(input)
+  } catch {
+    // 会话保存失败不能中断本次前端助理交互。
+  }
+}
+
+function restoreChatMessages(messages: AssistantMessage[]): ChatMessage[] {
+  return messages.map((message, index) => {
+    const parsed =
+      message.role === 'assistant'
+        ? extractAssistantFrontActions(message.content)
+        : { actions: [] as AssistantFrontAction[] }
+    return {
+      ...message,
+      id: `saved-${index}-${Math.random().toString(16).slice(2)}`,
+      content: message.content,
+      kind: message.type as ChatMessage['kind'],
+      output: message.output,
+      actions: parsed.actions,
+      interaction: message.interaction,
+      interactionAnswered: Boolean(message.interaction_answered),
+      interactionData: message.interaction_data,
+    }
+  })
+}
+
 function patchAssistantMessage(
   messages: ChatMessage[],
   id: string,
@@ -747,6 +1106,144 @@ function AssistantInteractionNotice({
       >
         {answered ? '查看参数' : '填写参数'}
       </Button>
+    </div>
+  )
+}
+
+function AssistantSessionPanel({
+  sessions,
+  activeID,
+  loading,
+  disabled,
+  onOpen,
+}: {
+  sessions: AssistantSessionRecord[]
+  activeID: number
+  loading: boolean
+  disabled?: boolean
+  onOpen: (id: number) => void
+}) {
+  return (
+    <div className="border-b bg-muted/20 px-5 py-3">
+      <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+        <span>会话历史</span>
+        {loading ? (
+          <span className="inline-flex items-center gap-1">
+            <Loader2 className="size-3 animate-spin" />
+            加载中
+          </span>
+        ) : null}
+      </div>
+      {!loading && sessions.length === 0 ? (
+        <div className="text-sm text-muted-foreground">暂无历史会话。</div>
+      ) : (
+        <div className="max-h-48 space-y-2 overflow-y-auto">
+          {sessions.map((session) => (
+            <button
+              key={session.id}
+              type="button"
+              disabled={disabled || session.id === activeID}
+              className={cn(
+                'block w-full rounded-md border bg-background px-3 py-2 text-left text-sm hover:bg-muted/50 disabled:cursor-default',
+                session.id === activeID && 'border-primary bg-primary/5'
+              )}
+              onClick={() => onOpen(session.id)}
+            >
+              <div className="truncate font-medium">
+                {session.title || `会话 ${session.id}`}
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                <span>{session.message_count || 0} 条消息</span>
+                <span>{formatAssistantSessionTime(session.last_message_at)}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AssistantMemoryPanel({
+  memories,
+  title,
+  content,
+  saving,
+  disabled,
+  onTitleChange,
+  onContentChange,
+  onSave,
+  onDelete,
+}: {
+  memories: AssistantMemoryRecord[]
+  title: string
+  content: string
+  saving: boolean
+  disabled?: boolean
+  onTitleChange: (value: string) => void
+  onContentChange: (value: string) => void
+  onSave: () => void
+  onDelete: (id: number) => void
+}) {
+  return (
+    <div className="border-b bg-muted/20 px-5 py-3">
+      <div className="mb-2 text-xs text-muted-foreground">长期记忆</div>
+      <div className="space-y-2">
+        <input
+          value={title}
+          onChange={(event) => onTitleChange(event.target.value)}
+          disabled={disabled || saving}
+          placeholder="记忆标题"
+          className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+        <Textarea
+          value={content}
+          onChange={(event) => onContentChange(event.target.value)}
+          disabled={disabled || saving}
+          placeholder="只保存长期稳定的偏好、项目约束或常用规则"
+          className="min-h-20 resize-none text-sm"
+        />
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            size="sm"
+            disabled={disabled || saving || !title.trim() || !content.trim()}
+            onClick={onSave}
+          >
+            {saving ? <Loader2 className="me-1 size-3 animate-spin" /> : null}
+            保存记忆
+          </Button>
+        </div>
+      </div>
+      {memories.length > 0 ? (
+        <div className="mt-3 max-h-44 space-y-2 overflow-y-auto">
+          {memories.map((memory) => (
+            <div key={memory.id} className="rounded-md border bg-background p-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">
+                    {memory.title || `记忆 ${memory.id}`}
+                  </div>
+                  <div className="mt-1 line-clamp-3 whitespace-pre-wrap text-xs text-muted-foreground">
+                    {memory.content}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="size-7 shrink-0"
+                  disabled={disabled || saving}
+                  onClick={() => onDelete(memory.id)}
+                >
+                  <Trash2 className="size-3.5" />
+                  <span className="sr-only">删除记忆</span>
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -838,4 +1335,15 @@ function summarizeSubmittedInteraction(data?: Record<string, unknown>) {
 
 function createMessageID() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function formatAssistantSessionTime(value: string) {
+  if (!value) {
+    return ''
+  }
+  const time = new Date(value)
+  if (Number.isNaN(time.getTime())) {
+    return value
+  }
+  return time.toLocaleString()
 }

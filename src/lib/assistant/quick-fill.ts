@@ -20,6 +20,11 @@ import {
   type AssistantMessage,
   type AssistantStatusHandler,
 } from './client'
+import {
+  assistantSessionContextKey,
+  loadAssistantSession,
+  saveAssistantMessage,
+} from './session'
 import type { AssistantPageRegistration, AssistantPageScope } from './registry'
 import { loadAssistantPermissionContextSafe } from './permission'
 import {
@@ -412,28 +417,128 @@ async function requestQuickFillAgent({
   signal,
   onStatus,
 }: QuickFillAgentRequest) {
-  let finalOutput: Record<string, unknown> = {}
-  const finalText = await runAssistantAgent({
+  const agentKey = 'front-assistant'
+  const contextKey = quickFillSessionContextKey(context, mode, field)
+  const session = await loadAssistantSession({
+    agentKey,
+    contextKey,
+    title: quickFillSessionTitle(mode, field),
+    limit: 40,
+  })
+  const sessionID = session.session?.id || 0
+  const task = buildAssistantFormFillTask({
+    mode,
+    field,
+    sourceText,
+    instruction,
+    references,
+    overwrite,
+  })
+  await recordQuickFillMessage({
+    sessionID,
+    agentKey,
+    contextKey,
+    role: 'user',
     text,
-    input,
-    task: buildAssistantFormFillTask({
+    kind: history.length > 0 ? 'quick_fill_resume' : 'quick_fill',
+    content: {
       mode,
-      field,
-      sourceText,
-      instruction,
-      references,
-      overwrite,
-    }),
-    context,
-    permissionContext,
-    history,
-    signal,
-    onStatus,
-    onFinalOutput: (output) => {
-      finalOutput = output
+      field: field ? { path: field.path, name: field.name, type: field.type } : undefined,
+      input: input || {},
+      task,
     },
   })
+
+  let finalOutput: Record<string, unknown> = {}
+  let finalText = ''
+  try {
+    finalText = await runAssistantAgent({
+      text,
+      input,
+      task,
+      assistantSessionID: sessionID,
+      context,
+      permissionContext,
+      history: mergeQuickFillHistory(session.messages, history),
+      signal,
+      onStatus,
+      onFinalOutput: (output) => {
+        finalOutput = output
+      },
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'AI 填写失败'
+    await recordQuickFillMessage({
+      sessionID,
+      agentKey,
+      contextKey,
+      role: 'assistant',
+      text: message,
+      kind: 'quick_fill_error',
+      output: { error: message },
+      status: 2,
+    })
+    throw error
+  }
+  const interaction = normalizeAssistantInteraction(finalOutput)
+  await recordQuickFillMessage({
+    sessionID,
+    agentKey,
+    contextKey,
+    role: 'assistant',
+    text: finalText,
+    kind: 'quick_fill',
+    content: {
+      task,
+      interaction,
+      interaction_answered: false,
+    },
+    output: finalOutput,
+  })
   return { finalText, finalOutput }
+}
+
+function quickFillSessionContextKey(
+  context: AssistantPageContext,
+  mode: AssistantQuickFillMode,
+  field?: AssistantFieldContext
+) {
+  return assistantSessionContextKey('quick-fill', {
+    route: context.route,
+    scope: context.scope,
+    mode,
+    field: field?.path || '',
+  })
+}
+
+function quickFillSessionTitle(
+  mode: AssistantQuickFillMode,
+  field?: AssistantFieldContext
+) {
+  if (mode === 'field' && field) {
+    return `AI 填写：${field.name}`
+  }
+  if (mode === 'paste') {
+    return 'AI 填写：粘贴解析'
+  }
+  return 'AI 填写：当前表单'
+}
+
+function mergeQuickFillHistory(
+  sessionMessages: AssistantMessage[],
+  runHistory: AssistantMessage[]
+) {
+  return [...sessionMessages.slice(-20), ...runHistory]
+}
+
+async function recordQuickFillMessage(
+  input: Parameters<typeof saveAssistantMessage>[0]
+) {
+  try {
+    await saveAssistantMessage(input)
+  } catch {
+    // 保存会话失败不能阻断本次 AI 填写。
+  }
 }
 
 function buildQuickFillInteractionHistory(

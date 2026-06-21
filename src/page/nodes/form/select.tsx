@@ -61,6 +61,15 @@ export function FormSelect({
   const multiple = item.meta?.multiple === true
   const searchable = item.meta?.searchable !== false
   const clearable = item.meta?.clearable !== false
+  const placeholder = resolveSelectPlaceholder(item)
+  const emptyValues = useMemo(
+    () => normalizeSelectEmptyValues(item.meta?.emptyValues),
+    [item.meta?.emptyValues]
+  )
+  const isValueEmpty = useCallback(
+    (currentValue: unknown) => isSelectEmptyValue(currentValue, emptyValues),
+    [emptyValues]
+  )
   const [open, setOpen] = useState(false)
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
@@ -202,12 +211,9 @@ export function FormSelect({
   }, [commitValue, multiple])
 
   if (multiple) {
-    const values = Array.isArray(value)
-      ? value.map((current) => String(current))
-      : value == null || value === ''
-        ? []
-        : [String(value)]
+    const values = normalizeSelectMultipleValues(value, emptyValues)
     const selectedLabels = resolveSelectedOptionLabels(options, values)
+    const activeFallbackLabel = values.length > 0 ? fallbackLabel : ''
 
     if (searchable) {
       return renderWithCreateOptionModal(
@@ -215,8 +221,8 @@ export function FormSelect({
           value={values}
           options={options}
           multiple
-          placeholder={item.placeholder || '请选择'}
-          fallbackLabel={fallbackLabel}
+          placeholder={placeholder}
+          fallbackLabel={activeFallbackLabel}
           searchPlaceholder={item.meta?.searchPlaceholder || '输入关键词筛选...'}
           disabled={!!item.meta?.disabled}
           error={!!error}
@@ -254,7 +260,7 @@ export function FormSelect({
               aria-invalid={!!error}
               className={cn(
                 'relative w-full justify-between border-input bg-background px-3 pr-10 font-normal shadow-xs',
-                !selectedLabels.length && !fallbackLabel && 'text-muted-foreground',
+                !selectedLabels.length && !activeFallbackLabel && 'text-muted-foreground',
                 error && 'border-destructive ring-destructive/20 focus-visible:ring-destructive/30',
                 item.meta?.controlClassName
               )}
@@ -262,7 +268,7 @@ export function FormSelect({
               <span className="truncate text-left">
                 {selectedLabels.length > 0
                   ? selectedLabels.join(' / ')
-                  : fallbackLabel || item.placeholder || '请选择'}
+                  : activeFallbackLabel || placeholder}
               </span>
               <ChevronDown className="select-trigger-chevron absolute right-3 top-1/2 size-4 -translate-y-1/2 opacity-60" />
             </Button>
@@ -307,12 +313,14 @@ export function FormSelect({
   }
 
   if (searchable) {
+    const hasValue = !isValueEmpty(value)
+
     return renderWithCreateOptionModal(
       <SearchableOptionPicker
-        value={value != null && value !== '' ? String(value) : undefined}
+        value={hasValue ? String(value) : undefined}
         options={options}
-        placeholder={item.placeholder || '请选择'}
-        fallbackLabel={fallbackLabel}
+        placeholder={placeholder}
+        fallbackLabel={hasValue ? fallbackLabel : ''}
         searchPlaceholder={item.meta?.searchPlaceholder || '输入关键词筛选...'}
         disabled={!!item.meta?.disabled}
         error={!!error}
@@ -335,7 +343,7 @@ export function FormSelect({
   return renderWithCreateOptionModal(
     <Select
       open={open}
-      value={value != null ? String(value) : ''}
+      value={isValueEmpty(value) ? '' : String(value)}
       disabled={!!item.meta?.disabled}
       onOpenChange={handleOpenChange}
       onValueChange={(val) => {
@@ -345,7 +353,7 @@ export function FormSelect({
       <SelectTriggerShell
         className={item.meta?.controlClassName}
         clearable={clearable}
-        hasValue={value != null && value !== ''}
+        hasValue={!isValueEmpty(value)}
         disabled={!!item.meta?.disabled}
         onClear={clearValue}
       >
@@ -359,7 +367,7 @@ export function FormSelect({
             item.meta?.controlClassName
           )}
         >
-          <SelectValue placeholder={item.placeholder || '请选择'} />
+          <SelectValue placeholder={placeholder} />
         </SelectTrigger>
       </SelectTriggerShell>
       <SelectContent container={portalContainer}>
@@ -372,6 +380,42 @@ export function FormSelect({
       </SelectContent>
     </Select>
   )
+}
+
+function resolveSelectPlaceholder(item: Item) {
+  const placeholder = String(item.placeholder || '').trim()
+  if (placeholder) {
+    return placeholder
+  }
+
+  const name = String(item.name || '').trim()
+  return name ? `请选择${name}` : '请选择'
+}
+
+function normalizeSelectEmptyValues(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [0, '0', '']
+  }
+
+  return value
+}
+
+function isSelectEmptyValue(value: unknown, emptyValues: unknown[]) {
+  if (value == null || value === '') {
+    return true
+  }
+
+  return emptyValues.some((emptyValue) => Object.is(value, emptyValue))
+}
+
+function normalizeSelectMultipleValues(value: unknown, emptyValues: unknown[]) {
+  if (Array.isArray(value)) {
+    return value
+      .filter((current) => !isSelectEmptyValue(current, emptyValues))
+      .map((current) => String(current))
+  }
+
+  return isSelectEmptyValue(value, emptyValues) ? [] : [String(value)]
 }
 
 function buildSelectCreateOptionModalItem(

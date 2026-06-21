@@ -1,0 +1,242 @@
+import { request } from '@/lib/request'
+import { streamValueText } from '@/lib/stream'
+import type { AssistantMessage } from './client'
+
+const SESSION_API = '/bot/admin/assistant/session'
+const SESSIONS_API = '/bot/admin/assistant/sessions'
+const NEW_SESSION_API = '/bot/admin/assistant/new_session'
+const CLEAR_SESSION_API = '/bot/admin/assistant/clear_session'
+const MESSAGE_API = '/bot/admin/assistant/message'
+const MEMORY_API = '/bot/admin/assistant/memory'
+const FORGET_MEMORY_API = '/bot/admin/assistant/forget_memory'
+
+export type AssistantSessionRecord = {
+  id: number
+  title: string
+  context_key: string
+  agent_key: string
+  message_count: number
+  last_message_at: string
+}
+
+export type AssistantMemoryRecord = {
+  id: number
+  kind: string
+  title: string
+  content: string
+  tags?: unknown
+  importance: number
+}
+
+export type AssistantSessionPayload = {
+  session: AssistantSessionRecord | null
+  messages: AssistantMessage[]
+  memories: AssistantMemoryRecord[]
+}
+
+export type AssistantSessionRequest = {
+  sessionID?: number
+  agentKey: string
+  contextKey: string
+  title?: string
+  limit?: number
+  newSession?: boolean
+}
+
+export async function loadAssistantSession(
+  input: AssistantSessionRequest
+): Promise<AssistantSessionPayload> {
+  const result = await assistantRequest(
+    input.newSession ? NEW_SESSION_API : SESSION_API,
+    {
+      session_id: input.sessionID,
+      agent_key: input.agentKey,
+      context_key: input.contextKey,
+      title: input.title,
+      limit: input.limit || 80,
+      new_session: input.newSession,
+    }
+  )
+  return normalizeSessionPayload(result)
+}
+
+export async function listAssistantSessions(input: AssistantSessionRequest) {
+  const result = await assistantRequest(SESSIONS_API, {
+    agent_key: input.agentKey,
+    context_key: input.contextKey,
+    limit: input.limit || 50,
+  })
+  return normalizeSessions(result.sessions)
+}
+
+export async function clearAssistantSession(sessionID: number) {
+  const result = await assistantRequest(CLEAR_SESSION_API, {
+    session_id: sessionID,
+  })
+  return normalizeSessionPayload(result)
+}
+
+export async function saveAssistantMessage(input: {
+  sessionID: number
+  agentKey: string
+  contextKey: string
+  role: AssistantMessage['role']
+  text: string
+  kind?: string
+  content?: Record<string, unknown>
+  output?: Record<string, unknown>
+  requestID?: string
+  status?: number
+}) {
+  if (!input.sessionID) {
+    return null
+  }
+  const result = await assistantRequest(MESSAGE_API, {
+    session_id: input.sessionID,
+    agent_key: input.agentKey,
+    context_key: input.contextKey,
+    role: input.role,
+    kind: input.kind || 'chat',
+    text: input.text,
+    content: input.content || {},
+    output: input.output || {},
+    request_id: input.requestID || '',
+    status: input.status || 1,
+  })
+  return result
+}
+
+export async function saveAssistantMemory(input: {
+  agentKey: string
+  contextKey: string
+  title: string
+  content: string
+  kind?: string
+  tags?: string[]
+  importance?: number
+}) {
+  const result = await assistantRequest(MEMORY_API, {
+    agent_key: input.agentKey,
+    context_key: input.contextKey,
+    title: input.title,
+    content: input.content,
+    kind: input.kind || 'semantic',
+    tags: input.tags || [],
+    importance: input.importance || 60,
+  })
+  return normalizeMemory(result.memory)
+}
+
+export async function deleteAssistantMemory(id: number) {
+  await assistantRequest(FORGET_MEMORY_API, { id })
+}
+
+export function assistantSessionContextKey(
+  prefix: string,
+  values: Record<string, unknown>
+) {
+  const parts = Object.entries(values)
+    .filter(([, value]) => value != null && streamValueText(value) !== '')
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}:${streamValueText(value)}`)
+  return [prefix, ...parts].join('|')
+}
+
+async function assistantRequest(api: string, payload: Record<string, unknown>) {
+  const result = await request(api, 'post', payload)
+  if (result.code !== 0) {
+    throw new Error(result.message || 'AI 助理请求失败')
+  }
+  return isPlainObject(result.data) ? result.data : {}
+}
+
+function normalizeSessionPayload(value: unknown): AssistantSessionPayload {
+  const data = isPlainObject(value) ? value : {}
+  return {
+    session: normalizeSession(data.session),
+    messages: normalizeMessages(data.messages),
+    memories: normalizeMemories(data.memories),
+  }
+}
+
+function normalizeMessages(value: unknown): AssistantMessage[] {
+  const rows = Array.isArray(value) ? value : []
+  return rows.map(normalizeMessage).filter(Boolean) as AssistantMessage[]
+}
+
+function normalizeMessage(value: unknown): AssistantMessage | null {
+  if (!isPlainObject(value)) {
+    return null
+  }
+  const role = streamValueText(value.role) === 'user' ? 'user' : 'assistant'
+  return {
+    role,
+    content: streamValueText(value.text),
+    type: streamValueText(value.kind),
+    data: isPlainObject(value.content) && isPlainObject(value.content.data)
+      ? value.content.data
+      : undefined,
+    output: isPlainObject(value.output) ? value.output : undefined,
+    interaction: isPlainObject(value.content) &&
+      isPlainObject(value.content.interaction)
+      ? value.content.interaction
+      : undefined,
+    interaction_answered: isPlainObject(value.content)
+      ? Boolean(value.content.interaction_answered)
+      : false,
+    interaction_data: isPlainObject(value.content) &&
+      isPlainObject(value.content.interaction_data)
+      ? value.content.interaction_data
+      : undefined,
+  }
+}
+
+function normalizeSessions(value: unknown) {
+  const rows = Array.isArray(value) ? value : []
+  return rows.map(normalizeSession).filter(Boolean) as AssistantSessionRecord[]
+}
+
+function normalizeSession(value: unknown): AssistantSessionRecord | null {
+  if (!isPlainObject(value)) {
+    return null
+  }
+  const id = Number(value.id || 0)
+  if (!Number.isFinite(id) || id <= 0) {
+    return null
+  }
+  return {
+    id,
+    title: streamValueText(value.title),
+    context_key: streamValueText(value.context_key),
+    agent_key: streamValueText(value.agent_key),
+    message_count: Number(value.message_count || 0),
+    last_message_at: streamValueText(value.last_message_at),
+  }
+}
+
+function normalizeMemories(value: unknown) {
+  const rows = Array.isArray(value) ? value : []
+  return rows.map(normalizeMemory).filter(Boolean) as AssistantMemoryRecord[]
+}
+
+function normalizeMemory(value: unknown): AssistantMemoryRecord | null {
+  if (!isPlainObject(value)) {
+    return null
+  }
+  const id = Number(value.id || 0)
+  if (!Number.isFinite(id) || id <= 0) {
+    return null
+  }
+  return {
+    id,
+    kind: streamValueText(value.kind),
+    title: streamValueText(value.title),
+    content: streamValueText(value.content),
+    tags: value.tags,
+    importance: Number(value.importance || 0),
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}

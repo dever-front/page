@@ -31,6 +31,7 @@ export type AssistantRunOptions = {
   context: AssistantPageContext | null
   permissionContext?: AssistantPermissionContext | null
   task?: Record<string, unknown>
+  assistantSessionID?: number
   history: AssistantMessage[]
   signal?: AbortSignal
   onDelta?: (text: string) => void
@@ -44,6 +45,7 @@ export async function runAssistantAgent({
   context,
   permissionContext,
   task,
+  assistantSessionID,
   history,
   signal,
   onDelta,
@@ -55,6 +57,7 @@ export async function runAssistantAgent({
     input: {
       ...(input ?? {}),
       text,
+      assistant_session_id: assistantSessionID || undefined,
       page_context: context,
       permission_context: buildAssistantPermissionPayload(permissionContext),
       task,
