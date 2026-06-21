@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { EnergonMediaView } from '@/components/energon/media-view'
 import { EnergonProgressBlock, normalizeEnergonPercent } from '@/components/energon/progress'
 import { normalizeAgentResultOutputValue } from '@/lib/agent-result-protocol'
+import { richTextLinkClassName } from '@/lib/rich-text-style'
 import type { ResourceUploadRule } from '@/lib/resource'
 import { cn } from '@/lib/utils'
 
@@ -317,7 +318,7 @@ function StreamingCursor() {
 
 const markdownClassName = cn(
   'min-w-0 text-sm leading-7 text-foreground',
-  '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4',
+  richTextLinkClassName,
   '[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground',
   '[&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.85em]',
   '[&_h1]:mb-3 [&_h1]:mt-4 [&_h1]:text-xl [&_h1]:font-semibold',

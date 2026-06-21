@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ASSISTANT_DIALOG_LAYER_CLASS } from '@/lib/floating-layer'
 import type { ResourcePickerDialogProps } from './resource-picker-dialog'
 import type { ResourcePreviewDialogProps } from './resource-preview-dialog'
 
@@ -89,7 +90,10 @@ function ResourceDialogFallback({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-assistant-layer={assistantLayer ? 'true' : undefined}
-        layerClassName={layerClassName || (assistantLayer ? 'z-[95]' : undefined)}
+        layerClassName={
+          layerClassName ||
+          (assistantLayer ? ASSISTANT_DIALOG_LAYER_CLASS : undefined)
+        }
         className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
       >
         <DialogHeader className="border-b px-6 py-4">

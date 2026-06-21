@@ -6,6 +6,7 @@ import * as agentRunnerModule from '@/lib/agent/runner'
 import * as assistantContextModule from '@/lib/assistant/context'
 import * as assistantReferenceModule from '@/lib/assistant/reference'
 import * as authRedirectModule from '@/lib/auth-redirect'
+import * as floatingLayerModule from '@/lib/floating-layer'
 import * as iconModule from '@/lib/icon'
 import * as pageSchemaReloadModule from '@/lib/page-schema-reload'
 import * as requestModule from '@/lib/request'
@@ -29,6 +30,7 @@ import * as showTooltipModule from '@/page/nodes/show/tooltip'
 import * as agentInteractionPanelModule from '@/components/agent/interaction-panel'
 import * as agentStreamRequestParamsModule from '@/components/agent/stream-request-params'
 import * as assistantFormActionsModule from '@/components/assistant/form-actions'
+import * as assistantMemoryDialogModule from '@/components/assistant/memory-dialog'
 import * as assistantReferencePickerModule from '@/components/assistant/reference-picker'
 import * as assistantSessionHistoryDialogModule from '@/components/assistant/session-history-dialog'
 import * as assistantTaskPopoverModule from '@/components/assistant/task-popover'
@@ -69,6 +71,7 @@ function createCompatModules(): Record<string, Record<string, any>> {
     '@/components/agent/interaction-panel': agentInteractionPanelModule,
     '@/components/agent/stream-request-params': agentStreamRequestParamsModule,
     '@/components/assistant/form-actions': assistantFormActionsModule,
+    '@/components/assistant/memory-dialog': assistantMemoryDialogModule,
     '@/components/assistant/reference-picker': assistantReferencePickerModule,
     '@/components/assistant/session-history-dialog':
       assistantSessionHistoryDialogModule,
@@ -95,6 +98,7 @@ function createCompatModules(): Record<string, Record<string, any>> {
     '@/lib/assistant/context': assistantContextModule,
     '@/lib/assistant/reference': assistantReferenceModule,
     '@/lib/auth-redirect': authRedirectModule,
+    '@/lib/floating-layer': floatingLayerModule,
     '@/lib/icon': iconModule,
     '@/lib/page-schema-reload': pageSchemaReloadModule,
     '@/lib/plugin/types': {

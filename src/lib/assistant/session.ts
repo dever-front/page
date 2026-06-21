@@ -10,14 +10,34 @@ const ARCHIVE_SESSION_API = '/bot/admin/assistant/archive_session'
 const RESTORE_SESSION_API = '/bot/admin/assistant/restore_session'
 const RENAME_SESSION_API = '/bot/admin/assistant/rename_session'
 const MESSAGE_API = '/bot/admin/assistant/message'
+const MEMORIES_API = '/bot/admin/assistant/memories'
 const MEMORY_API = '/bot/admin/assistant/memory'
+const UPDATE_MEMORY_API = '/bot/admin/assistant/update_memory'
 const FORGET_MEMORY_API = '/bot/admin/assistant/forget_memory'
+const MEMORY_CHOICE_API = '/bot/admin/assistant/memory_choice'
 
 export type AssistantSessionStatus = 'active' | 'archived' | 'all'
+export type AssistantMemoryStatus = 'active' | 'disabled' | 'all'
+export type AssistantMemoryScope =
+  | 'current'
+  | 'global'
+  | 'agent'
+  | 'context'
+  | 'session'
+  | 'all'
+export type AssistantMemoryKind =
+  | 'working'
+  | 'episodic'
+  | 'semantic'
+  | 'procedural'
+  | 'persona'
+  | 'content'
+  | ''
 
 export type AssistantSessionRecord = {
   id: number
   title: string
+  title_source?: string
   context_key: string
   agent_key: string
   status: number
@@ -39,6 +59,37 @@ export type AssistantMemoryRecord = {
   content: string
   tags?: unknown
   importance: number
+  scope?: string
+  agent_key?: string
+  context_key?: string
+  session_id?: number
+  source?: string
+  confidence?: number
+  status: number
+  created_at: string
+}
+
+export type AssistantMemoryReviewAction = {
+  key: string
+  label: string
+  memory_id?: number
+}
+
+export type AssistantMemoryReview = {
+  status: string
+  type?: string
+  text?: string
+  candidate_id?: number
+  source_message_id?: number
+  title?: string
+  content?: string
+  scope?: string
+  kind?: string
+  reason?: string
+  memory?: AssistantMemoryRecord | null
+  existing?: AssistantMemoryRecord | null
+  actions?: AssistantMemoryReviewAction[]
+  error?: string
 }
 
 export type AssistantSessionPayload = {
@@ -65,6 +116,22 @@ export type AssistantSessionListRequest = AssistantSessionRequest & {
 
 export type AssistantSessionListPayload = {
   sessions: AssistantSessionRecord[]
+  pagination: AssistantSessionPagination
+}
+
+export type AssistantMemoryListRequest = {
+  agentKey: string
+  contextKey: string
+  page?: number
+  pageSize?: number
+  keyword?: string
+  kind?: AssistantMemoryKind
+  status?: AssistantMemoryStatus
+  scope?: AssistantMemoryScope
+}
+
+export type AssistantMemoryListPayload = {
+  memories: AssistantMemoryRecord[]
   pagination: AssistantSessionPagination
 }
 
@@ -140,6 +207,7 @@ export async function saveAssistantMessage(input: {
   output?: Record<string, unknown>
   requestID?: string
   status?: number
+  memoryEnabled?: boolean
 }) {
   if (!input.sessionID) {
     return null
@@ -155,6 +223,7 @@ export async function saveAssistantMessage(input: {
     output: input.output || {},
     request_id: input.requestID || '',
     status: input.status || 1,
+    memory_enabled: Boolean(input.memoryEnabled),
   })
   return result
 }
@@ -167,6 +236,8 @@ export async function saveAssistantMemory(input: {
   kind?: string
   tags?: string[]
   importance?: number
+  scope?: AssistantMemoryScope
+  sessionID?: number
 }) {
   const result = await assistantRequest(MEMORY_API, {
     agent_key: input.agentKey,
@@ -176,12 +247,81 @@ export async function saveAssistantMemory(input: {
     kind: input.kind || 'semantic',
     tags: input.tags || [],
     importance: input.importance || 60,
+    scope: input.scope || '',
+    session_id: input.sessionID || 0,
+  })
+  return normalizeMemory(result.memory)
+}
+
+export async function listAssistantMemories(
+  input: AssistantMemoryListRequest
+): Promise<AssistantMemoryListPayload> {
+  const result = await assistantRequest(MEMORIES_API, {
+    agent_key: input.agentKey,
+    context_key: input.contextKey,
+    page: input.page || 1,
+    page_size: input.pageSize || 10,
+    keyword: input.keyword || '',
+    kind: input.kind || '',
+    status: input.status || 'active',
+    scope: input.scope || 'current',
+  })
+  return {
+    memories: normalizeMemories(result.memories),
+    pagination: normalizePagination(result.pagination, {
+      agentKey: input.agentKey,
+      contextKey: input.contextKey,
+      page: input.page,
+      pageSize: input.pageSize,
+    }),
+  }
+}
+
+export async function updateAssistantMemory(input: {
+  id: number
+  agentKey: string
+  contextKey: string
+  title?: string
+  content?: string
+  kind?: AssistantMemoryKind
+  status?: number
+  importance?: number
+  tags?: string[]
+  scope?: AssistantMemoryScope
+  sessionID?: number
+}) {
+  const result = await assistantRequest(UPDATE_MEMORY_API, {
+    id: input.id,
+    agent_key: input.agentKey,
+    context_key: input.contextKey,
+    title: input.title,
+    content: input.content,
+    kind: input.kind,
+    status: input.status,
+    importance: input.importance,
+    tags: input.tags,
+    scope: input.scope || '',
+    session_id: input.sessionID || 0,
   })
   return normalizeMemory(result.memory)
 }
 
 export async function deleteAssistantMemory(id: number) {
   await assistantRequest(FORGET_MEMORY_API, { id })
+}
+
+export async function chooseAssistantMemory(input: {
+  candidateID?: number
+  memoryID?: number
+  sourceMessageID?: number
+  choice: string
+}) {
+  return await assistantRequest(MEMORY_CHOICE_API, {
+    candidate_id: input.candidateID || 0,
+    memory_id: input.memoryID || 0,
+    source_message_id: input.sourceMessageID || 0,
+    choice: input.choice,
+  })
 }
 
 export function assistantSessionContextKey(
@@ -260,6 +400,7 @@ function normalizeSession(value: unknown): AssistantSessionRecord | null {
   return {
     id,
     title: streamValueText(value.title),
+    title_source: streamValueText(value.title_source),
     context_key: streamValueText(value.context_key),
     agent_key: streamValueText(value.agent_key),
     status: Number(value.status || 0),
@@ -314,6 +455,14 @@ function normalizeMemory(value: unknown): AssistantMemoryRecord | null {
     content: streamValueText(value.content),
     tags: value.tags,
     importance: Number(value.importance || 0),
+    scope: streamValueText(value.scope),
+    agent_key: streamValueText(value.agent_key),
+    context_key: streamValueText(value.context_key),
+    session_id: Number(value.session_id || 0),
+    source: streamValueText(value.source),
+    confidence: Number(value.confidence || 0),
+    status: Number(value.status || 0),
+    created_at: streamValueText(value.created_at),
   }
 }
 

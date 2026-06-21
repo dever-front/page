@@ -8,6 +8,7 @@ import {
   type RichTextNode,
 } from '@/lib/rich-text'
 import {
+  richTextLinkClassName,
   richTextTextAlignToCss,
   richTextTextStyleToCss,
 } from '@/lib/rich-text-style'
@@ -36,7 +37,7 @@ export function RichTextView({ value, className, preview }: RichTextViewProps) {
 
 const richTextClassName = cn(
   'min-w-0 text-sm leading-6 text-foreground',
-  '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4',
+  richTextLinkClassName,
   '[&_audio]:my-4 [&_audio]:block [&_audio]:w-full [&_audio]:max-w-sm',
   '[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border',
   '[&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground',

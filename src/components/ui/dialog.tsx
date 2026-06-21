@@ -52,6 +52,7 @@ function DialogOverlay({
 function DialogContent({
   className,
   layerClassName,
+  layerZIndex,
   children,
   showCloseButton = true,
   onFocusOutside,
@@ -60,6 +61,7 @@ function DialogContent({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   layerClassName?: string
+  layerZIndex?: number
   showCloseButton?: boolean
 }) {
   const assistantLayer = isAssistantLayerProp(props as Record<string, unknown>)
@@ -70,6 +72,7 @@ function DialogContent({
         data-slot='dialog-layer'
         data-assistant-layer={assistantLayer ? 'true' : undefined}
         className={cn('pointer-events-none fixed inset-0 z-50', layerClassName)}
+        style={layerZIndex ? { zIndex: layerZIndex } : undefined}
       >
         <DialogOverlay className='pointer-events-auto z-0' />
         <DialogPrimitive.Content

@@ -41,6 +41,9 @@ export const richTextHighlightColors = [
   '#f3f4f6',
 ]
 
+export const richTextLinkClassName =
+  '[&_a]:font-medium [&_a]:text-primary [&_a]:underline [&_a]:decoration-primary/60 [&_a]:underline-offset-4 [&_a:hover]:decoration-primary'
+
 const allowedTextColors = new Set(richTextTextColors)
 const allowedHighlightColors = new Set(richTextHighlightColors)
 const allowedFontFamilies = new Set(richTextFontFamilies.map((item) => item.value))

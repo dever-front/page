@@ -10,6 +10,10 @@ import {
   type AgentInteraction,
   type AgentInteractionSubmitResult,
 } from '@/components/agent/interaction-panel'
+import {
+  ASSISTANT_DIALOG_LAYER_CLASS,
+  ASSISTANT_DIALOG_LAYER_Z_INDEX,
+} from '@/lib/floating-layer'
 import { streamValueText } from '@/lib/stream'
 
 type AssistantInteractionDialogProps = {
@@ -56,7 +60,8 @@ export function AssistantInteractionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-assistant-layer="true"
-        layerClassName="z-[95]"
+        layerClassName={ASSISTANT_DIALOG_LAYER_CLASS}
+        layerZIndex={ASSISTANT_DIALOG_LAYER_Z_INDEX}
         className="flex max-h-[86vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
       >
         <DialogHeader className="border-b px-5 py-4 text-start">

@@ -64,6 +64,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   normalizeRichTextHexColor,
+  richTextLinkClassName,
   richTextFontSizes,
   richTextHighlightColors,
   richTextTextColors,
@@ -1044,7 +1045,8 @@ export function RichTextEditor({
             'px-4 py-3 text-sm',
             disabled && 'cursor-not-allowed opacity-70',
             '[&_.ProseMirror]:min-h-[inherit] [&_.ProseMirror]:outline-none',
-            '[&_.ProseMirror]:before:text-muted-foreground/75'
+            '[&_.ProseMirror]:before:text-muted-foreground/75',
+            richTextLinkClassName
           )}
           style={{ minHeight: normalizedMinHeight }}
         />

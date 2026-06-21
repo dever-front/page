@@ -68,13 +68,19 @@ import {
 import { loadAssistantPermissionContextSafe } from '@/lib/assistant/permission'
 import { mergeAssistantTaskReferences } from '@/lib/assistant/task'
 import {
+  ASSISTANT_DIALOG_LAYER_CLASS,
+  ASSISTANT_DIALOG_LAYER_Z_INDEX,
+  ASSISTANT_FLOATING_LAYER_CLASS,
+  ASSISTANT_FLOATING_LAYER_Z_INDEX,
+} from '@/lib/floating-layer'
+import {
   assistantSessionContextKey,
+  chooseAssistantMemory,
   clearAssistantSession,
-  deleteAssistantMemory,
   loadAssistantSession,
-  saveAssistantMemory,
   saveAssistantMessage,
-  type AssistantMemoryRecord,
+  type AssistantMemoryReview,
+  type AssistantMemoryReviewAction,
 } from '@/lib/assistant/session'
 import { stripRouterBasePath } from '@/lib/router-path'
 import {
@@ -95,6 +101,7 @@ import {
   AssistantReferencePicker,
 } from './reference-picker'
 import { AssistantInteractionDialog } from './interaction-dialog'
+import { AssistantMemoryDialog } from './memory-dialog'
 import { AssistantSessionHistoryDialog } from './session-history-dialog'
 
 const ASSISTANT_AGENT_KEY = 'front-assistant'
@@ -158,7 +165,7 @@ function AssistantHeaderIconButton({
           </Button>
         </span>
       </TooltipTrigger>
-      <TooltipContent side="bottom" className="z-[95]">
+      <TooltipContent side="bottom" className={ASSISTANT_DIALOG_LAYER_CLASS}>
         {label}
       </TooltipContent>
     </Tooltip>
@@ -184,10 +191,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
   const [sessionLoading, setSessionLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
-  const [memories, setMemories] = useState<AssistantMemoryRecord[]>([])
-  const [memoryTitle, setMemoryTitle] = useState('')
-  const [memoryContent, setMemoryContent] = useState('')
-  const [memorySaving, setMemorySaving] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
 
@@ -256,7 +259,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
     (payload: Awaited<ReturnType<typeof loadAssistantSession>>) => {
       setSessionID(payload.session?.id || 0)
       setMessages(restoreChatMessages(payload.messages))
-      setMemories(payload.memories)
     },
     []
   )
@@ -318,36 +320,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
     },
     [loadDrawerSession]
   )
-
-  const saveMemory = useCallback(async () => {
-    const title = memoryTitle.trim()
-    const content = memoryContent.trim()
-    if (!title || !content) {
-      return
-    }
-    setMemorySaving(true)
-    try {
-      const memory = await saveAssistantMemory({
-        agentKey: ASSISTANT_AGENT_KEY,
-        contextKey: sessionContextKey,
-        title,
-        content,
-        tags: [],
-      })
-      if (memory) {
-        setMemories((current) => [memory, ...current])
-      }
-      setMemoryTitle('')
-      setMemoryContent('')
-    } finally {
-      setMemorySaving(false)
-    }
-  }, [memoryContent, memoryTitle, sessionContextKey])
-
-  const removeMemory = useCallback(async (id: number) => {
-    await deleteAssistantMemory(id)
-    setMemories((current) => current.filter((memory) => memory.id !== id))
-  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
@@ -574,7 +546,7 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
           interaction_answered: false,
         }))
       )
-      await recordAssistantMessage({
+      const savedAssistant = await recordAssistantMessage({
         sessionID: activeSessionID,
         agentKey: ASSISTANT_AGENT_KEY,
         contextKey: sessionContextKey,
@@ -586,7 +558,26 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
           interaction_answered: false,
         },
         output: buildAssistantMessageOutput(finalOutput, visibleText) || finalOutput,
+        memoryEnabled: true,
       })
+      const savedMessage = isRecord(savedAssistant?.message)
+        ? savedAssistant.message
+        : null
+      const savedOutput = isRecord(savedMessage?.output)
+        ? savedMessage.output
+        : null
+      const savedReview = normalizeMemoryReview(savedOutput?.memory_review)
+      if (savedReview) {
+        setMessages((current) =>
+          patchAssistantMessage(current, assistantID, (message) => ({
+            ...message,
+            output: {
+              ...(message.output || {}),
+              memory_review: savedReview,
+            },
+          }))
+        )
+      }
       if (interaction) {
         updateRunStatus('等待补充信息')
         return
@@ -710,11 +701,59 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
     return appliedIndexes
   }
 
+  const chooseMemoryReview = async (
+    messageID: string,
+    review: AssistantMemoryReview,
+    action: AssistantMemoryReviewAction
+  ) => {
+    if (running) {
+      return
+    }
+    try {
+      const result = await chooseAssistantMemory({
+        candidateID: review.candidate_id,
+        memoryID: action.memory_id,
+        sourceMessageID: review.source_message_id,
+        choice: action.key,
+      })
+      const nextReview = {
+        ...review,
+        status: streamValueText(result.status) || action.key,
+        text: memoryChoiceResultText(action.key, streamValueText(result.status)),
+        actions: [],
+      }
+      setMessages((current) =>
+        patchAssistantMessage(current, messageID, (message) => ({
+          ...message,
+          output: {
+            ...(message.output || {}),
+            memory_review: nextReview,
+          },
+        }))
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '记忆操作失败'
+      setMessages((current) =>
+        patchAssistantMessage(current, messageID, (item) => ({
+          ...item,
+          output: {
+            ...(item.output || {}),
+            memory_review: {
+              ...review,
+              error: message,
+            },
+          },
+        }))
+      )
+    }
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         data-assistant-layer="true"
-        layerClassName="z-[90]"
+        layerClassName={ASSISTANT_FLOATING_LAYER_CLASS}
+        layerZIndex={ASSISTANT_FLOATING_LAYER_Z_INDEX}
         side="right"
         className="w-full gap-0 p-0 sm:max-w-xl"
         showCloseButton={false}
@@ -747,7 +786,7 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
                   label="长期记忆"
                   active={memoryOpen}
                   disabled={running || sessionLoading}
-                  onClick={() => setMemoryOpen((current) => !current)}
+                  onClick={() => setMemoryOpen(true)}
                 >
                   <Brain className="size-4" />
                 </AssistantHeaderIconButton>
@@ -776,19 +815,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
           </SheetHeader>
 
           <div className="flex min-h-0 flex-1 flex-col">
-            {memoryOpen ? (
-              <AssistantMemoryPanel
-                memories={memories}
-                title={memoryTitle}
-                content={memoryContent}
-                saving={memorySaving}
-                disabled={running || sessionLoading}
-                onTitleChange={setMemoryTitle}
-                onContentChange={setMemoryContent}
-                onSave={() => void saveMemory()}
-                onDelete={(id) => void removeMemory(id)}
-              />
-            ) : null}
             <ScrollArea className="min-h-0 flex-1">
               <div className="space-y-4 px-5 py-4">
                 {messages.length === 0 ? (
@@ -837,6 +863,13 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
                           onOpen={() => openInteractionDialog(message.id)}
                         />
                       ) : null}
+                      <AssistantMemoryReviewCard
+                        review={normalizeMemoryReview(message.output?.memory_review)}
+                        disabled={running}
+                        onSelect={(review, action) =>
+                          void chooseMemoryReview(message.id, review, action)
+                        }
+                      />
                       {message.role === 'assistant' && !message.interaction ? (
                         <AssistantSuggestionChoices
                           content={message.content}
@@ -928,7 +961,20 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
         contextKey={sessionContextKey}
         activeSessionID={sessionID}
         disabled={running || sessionLoading}
+        assistantLayer
+        layerClassName={ASSISTANT_DIALOG_LAYER_CLASS}
+        layerZIndex={ASSISTANT_DIALOG_LAYER_Z_INDEX}
         onOpenSession={(id) => openSessionFromHistory(id)}
+      />
+      <AssistantMemoryDialog
+        open={memoryOpen}
+        onOpenChange={setMemoryOpen}
+        agentKey={ASSISTANT_AGENT_KEY}
+        contextKey={sessionContextKey}
+        disabled={running || sessionLoading}
+        assistantLayer
+        layerClassName={ASSISTANT_DIALOG_LAYER_CLASS}
+        layerZIndex={ASSISTANT_DIALOG_LAYER_Z_INDEX}
       />
       <AssistantInteractionDialog
         open={
@@ -980,9 +1026,10 @@ async function recordAssistantMessage(
   input: Parameters<typeof saveAssistantMessage>[0]
 ) {
   try {
-    await saveAssistantMessage(input)
+    return await saveAssistantMessage(input)
   } catch {
     // 会话保存失败不能中断本次前端助理交互。
+    return null
   }
 }
 
@@ -1087,88 +1134,123 @@ function AssistantInteractionNotice({
   )
 }
 
-function AssistantMemoryPanel({
-  memories,
-  title,
-  content,
-  saving,
+function AssistantMemoryReviewCard({
+  review,
   disabled,
-  onTitleChange,
-  onContentChange,
-  onSave,
-  onDelete,
+  onSelect,
 }: {
-  memories: AssistantMemoryRecord[]
-  title: string
-  content: string
-  saving: boolean
+  review: AssistantMemoryReview | null
   disabled?: boolean
-  onTitleChange: (value: string) => void
-  onContentChange: (value: string) => void
-  onSave: () => void
-  onDelete: (id: number) => void
+  onSelect: (
+    review: AssistantMemoryReview,
+    action: AssistantMemoryReviewAction
+  ) => void
 }) {
+  if (!review) {
+    return null
+  }
+  const actions = Array.isArray(review.actions) ? review.actions : []
   return (
-    <div className="border-b bg-muted/20 px-5 py-3">
-      <div className="mb-2 text-xs text-muted-foreground">长期记忆</div>
-      <div className="space-y-2">
-        <input
-          value={title}
-          onChange={(event) => onTitleChange(event.target.value)}
-          disabled={disabled || saving}
-          placeholder="记忆标题"
-          className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        />
-        <Textarea
-          value={content}
-          onChange={(event) => onContentChange(event.target.value)}
-          disabled={disabled || saving}
-          placeholder="只保存长期稳定的偏好、项目约束或常用规则"
-          className="min-h-20 resize-none text-sm"
-        />
-        <div className="flex justify-end">
-          <Button
-            type="button"
-            size="sm"
-            disabled={disabled || saving || !title.trim() || !content.trim()}
-            onClick={onSave}
-          >
-            {saving ? <Loader2 className="me-1 size-3 animate-spin" /> : null}
-            保存记忆
-          </Button>
-        </div>
+    <div className="mt-2 rounded-md border bg-muted/30 px-2 py-2 text-xs text-muted-foreground">
+      <div className="font-medium text-foreground">
+        {review.status === 'saved'
+          ? review.text || '已记住'
+          : review.type === 'conflict'
+            ? '这条记忆和已有记忆不一致'
+            : '发现一条可能需要长期记住的规则'}
       </div>
-      {memories.length > 0 ? (
-        <div className="mt-3 max-h-44 space-y-2 overflow-y-auto">
-          {memories.map((memory) => (
-            <div key={memory.id} className="rounded-md border bg-background p-2">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">
-                    {memory.title || `记忆 ${memory.id}`}
-                  </div>
-                  <div className="mt-1 line-clamp-3 whitespace-pre-wrap text-xs text-muted-foreground">
-                    {memory.content}
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="size-7 shrink-0"
-                  disabled={disabled || saving}
-                  onClick={() => onDelete(memory.id)}
-                >
-                  <Trash2 className="size-3.5" />
-                  <span className="sr-only">删除记忆</span>
-                </Button>
-              </div>
+      {review.status === 'pending' ? (
+        <div className="mt-1 leading-5">
+          <div className="text-foreground">{review.title}</div>
+          {review.content ? <div>{review.content}</div> : null}
+          {review.existing?.content ? (
+            <div className="mt-1 text-muted-foreground">
+              原记忆：{review.existing.content}
             </div>
+          ) : null}
+        </div>
+      ) : null}
+      {review.error ? (
+        <div className="mt-1 text-destructive">{streamValueText(review.error)}</div>
+      ) : null}
+      {actions.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {actions.map((action) => (
+            <Button
+              key={action.key}
+              type="button"
+              size="sm"
+              variant={action.key === 'remember' || action.key === 'update' ? 'default' : 'outline'}
+              className="h-7 px-2 text-xs"
+              disabled={disabled}
+              onClick={() => onSelect(review, action)}
+            >
+              {action.label}
+            </Button>
           ))}
         </div>
       ) : null}
     </div>
   )
+}
+
+function normalizeMemoryReview(value: unknown): AssistantMemoryReview | null {
+  if (!isRecord(value)) {
+    return null
+  }
+  const status = streamValueText(value.status)
+  if (!status) {
+    return null
+  }
+  const actions = Array.isArray(value.actions)
+    ? value.actions
+        .filter(isRecord)
+        .map((item) => ({
+          key: streamValueText(item.key),
+          label: streamValueText(item.label),
+          memory_id: Number(item.memory_id || 0) || undefined,
+        }))
+        .filter((item) => item.key && item.label)
+    : []
+  return {
+    status,
+    type: streamValueText(value.type),
+    text: streamValueText(value.text),
+    candidate_id: Number(value.candidate_id || 0) || undefined,
+    source_message_id: Number(value.source_message_id || 0) || undefined,
+    title: streamValueText(value.title),
+    content: streamValueText(value.content),
+    scope: streamValueText(value.scope),
+    kind: streamValueText(value.kind),
+    reason: streamValueText(value.reason),
+    memory: isRecord(value.memory) ? (value.memory as any) : null,
+    existing: isRecord(value.existing) ? (value.existing as any) : null,
+    actions,
+    ...(value.error ? { error: streamValueText(value.error) } : {}),
+  } as AssistantMemoryReview
+}
+
+function memoryChoiceResultText(choice: string, status: string) {
+  if (choice === 'undo') {
+    return status === 'undone' ? '已撤销这条记忆。' : '已处理。'
+  }
+  if (choice === 'session') {
+    return '已设为仅本次使用，不会写入长期记忆。'
+  }
+  if (choice === 'keep_old') {
+    return '已保留原记忆。'
+  }
+  if (choice === 'ignore') {
+    return '已忽略这条候选记忆。'
+  }
+  if (choice === 'update') {
+    return '已更新记忆。'
+  }
+  return '已记住。'
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 type AssistantSuggestionChoice = {

@@ -44,6 +44,9 @@ export type AssistantSessionHistoryDialogProps = {
   contextKey: string
   activeSessionID?: number
   disabled?: boolean
+  assistantLayer?: boolean
+  layerClassName?: string
+  layerZIndex?: number
   title?: string
   description?: string
   pageSize?: number
@@ -75,6 +78,9 @@ export function AssistantSessionHistoryDialog({
   contextKey,
   activeSessionID = 0,
   disabled = false,
+  assistantLayer = false,
+  layerClassName,
+  layerZIndex,
   title = '历史会话',
   description = '当前场景下的会话记录，可切换后继续对话。',
   pageSize = 10,
@@ -254,7 +260,12 @@ export function AssistantSessionHistoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent
+        data-assistant-layer={assistantLayer ? 'true' : undefined}
+        layerClassName={layerClassName}
+        layerZIndex={layerZIndex}
+        className="max-w-2xl"
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>

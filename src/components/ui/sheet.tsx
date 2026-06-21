@@ -48,6 +48,7 @@ function SheetOverlay({
 function SheetContent({
   className,
   layerClassName,
+  layerZIndex,
   children,
   side = 'right',
   showCloseButton = true,
@@ -57,6 +58,7 @@ function SheetContent({
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   layerClassName?: string
+  layerZIndex?: number
   side?: 'top' | 'right' | 'bottom' | 'left'
   showCloseButton?: boolean
 }) {
@@ -68,6 +70,7 @@ function SheetContent({
         data-slot='sheet-layer'
         data-assistant-layer={assistantLayer ? 'true' : undefined}
         className={cn('pointer-events-none fixed inset-0 z-50', layerClassName)}
+        style={layerZIndex ? { zIndex: layerZIndex } : undefined}
       >
         <SheetOverlay className='pointer-events-auto z-0' />
         <SheetPrimitive.Content

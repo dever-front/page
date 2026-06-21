@@ -10,6 +10,7 @@ import {
   getAssistantRegistryVersion,
   subscribeAssistantRegistry,
 } from '@/lib/assistant/registry'
+import { ASSISTANT_FLOATING_LAYER_CLASS } from '@/lib/floating-layer'
 import { AssistantDrawer } from './drawer'
 
 export function GlobalAssistant() {
@@ -25,7 +26,7 @@ export function GlobalAssistant() {
     <>
       <div
         data-assistant-layer="true"
-        className="pointer-events-auto fixed bottom-6 right-6 z-[80]"
+        className={`pointer-events-auto fixed bottom-6 right-6 ${ASSISTANT_FLOATING_LAYER_CLASS}`}
         onPointerDownCapture={(event) => {
           event.stopPropagation()
           event.nativeEvent.stopImmediatePropagation()
@@ -46,7 +47,9 @@ export function GlobalAssistant() {
               <span className="sr-only">打开 AI 助理</span>
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="left" className="z-[80]">AI 助理</TooltipContent>
+          <TooltipContent side="left" className={ASSISTANT_FLOATING_LAYER_CLASS}>
+            AI 助理
+          </TooltipContent>
         </Tooltip>
       </div>
 

@@ -1,3 +1,8 @@
+export const ASSISTANT_FLOATING_LAYER_CLASS = 'z-[90]'
+export const ASSISTANT_DIALOG_LAYER_CLASS = 'z-[100]'
+export const ASSISTANT_FLOATING_LAYER_Z_INDEX = 900
+export const ASSISTANT_DIALOG_LAYER_Z_INDEX = 1000
+
 export function findFloatingLayerContainer(element: HTMLElement | null) {
   return (
     element?.closest<HTMLElement>(

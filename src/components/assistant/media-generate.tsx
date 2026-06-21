@@ -9,6 +9,7 @@ import type {
 } from '@/lib/agent/types'
 import type { Item } from '@/lib/schema'
 import type { PageStore } from '@/lib/store'
+import { ASSISTANT_DIALOG_LAYER_CLASS } from '@/lib/floating-layer'
 import type { ResourceUploadRule } from '@/lib/resource'
 import type { UploadFileItem } from '@/lib/upload'
 import {
@@ -492,7 +493,7 @@ function AssistantMediaPreviewDialog({
       description={description}
       items={items}
       assistantLayer
-      layerClassName="z-[95]"
+      layerClassName={ASSISTANT_DIALOG_LAYER_CLASS}
       showDownload={false}
       onOpenChange={onOpenChange}
       footerExtra={

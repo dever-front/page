@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ResourceBrowser } from '@/components/resource/resource-browser'
+import { ASSISTANT_DIALOG_LAYER_CLASS } from '@/lib/floating-layer'
 import type { ResourceScope, ResourceUploadRule } from '@/lib/resource'
 import type { UploadFileItem } from '@/lib/upload'
 
@@ -63,7 +64,7 @@ export function ResourcePickerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-assistant-layer={assistantLayer ? 'true' : undefined}
-        layerClassName={assistantLayer ? 'z-[95]' : undefined}
+        layerClassName={assistantLayer ? ASSISTANT_DIALOG_LAYER_CLASS : undefined}
         className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
       >
         <DialogHeader className="border-b px-6 py-4">
