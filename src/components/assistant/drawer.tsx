@@ -71,12 +71,10 @@ import {
   assistantSessionContextKey,
   clearAssistantSession,
   deleteAssistantMemory,
-  listAssistantSessions,
   loadAssistantSession,
   saveAssistantMemory,
   saveAssistantMessage,
   type AssistantMemoryRecord,
-  type AssistantSessionRecord,
 } from '@/lib/assistant/session'
 import { stripRouterBasePath } from '@/lib/router-path'
 import {
@@ -97,6 +95,7 @@ import {
   AssistantReferencePicker,
 } from './reference-picker'
 import { AssistantInteractionDialog } from './interaction-dialog'
+import { AssistantSessionHistoryDialog } from './session-history-dialog'
 
 const ASSISTANT_AGENT_KEY = 'front-assistant'
 
@@ -184,8 +183,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
   const [sessionID, setSessionID] = useState(0)
   const [sessionLoading, setSessionLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [sessions, setSessions] = useState<AssistantSessionRecord[]>([])
-  const [sessionsLoading, setSessionsLoading] = useState(false)
   const [memoryOpen, setMemoryOpen] = useState(false)
   const [memories, setMemories] = useState<AssistantMemoryRecord[]>([])
   const [memoryTitle, setMemoryTitle] = useState('')
@@ -291,20 +288,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
     }
     return await loadDrawerSession()
   }, [loadDrawerSession, sessionID])
-
-  const refreshAssistantSessions = useCallback(async () => {
-    setSessionsLoading(true)
-    try {
-      const rows = await listAssistantSessions({
-        agentKey: ASSISTANT_AGENT_KEY,
-        contextKey: sessionContextKey,
-        limit: 50,
-      })
-      setSessions(rows)
-    } finally {
-      setSessionsLoading(false)
-    }
-  }, [sessionContextKey])
 
   const startNewSession = useCallback(async () => {
     await loadDrawerSession({ newSession: true })
@@ -756,13 +739,7 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
                   label="历史会话"
                   active={historyOpen}
                   disabled={running || sessionLoading}
-                  onClick={() => {
-                    const nextOpen = !historyOpen
-                    setHistoryOpen(nextOpen)
-                    if (nextOpen) {
-                      void refreshAssistantSessions()
-                    }
-                  }}
+                  onClick={() => setHistoryOpen(true)}
                 >
                   <History className="size-4" />
                 </AssistantHeaderIconButton>
@@ -799,15 +776,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
           </SheetHeader>
 
           <div className="flex min-h-0 flex-1 flex-col">
-            {historyOpen ? (
-              <AssistantSessionPanel
-                sessions={sessions}
-                activeID={sessionID}
-                loading={sessionsLoading}
-                disabled={running || sessionLoading}
-                onOpen={(id) => void openSessionFromHistory(id)}
-              />
-            ) : null}
             {memoryOpen ? (
               <AssistantMemoryPanel
                 memories={memories}
@@ -953,6 +921,15 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
           </div>
         </div>
       </SheetContent>
+      <AssistantSessionHistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        agentKey={ASSISTANT_AGENT_KEY}
+        contextKey={sessionContextKey}
+        activeSessionID={sessionID}
+        disabled={running || sessionLoading}
+        onOpenSession={(id) => openSessionFromHistory(id)}
+      />
       <AssistantInteractionDialog
         open={
           Boolean(interactionDialogMessage?.interaction) &&
@@ -1106,60 +1083,6 @@ function AssistantInteractionNotice({
       >
         {answered ? '查看参数' : '填写参数'}
       </Button>
-    </div>
-  )
-}
-
-function AssistantSessionPanel({
-  sessions,
-  activeID,
-  loading,
-  disabled,
-  onOpen,
-}: {
-  sessions: AssistantSessionRecord[]
-  activeID: number
-  loading: boolean
-  disabled?: boolean
-  onOpen: (id: number) => void
-}) {
-  return (
-    <div className="border-b bg-muted/20 px-5 py-3">
-      <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-        <span>会话历史</span>
-        {loading ? (
-          <span className="inline-flex items-center gap-1">
-            <Loader2 className="size-3 animate-spin" />
-            加载中
-          </span>
-        ) : null}
-      </div>
-      {!loading && sessions.length === 0 ? (
-        <div className="text-sm text-muted-foreground">暂无历史会话。</div>
-      ) : (
-        <div className="max-h-48 space-y-2 overflow-y-auto">
-          {sessions.map((session) => (
-            <button
-              key={session.id}
-              type="button"
-              disabled={disabled || session.id === activeID}
-              className={cn(
-                'block w-full rounded-md border bg-background px-3 py-2 text-left text-sm hover:bg-muted/50 disabled:cursor-default',
-                session.id === activeID && 'border-primary bg-primary/5'
-              )}
-              onClick={() => onOpen(session.id)}
-            >
-              <div className="truncate font-medium">
-                {session.title || `会话 ${session.id}`}
-              </div>
-              <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span>{session.message_count || 0} 条消息</span>
-                <span>{formatAssistantSessionTime(session.last_message_at)}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
@@ -1335,15 +1258,4 @@ function summarizeSubmittedInteraction(data?: Record<string, unknown>) {
 
 function createMessageID() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
-}
-
-function formatAssistantSessionTime(value: string) {
-  if (!value) {
-    return ''
-  }
-  const time = new Date(value)
-  if (Number.isNaN(time.getTime())) {
-    return value
-  }
-  return time.toLocaleString()
 }

@@ -30,6 +30,7 @@ import * as agentInteractionPanelModule from '@/components/agent/interaction-pan
 import * as agentStreamRequestParamsModule from '@/components/agent/stream-request-params'
 import * as assistantFormActionsModule from '@/components/assistant/form-actions'
 import * as assistantReferencePickerModule from '@/components/assistant/reference-picker'
+import * as assistantSessionHistoryDialogModule from '@/components/assistant/session-history-dialog'
 import * as assistantTaskPopoverModule from '@/components/assistant/task-popover'
 import * as confirmDialogModule from '@/components/confirm-dialog'
 import * as energonContentViewModule from '@/components/energon/content-view'
@@ -69,6 +70,8 @@ function createCompatModules(): Record<string, Record<string, any>> {
     '@/components/agent/stream-request-params': agentStreamRequestParamsModule,
     '@/components/assistant/form-actions': assistantFormActionsModule,
     '@/components/assistant/reference-picker': assistantReferencePickerModule,
+    '@/components/assistant/session-history-dialog':
+      assistantSessionHistoryDialogModule,
     '@/components/assistant/task-popover': assistantTaskPopoverModule,
     '@/components/confirm-dialog': confirmDialogModule,
     '@/components/energon/content-view': energonContentViewModule,

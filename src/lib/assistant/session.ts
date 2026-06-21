@@ -6,17 +6,30 @@ const SESSION_API = '/bot/admin/assistant/session'
 const SESSIONS_API = '/bot/admin/assistant/sessions'
 const NEW_SESSION_API = '/bot/admin/assistant/new_session'
 const CLEAR_SESSION_API = '/bot/admin/assistant/clear_session'
+const ARCHIVE_SESSION_API = '/bot/admin/assistant/archive_session'
+const RESTORE_SESSION_API = '/bot/admin/assistant/restore_session'
+const RENAME_SESSION_API = '/bot/admin/assistant/rename_session'
 const MESSAGE_API = '/bot/admin/assistant/message'
 const MEMORY_API = '/bot/admin/assistant/memory'
 const FORGET_MEMORY_API = '/bot/admin/assistant/forget_memory'
+
+export type AssistantSessionStatus = 'active' | 'archived' | 'all'
 
 export type AssistantSessionRecord = {
   id: number
   title: string
   context_key: string
   agent_key: string
+  status: number
   message_count: number
   last_message_at: string
+}
+
+export type AssistantSessionPagination = {
+  page: number
+  page_size: number
+  total: number
+  total_pages: number
 }
 
 export type AssistantMemoryRecord = {
@@ -43,6 +56,18 @@ export type AssistantSessionRequest = {
   newSession?: boolean
 }
 
+export type AssistantSessionListRequest = AssistantSessionRequest & {
+  page?: number
+  pageSize?: number
+  keyword?: string
+  status?: AssistantSessionStatus
+}
+
+export type AssistantSessionListPayload = {
+  sessions: AssistantSessionRecord[]
+  pagination: AssistantSessionPagination
+}
+
 export async function loadAssistantSession(
   input: AssistantSessionRequest
 ): Promise<AssistantSessionPayload> {
@@ -60,13 +85,41 @@ export async function loadAssistantSession(
   return normalizeSessionPayload(result)
 }
 
-export async function listAssistantSessions(input: AssistantSessionRequest) {
+export async function listAssistantSessions(
+  input: AssistantSessionListRequest
+): Promise<AssistantSessionListPayload> {
   const result = await assistantRequest(SESSIONS_API, {
     agent_key: input.agentKey,
     context_key: input.contextKey,
-    limit: input.limit || 50,
+    limit: input.limit || input.pageSize || 10,
+    page: input.page || 1,
+    page_size: input.pageSize || input.limit || 10,
+    keyword: input.keyword || '',
+    status: input.status || 'active',
   })
-  return normalizeSessions(result.sessions)
+  return {
+    sessions: normalizeSessions(result.sessions),
+    pagination: normalizePagination(result.pagination, input),
+  }
+}
+
+export async function archiveAssistantSession(sessionID: number) {
+  await assistantRequest(ARCHIVE_SESSION_API, { session_id: sessionID })
+}
+
+export async function restoreAssistantSession(sessionID: number) {
+  await assistantRequest(RESTORE_SESSION_API, { session_id: sessionID })
+}
+
+export async function renameAssistantSession(input: {
+  sessionID: number
+  title: string
+}) {
+  const result = await assistantRequest(RENAME_SESSION_API, {
+    session_id: input.sessionID,
+    title: input.title,
+  })
+  return normalizeSession(result.session)
 }
 
 export async function clearAssistantSession(sessionID: number) {
@@ -209,9 +262,36 @@ function normalizeSession(value: unknown): AssistantSessionRecord | null {
     title: streamValueText(value.title),
     context_key: streamValueText(value.context_key),
     agent_key: streamValueText(value.agent_key),
+    status: Number(value.status || 0),
     message_count: Number(value.message_count || 0),
     last_message_at: streamValueText(value.last_message_at),
   }
+}
+
+function normalizePagination(
+  value: unknown,
+  fallback: AssistantSessionListRequest
+): AssistantSessionPagination {
+  const data = isPlainObject(value) ? value : {}
+  const page = positiveNumber(data.page, fallback.page || 1)
+  const pageSize = positiveNumber(
+    data.page_size ?? data.pageSize,
+    fallback.pageSize || fallback.limit || 10
+  )
+  return {
+    page,
+    page_size: pageSize,
+    total: positiveNumber(data.total, 0),
+    total_pages: positiveNumber(data.total_pages ?? data.totalPages, 0),
+  }
+}
+
+function positiveNumber(value: unknown, fallback: number) {
+  const number = Number(value)
+  if (!Number.isFinite(number) || number < 0) {
+    return fallback
+  }
+  return number
 }
 
 function normalizeMemories(value: unknown) {
