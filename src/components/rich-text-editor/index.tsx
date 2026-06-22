@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type KeyboardEvent,
   type ReactNode,
 } from 'react'
 import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight'
@@ -159,6 +160,16 @@ const EDITOR_MEDIA_CONTROLS: Array<{
 
 const TOOLBAR_BUTTON_CLASS =
   'h-7 shrink-0 rounded-md px-2 text-muted-foreground hover:text-foreground'
+
+function runToolbarActionOnEnter(event: KeyboardEvent<HTMLElement>, action: () => void) {
+  if (event.key !== 'Enter') {
+    return
+  }
+
+  event.preventDefault()
+  event.stopPropagation()
+  action()
+}
 
 const HEADING_OPTIONS: Array<{
   label: string
@@ -973,16 +984,11 @@ export function RichTextEditor({
               </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-80 p-3">
-              <form
-                className="space-y-3"
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  applyLink()
-                }}
-              >
+              <div className="space-y-3">
                 <Input
                   value={linkHref}
                   onChange={(event) => setLinkHref(event.target.value)}
+                  onKeyDown={(event) => runToolbarActionOnEnter(event, applyLink)}
                   placeholder="https://example.com 或 /path"
                   autoFocus
                 />
@@ -997,11 +1003,11 @@ export function RichTextEditor({
                     <Link2Off className="size-4" />
                     取消链接
                   </Button>
-                  <Button type="submit" size="sm">
+                  <Button type="button" size="sm" onClick={applyLink}>
                     应用
                   </Button>
                 </div>
-              </form>
+              </div>
             </PopoverContent>
           </Popover>
           {richControlsEnabled ? (
@@ -1036,17 +1042,14 @@ export function RichTextEditor({
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-96 p-3">
-                <form
-                  className="space-y-3"
-                  onSubmit={(event) => {
-                    event.preventDefault()
-                    void importArticleURL()
-                  }}
-                >
+                <div className="space-y-3">
                   <div className="space-y-1.5">
                     <Input
                       value={articleURL}
                       onChange={(event) => setArticleURL(event.target.value)}
+                      onKeyDown={(event) =>
+                        runToolbarActionOnEnter(event, () => void importArticleURL())
+                      }
                       placeholder="粘贴微信公众号、百家号或文章页链接"
                       autoFocus
                       disabled={articleImporting}
@@ -1068,12 +1071,17 @@ export function RichTextEditor({
                     >
                       取消
                     </Button>
-                    <Button type="submit" size="sm" disabled={articleImporting}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={articleImporting}
+                      onClick={() => void importArticleURL()}
+                    >
                       {articleImporting ? <Loader2 className="size-4 animate-spin" /> : null}
                       导入
                     </Button>
                   </div>
-                </form>
+                </div>
               </PopoverContent>
             </Popover>
           ) : null}
@@ -1671,13 +1679,7 @@ function ColorPickerSection({
   }
 
   return (
-    <form
-      className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground"
-      onSubmit={(event) => {
-        event.preventDefault()
-        applyDraft()
-      }}
-    >
+    <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
       <span>{label}</span>
       <span className="flex items-center gap-2">
         <input
@@ -1690,12 +1692,13 @@ function ColorPickerSection({
         <Input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => runToolbarActionOnEnter(event, applyDraft)}
           onBlur={applyDraft}
           className="h-8 w-24 font-mono text-xs uppercase"
           spellCheck={false}
         />
       </span>
-    </form>
+    </div>
   )
 }
 
@@ -1921,13 +1924,7 @@ function EditorTableMenu({
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 p-3">
-        <form
-          className="space-y-3"
-          onSubmit={(event) => {
-            event.preventDefault()
-            insertTable()
-          }}
-        >
+        <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <label className="space-y-1 text-xs text-muted-foreground">
               行数
@@ -1938,6 +1935,7 @@ function EditorTableMenu({
                 step={1}
                 value={rows}
                 onChange={(event) => setRows(event.target.value)}
+                onKeyDown={(event) => runToolbarActionOnEnter(event, insertTable)}
               />
             </label>
             <label className="space-y-1 text-xs text-muted-foreground">
@@ -1949,6 +1947,7 @@ function EditorTableMenu({
                 step={1}
                 value={cols}
                 onChange={(event) => setCols(event.target.value)}
+                onKeyDown={(event) => runToolbarActionOnEnter(event, insertTable)}
               />
             </label>
           </div>
@@ -1961,10 +1960,10 @@ function EditorTableMenu({
             />
             首行表头
           </label>
-          <Button type="submit" size="sm" className="w-full">
+          <Button type="button" size="sm" className="w-full" onClick={insertTable}>
             插入表格
           </Button>
-        </form>
+        </div>
         <div className="mt-3 grid grid-cols-2 gap-2 border-t border-border/70 pt-3">
           <Button
             type="button"

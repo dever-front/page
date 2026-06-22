@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { Bot } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -10,17 +10,37 @@ import {
   getAssistantRegistryVersion,
   subscribeAssistantRegistry,
 } from '@/lib/assistant/registry'
+import {
+  getAssistantFloatingUserKey,
+  useAssistantFloatingBlockedByModal,
+  useAssistantFloatingEnabled,
+} from '@/lib/assistant/floating-state'
 import { ASSISTANT_FLOATING_LAYER_CLASS } from '@/lib/floating-layer'
+import { useAuthStore } from '@/stores/auth-store'
 import { AssistantDrawer } from './drawer'
 
 export function GlobalAssistant() {
   const [open, setOpen] = useState(false)
+  const user = useAuthStore((state) => state.auth.user)
+  const userKey = getAssistantFloatingUserKey(user)
+  const enabled = useAssistantFloatingEnabled(userKey)
+  const blockedByModal = useAssistantFloatingBlockedByModal()
 
   useSyncExternalStore(
     subscribeAssistantRegistry,
     getAssistantRegistryVersion,
     getAssistantRegistryVersion
   )
+
+  useEffect(() => {
+    if (!enabled || blockedByModal) {
+      setOpen(false)
+    }
+  }, [blockedByModal, enabled])
+
+  if (!enabled || blockedByModal) {
+    return null
+  }
 
   return (
     <>

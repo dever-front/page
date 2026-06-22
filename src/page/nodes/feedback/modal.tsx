@@ -6,6 +6,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useStore } from 'zustand'
+import { Copy, Square } from 'lucide-react'
 import {
   Dialog,
   DialogClose,
@@ -22,6 +23,7 @@ import { loadPageSchema } from '@/lib/request'
 import { reloadStorePageSchema } from '@/lib/page-schema-reload'
 import { validatePageSchema, type PageSchemaType } from '@/lib/schema'
 import { useAssistantOverlayRegistration } from '@/lib/assistant/use-overlay-registration'
+import { setAssistantFloatingBlockedByModal } from '@/lib/assistant/floating-state'
 import { AssistantFormFillButton } from '@/components/assistant/form-actions'
 import {
   type ActionRunResult,
@@ -77,6 +79,9 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
   const [pageStore, setPageStore] = useState<PageStore | null>(null)
   const [loadingPage, setLoadingPage] = useState(false)
   const refreshParentOnCloseRef = useRef(false)
+  const assistantFloatingBlockIdRef = useRef(
+    `feedback-modal:${item.id}:${Math.random().toString(36).slice(2)}`
+  )
   const formId = useMemo(() => `modal-form-${item.id}`, [item.id])
   const footer = item.meta?.footer ?? {}
   const showConfirm = !!footer.confirm
@@ -106,6 +111,7 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
     : null
   const assistantOverlayStore = assistantFormStore ?? store
   const [hotVersion, setHotVersion] = useState(0)
+  const [maximized, setMaximized] = useState(false)
   const activateAssistantOverlay = useAssistantOverlayRegistration({
     open,
     store: assistantOverlayStore,
@@ -120,6 +126,13 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
       }
     : undefined
   const dialogWidthClass = resolveDialogWidthClass(item.meta)
+  const maximizable = ![false, 'false', 0, '0'].includes(item.meta?.maximizable)
+
+  useEffect(() => {
+    const blockId = assistantFloatingBlockIdRef.current
+    setAssistantFloatingBlockedByModal(blockId, open && maximized)
+    return () => setAssistantFloatingBlockedByModal(blockId, false)
+  }, [maximized, open])
 
   const handleOpenChange = (val: boolean) => {
     store.getState().setPageState(stateKey, val)
@@ -164,6 +177,8 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
     if (open) {
       return
     }
+
+    setMaximized(false)
 
     const timer = window.setTimeout(() => {
       setPageSchema(null)
@@ -291,13 +306,15 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
       <DialogContent
         key={hotVersion}
         showCloseButton={false}
-        style={widthStyle}
+        style={maximized ? undefined : widthStyle}
         onFocusCapture={activateAssistantOverlay}
         onPointerDownCapture={activateAssistantOverlay}
         className={cn(
-          'flex max-h-[85vh] flex-col gap-0 p-0',
+          'flex flex-col gap-0 p-0',
+          maximized
+            ? 'h-[calc(100vh-2rem)] max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-2rem)]'
+            : ['max-h-[85vh]', dialogWidthClass],
           resolveDialogOverflowClass(item.meta),
-          dialogWidthClass
         )}
       >
         {loadingPage && (
@@ -319,9 +336,28 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
                   store={assistantFormStore}
                   scope="modal"
                   route={String(pageRoute || '')}
-                  className="mt-[-0.125rem]"
+                  className="-mt-2 size-8 shrink-0 self-start"
+                  size="icon"
+                  iconOnly
                   overwrite
                 />
+              ) : null}
+              {maximizable ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  title={maximized ? '还原' : '最大化'}
+                  className="-mt-2 size-8 shrink-0 self-start"
+                  onClick={() => setMaximized((value) => !value)}
+                >
+                  <span className="sr-only">{maximized ? '还原' : '最大化'}</span>
+                  {maximized ? (
+                    <Copy className="size-4" />
+                  ) : (
+                    <Square className="size-4" />
+                  )}
+                </Button>
               ) : null}
               <DialogClose asChild>
                 <Button

@@ -37,6 +37,7 @@ type AssistantFormFillButtonProps = {
   className?: string
   variant?: ComponentProps<typeof Button>['variant']
   size?: ComponentProps<typeof Button>['size']
+  iconOnly?: boolean
   overwrite?: boolean
 }
 
@@ -126,6 +127,7 @@ export function AssistantFormFillButton({
   className,
   variant = 'outline',
   size = 'sm',
+  iconOnly = false,
   overwrite = true,
 }: AssistantFormFillButtonProps) {
   const fieldCount = useAssistantFormFieldCount(store)
@@ -145,6 +147,7 @@ export function AssistantFormFillButton({
       triggerClassName={cn('gap-1.5', className)}
       triggerVariant={variant}
       triggerSize={size}
+      iconOnly={iconOnly}
       overwrite={overwrite}
     />
   )

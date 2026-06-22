@@ -1,9 +1,15 @@
 import { useState } from 'react'
-import { LogOut, UserRound } from 'lucide-react'
+import { Bot, LogOut, UserRound } from 'lucide-react'
 import useDialogState from '@/hooks/use-dialog-state'
 import { useAuthStore } from '@/stores/auth-store'
+import {
+  getAssistantFloatingUserKey,
+  setAssistantFloatingEnabled,
+  useAssistantFloatingEnabled,
+} from '@/lib/assistant/floating-state'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +29,8 @@ export function TopUserNav() {
   const name = user?.name?.trim() || '系统账户'
   const account = user?.account?.trim() || '未登录'
   const fallback = getAvatarFallback(name)
+  const assistantUserKey = getAssistantFloatingUserKey(user)
+  const assistantEnabled = useAssistantFloatingEnabled(assistantUserKey)
 
   return (
     <>
@@ -61,6 +69,21 @@ export function TopUserNav() {
             >
               <UserRound className='size-4.5 text-muted-foreground' />
               个人信息
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(event) => event.preventDefault()}
+              className='gap-3 rounded-none px-4 py-3 text-base'
+            >
+              <Bot className='size-4.5 text-muted-foreground' />
+              <span className='flex-1'>AI 助理</span>
+              <Switch
+                checked={assistantEnabled}
+                onCheckedChange={(checked) =>
+                  setAssistantFloatingEnabled(assistantUserKey, checked)
+                }
+                onClick={(event) => event.stopPropagation()}
+                aria-label='AI 助理开关'
+              />
             </DropdownMenuItem>
           </DropdownMenuGroup>
           <DropdownMenuSeparator className='my-0' />
