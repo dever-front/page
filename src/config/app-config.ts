@@ -293,8 +293,14 @@ function normalizeAPIPrefix(value?: string) {
 }
 
 function apiPrefixFromPath(value: string) {
-  const parts = value.split('/').filter(Boolean)
-  return parts[0] === '__dever_api' ? parts[1] || '' : parts[0] || ''
+  const parts = value
+    .split(/[?#]/)[0]
+    .split('/')
+    .filter(Boolean)
+  if (parts[0] === '__dever_api') {
+    parts.shift()
+  }
+  return parts.join('/')
 }
 
 function joinBasePath(basePath: string, relativePath: string) {
