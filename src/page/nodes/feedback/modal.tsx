@@ -337,6 +337,7 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
                   scope="modal"
                   route={String(pageRoute || '')}
                   className="-mt-2 size-8 shrink-0 self-start"
+                  variant="ghost"
                   size="icon"
                   iconOnly
                   overwrite
