@@ -85,6 +85,7 @@ import {
   replaceEditorMediaSource,
   resolveEditorMediaLabel,
   resolveEditorUploadLabel,
+  withDefaultEditorUploadRules,
   type EditorMediaKind,
   type EditorUploadRule,
 } from './media'
@@ -284,6 +285,7 @@ export {
   normalizeEditorUploadRules,
   resolveEditorMediaLabel,
   resolveEditorUploadLabel,
+  withDefaultEditorUploadRules,
   type EditorMediaKind,
   type EditorUploadRule,
 } from './media'
@@ -313,13 +315,17 @@ export function RichTextEditor({
     () => parseRichTextEditorContent(value, format),
     [format, value]
   )
-  const uploadRuleMap = useMemo(
-    () => new Map(uploadRules.map((current) => [current.kind, current])),
+  const effectiveUploadRules = useMemo(
+    () => withDefaultEditorUploadRules(uploadRules),
     [uploadRules]
   )
+  const uploadRuleMap = useMemo(
+    () => new Map(effectiveUploadRules.map((current) => [current.kind, current])),
+    [effectiveUploadRules]
+  )
   const uploadKinds = useMemo(
-    () => uploadRules.map((current) => current.kind),
-    [uploadRules]
+    () => effectiveUploadRules.map((current) => current.kind),
+    [effectiveUploadRules]
   )
   const inlineFormatOptions = useMemo(
     () =>

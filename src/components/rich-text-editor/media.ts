@@ -15,6 +15,27 @@ import { EditorExternalMediaNodeView, EditorMediaNodeView } from './media-node-v
 export type EditorMediaKind = 'image' | 'video' | 'audio'
 export type EditorUploadRule = ResourceUploadRule & { kind: EditorMediaKind }
 
+export const DEFAULT_EDITOR_UPLOAD_RULES: EditorUploadRule[] = [
+  {
+    ruleId: 1,
+    kind: 'image',
+    accept: 'image/*',
+    transport: 'relay',
+  },
+  {
+    ruleId: 2,
+    kind: 'video',
+    accept: 'video/*',
+    transport: 'relay',
+  },
+  {
+    ruleId: 3,
+    kind: 'audio',
+    accept: 'audio/*',
+    transport: 'relay',
+  },
+]
+
 const EDITOR_MEDIA_NODE_NAMES: Record<EditorMediaKind, string> = {
   image: richTextMediaNodeNames.image,
   video: richTextMediaNodeNames.video,
@@ -298,6 +319,15 @@ export function normalizeEditorUploadRules(rules: ResourceUploadRule[]) {
   }
 
   return result
+}
+
+export function withDefaultEditorUploadRules(rules: ResourceUploadRule[]) {
+  const normalizedRules = normalizeEditorUploadRules(rules)
+  const seenKinds = new Set(normalizedRules.map((current) => current.kind))
+  const missingDefaults = DEFAULT_EDITOR_UPLOAD_RULES.filter(
+    (current) => !seenKinds.has(current.kind)
+  )
+  return [...normalizedRules, ...missingDefaults]
 }
 
 export function resolveEditorUploadLabel(kind: EditorMediaKind) {

@@ -2,9 +2,9 @@ import { useMemo } from 'react'
 import { AssistantFieldGenerateButton } from '@/components/assistant/form-actions'
 import { AssistantMediaGenerateLazyButton } from '@/components/assistant/lazy-media-generate'
 import {
-  normalizeEditorUploadRules,
   RichTextEditor,
   resolveRichTextContentFormat,
+  withDefaultEditorUploadRules,
 } from '@/components/rich-text-editor'
 import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
 import { mergeResourceUploadRules, normalizeResourceUploadRules } from '@/lib/resource'
@@ -29,12 +29,12 @@ export function FormEditor({
     [item.meta?.uploadRules]
   )
   const baseUploadRules = useMemo(
-    () => normalizeEditorUploadRules(rawUploadRules),
+    () => withDefaultEditorUploadRules(rawUploadRules),
     [rawUploadRules]
   )
-  const uploadRuleMetas = useUploadRuleMetas(rawUploadRules.map((current) => current.ruleId))
+  const uploadRuleMetas = useUploadRuleMetas(baseUploadRules.map((current) => current.ruleId))
   const uploadRules = useMemo(
-    () => normalizeEditorUploadRules(mergeResourceUploadRules(baseUploadRules, uploadRuleMetas)),
+    () => withDefaultEditorUploadRules(mergeResourceUploadRules(baseUploadRules, uploadRuleMetas)),
     [baseUploadRules, uploadRuleMetas]
   )
   const editorAssistantAdornment =

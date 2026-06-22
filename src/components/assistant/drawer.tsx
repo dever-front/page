@@ -80,6 +80,7 @@ import {
   type AssistantMemoryReview,
 } from '@/lib/assistant/session'
 import { stripRouterBasePath } from '@/lib/router-path'
+import { streamValueText } from '@/lib/stream'
 import {
   cancelStreamTiming,
   createStreamTiming,
@@ -1018,9 +1019,11 @@ function AssistantMessageContent({
   }
 
   if (role === 'assistant') {
+    const displayContent = assistantDisplayText(content)
+    const displayOutput = assistantDisplayOutput(output, displayContent)
     return (
       <EnergonContentView
-        output={output || { text: content }}
+        output={displayOutput || (displayContent ? { text: displayContent } : undefined)}
         emptyText=""
         className="space-y-2 break-words [overflow-wrap:anywhere]"
       />
@@ -1028,6 +1031,133 @@ function AssistantMessageContent({
   }
 
   return <div className="whitespace-pre-wrap break-all">{content}</div>
+}
+
+function assistantDisplayText(text: string) {
+  const source = String(text || '')
+  if (!source) {
+    return ''
+  }
+
+  const parsed = extractAssistantFrontActions(source)
+  if (parsed.cleanText) {
+    return parsed.cleanText
+  }
+  if (parsed.actions.length > 0) {
+    return ''
+  }
+
+  return source
+    .replace(/```front-action\s*[\s\S]*$/i, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function assistantDisplayOutput(
+  output: ChatMessage['output'] | undefined,
+  fallbackText: string
+) {
+  if (!output) {
+    return null
+  }
+
+  const sanitized = sanitizeAssistantActionTextOutput(output)
+  if (!isRecord(sanitized)) {
+    return hasAssistantDisplayValue(sanitized)
+      ? sanitized
+      : fallbackText
+        ? { text: fallbackText }
+        : null
+  }
+
+  const text = streamValueText(sanitized.text)
+  if (text || fallbackText) {
+    return compactAssistantOutput({
+      ...sanitized,
+      text: assistantDisplayText(text) || fallbackText,
+    })
+  }
+  return compactAssistantOutput(sanitized)
+}
+
+function sanitizeAssistantActionTextOutput(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return assistantDisplayText(value)
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizeAssistantActionTextOutput(item))
+      .filter(hasAssistantDisplayValue)
+  }
+  if (!isRecord(value)) {
+    return value
+  }
+  if (isAssistantFrontActionValue(value)) {
+    return undefined
+  }
+
+  const next: Record<string, unknown> = {}
+  for (const [key, current] of Object.entries(value)) {
+    next[key] = sanitizeAssistantActionTextOutput(current)
+  }
+  return compactAssistantOutput(next)
+}
+
+function compactAssistantOutput(output: Record<string, unknown>) {
+  const entries = Object.entries(output).filter(([, value]) =>
+    hasAssistantDisplayValue(value)
+  )
+  if (entries.length === 0) {
+    return null
+  }
+  return Object.fromEntries(entries)
+}
+
+function hasAssistantDisplayValue(value: unknown): boolean {
+  if (value == null) {
+    return false
+  }
+  if (typeof value === 'string') {
+    return value.trim() !== ''
+  }
+  if (Array.isArray(value)) {
+    return value.some(hasAssistantDisplayValue)
+  }
+  if (isRecord(value)) {
+    return Object.values(value).some(hasAssistantDisplayValue)
+  }
+  return true
+}
+
+function isAssistantFrontActionValue(value: Record<string, unknown>) {
+  const type = streamValueText(value.type).trim()
+  switch (type) {
+    case 'fill_form':
+      return Boolean(streamValueText(value.target).trim())
+    case 'patch_form':
+      return isRecord(value.values)
+    case 'open_page':
+      return Boolean(
+        streamValueText(value.path).trim() ||
+          streamValueText(value.route).trim() ||
+          streamValueText(value.to).trim() ||
+          streamValueText(value.permission_key).trim() ||
+          streamValueText(value.permissionKey).trim() ||
+          streamValueText(value.key).trim()
+      )
+    case 'open_form':
+      return Boolean(
+        streamValueText(value.path).trim() ||
+          streamValueText(value.route).trim() ||
+          streamValueText(value.form_path).trim() ||
+          streamValueText(value.formPath).trim() ||
+          streamValueText(value.permission_key).trim() ||
+          streamValueText(value.permissionKey).trim() ||
+          streamValueText(value.key).trim()
+      )
+    default:
+      return false
+  }
 }
 
 function AssistantInteractionNotice({
