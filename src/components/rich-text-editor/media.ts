@@ -5,11 +5,12 @@ import type { ResourceUploadRule } from '@/lib/resource'
 import { resolveResourceKind } from '@/lib/resource'
 import {
   defaultRichTextMediaMaxWidth,
+  richTextExternalMediaNodeName,
   normalizeRichTextMaxWidth,
   richTextMediaNodeNames,
 } from '@/lib/rich-text'
 import type { UploadFileItem } from '@/lib/upload'
-import { EditorMediaNodeView } from './media-node-view'
+import { EditorExternalMediaNodeView, EditorMediaNodeView } from './media-node-view'
 
 export type EditorMediaKind = 'image' | 'video' | 'audio'
 export type EditorUploadRule = ResourceUploadRule & { kind: EditorMediaKind }
@@ -36,21 +37,43 @@ export const editorMediaExtensions = [
       return {
         src: {
           default: '',
+          parseHTML: (element: HTMLElement) =>
+            String(resolveMediaElement(element, 'image')?.getAttribute('src') || '').trim(),
         },
         alt: {
           default: '',
+          parseHTML: (element: HTMLElement) =>
+            String(resolveMediaElement(element, 'image')?.getAttribute('alt') || '').trim(),
         },
         title: {
           default: '',
+          parseHTML: (element: HTMLElement) =>
+            String(resolveMediaElement(element, 'image')?.getAttribute('title') || '').trim(),
         },
+        caption: createMediaCaptionAttribute('image'),
         maxWidth: createMediaMaxWidthAttribute(),
+        align: createMediaAlignAttribute(),
       }
     },
     parseHTML() {
-      return [{ tag: 'img[src]' }]
+      return [
+        { tag: 'figure[data-rich-text-image]' },
+        { tag: 'figure[data-rich-text-media][data-rich-text-kind="image"]' },
+        { tag: 'img[src]' },
+      ]
     },
     renderHTML({ HTMLAttributes }) {
-      return ['img', buildEditorMediaHTMLAttributes(HTMLAttributes)]
+      const caption = normalizeMediaCaption(HTMLAttributes.caption)
+      const imageAttributes = buildEditorMediaHTMLAttributes(HTMLAttributes)
+      if (!caption) {
+        return ['img', imageAttributes]
+      }
+      return [
+        'figure',
+        buildEditorMediaFigureHTMLAttributes('image', HTMLAttributes, caption),
+        ['img', mergeAttributes(imageAttributes, { 'data-caption': caption })],
+        ['figcaption', caption],
+      ]
     },
     renderMarkdown(node: Record<string, any>) {
       const src = String(node.attrs?.src || '').trim()
@@ -58,7 +81,8 @@ export const editorMediaExtensions = [
         return ''
       }
       const alt = escapeMarkdownText(String(node.attrs?.alt || node.attrs?.title || '').trim())
-      return `![${alt}](${src})`
+      const caption = normalizeMediaCaption(node.attrs?.caption)
+      return caption ? `![${alt}](${src})\n\n_${escapeMarkdownText(caption)}_` : `![${alt}](${src})`
     },
     addNodeView() {
       return ReactNodeViewRenderer((props) =>
@@ -82,15 +106,22 @@ export const editorMediaExtensions = [
       return {
         src: {
           default: '',
+          parseHTML: (element: HTMLElement) =>
+            String(resolveMediaElement(element, 'video')?.getAttribute('src') || '').trim(),
         },
         maxWidth: createMediaMaxWidthAttribute(),
+        align: createMediaAlignAttribute(),
+        caption: createMediaCaptionAttribute('video'),
       }
     },
     parseHTML() {
-      return [{ tag: 'video[src]' }]
+      return [
+        { tag: 'figure[data-rich-text-media][data-rich-text-kind="video"]' },
+        { tag: 'video[src]' },
+      ]
     },
     renderHTML({ HTMLAttributes }) {
-      return [
+      const mediaHTML = [
         'video',
         buildEditorMediaHTMLAttributes(
           {
@@ -101,6 +132,7 @@ export const editorMediaExtensions = [
           HTMLAttributes
         ),
       ]
+      return renderCaptionedMediaHTML('video', HTMLAttributes, mediaHTML)
     },
     renderMarkdown(node: Record<string, any>) {
       return renderMediaMarkdownLink(node, '视频')
@@ -127,15 +159,22 @@ export const editorMediaExtensions = [
       return {
         src: {
           default: '',
+          parseHTML: (element: HTMLElement) =>
+            String(resolveMediaElement(element, 'audio')?.getAttribute('src') || '').trim(),
         },
         maxWidth: createMediaMaxWidthAttribute(),
+        align: createMediaAlignAttribute(),
+        caption: createMediaCaptionAttribute('audio'),
       }
     },
     parseHTML() {
-      return [{ tag: 'audio[src]' }]
+      return [
+        { tag: 'figure[data-rich-text-media][data-rich-text-kind="audio"]' },
+        { tag: 'audio[src]' },
+      ]
     },
     renderHTML({ HTMLAttributes }) {
-      return [
+      const mediaHTML = [
         'audio',
         buildEditorMediaHTMLAttributes(
           {
@@ -145,6 +184,7 @@ export const editorMediaExtensions = [
           HTMLAttributes
         ),
       ]
+      return renderCaptionedMediaHTML('audio', HTMLAttributes, mediaHTML)
     },
     renderMarkdown(node: Record<string, any>) {
       return renderMediaMarkdownLink(node, '音频')
@@ -156,6 +196,84 @@ export const editorMediaExtensions = [
           kind: 'audio',
           label: '音频',
           defaultMaxWidth: defaultRichTextMediaMaxWidth('audio'),
+        })
+      )
+    },
+  } as MarkdownNodeConfig),
+  Node.create({
+    name: richTextExternalMediaNodeName,
+    group: 'block',
+    atom: true,
+    isolating: true,
+    draggable: true,
+    selectable: true,
+    addAttributes() {
+      return {
+        kind: {
+          default: 'video',
+          parseHTML: (element: HTMLElement) =>
+            normalizeExternalMediaKind(element.getAttribute('data-rich-media-kind')),
+        },
+        src: {
+          default: '',
+          parseHTML: (element: HTMLElement) =>
+            normalizeExternalMediaSource(
+              element.getAttribute('data-rich-media-src') ||
+                element.querySelector('a[href]')?.getAttribute('href') ||
+                ''
+            ),
+        },
+        title: {
+          default: '',
+          parseHTML: (element: HTMLElement) =>
+            String(
+              element.getAttribute('data-rich-media-title') ||
+                element.querySelector('a[href]')?.textContent ||
+                ''
+            ).trim(),
+        },
+        cover: {
+          default: '',
+          parseHTML: (element: HTMLElement) =>
+            String(element.getAttribute('data-rich-media-cover') || '').trim(),
+        },
+        maxWidth: createMediaMaxWidthAttribute(),
+        align: createMediaAlignAttribute(),
+      }
+    },
+    parseHTML() {
+      return [{ tag: 'div[data-rich-media-embed]' }]
+    },
+    renderHTML({ HTMLAttributes }) {
+      const attrs = buildExternalMediaHTMLAttributes(HTMLAttributes)
+      return [
+        'div',
+        attrs,
+        [
+          'a',
+          {
+            href: attrs['data-rich-media-src'],
+            target: '_blank',
+            rel: 'noreferrer',
+          },
+          attrs['data-rich-media-title'] || resolveExternalMediaLabel(attrs['data-rich-media-kind']),
+        ],
+      ]
+    },
+    renderMarkdown(node: Record<string, any>) {
+      const src = String(node.attrs?.src || '').trim()
+      if (!src) {
+        return ''
+      }
+      const label = escapeMarkdownText(
+        String(node.attrs?.title || resolveExternalMediaLabel(node.attrs?.kind)).trim()
+      )
+      return `[${label}](${src})`
+    },
+    addNodeView() {
+      return ReactNodeViewRenderer((props) =>
+        createElement(EditorExternalMediaNodeView, {
+          ...props,
         })
       )
     },
@@ -277,10 +395,12 @@ function buildEditorMediaAttrs(file: UploadFileItem, kind: EditorMediaKind) {
         alt: name,
         title: name,
         maxWidth: defaultRichTextMediaMaxWidth(kind),
+        align: '',
       }
     : {
         src,
         maxWidth: defaultRichTextMediaMaxWidth(kind),
+        align: '',
       }
 }
 
@@ -305,8 +425,33 @@ function createMediaMaxWidthAttribute() {
   return {
     default: '',
     parseHTML: (element: HTMLElement) =>
-      normalizeRichTextMaxWidth(
-        element.getAttribute('data-max-width') || element.style.maxWidth
+      firstNormalizedMediaMaxWidth(
+        element.getAttribute('data-max-width'),
+        element.style.maxWidth,
+        element.style.width,
+        element.getAttribute('width'),
+        element.getAttribute('data-w')
+      ),
+  }
+}
+
+function createMediaAlignAttribute() {
+  return {
+    default: '',
+    parseHTML: (element: HTMLElement) =>
+      normalizeMediaAlign(element.getAttribute('data-align') || element.style.textAlign),
+  }
+}
+
+function createMediaCaptionAttribute(kind: EditorMediaKind) {
+  return {
+    default: '',
+    parseHTML: (element: HTMLElement) =>
+      normalizeMediaCaption(
+        element.getAttribute('data-caption') ||
+          resolveMediaElement(element, kind)?.getAttribute('data-caption') ||
+          element.querySelector('figcaption')?.textContent ||
+          ''
       ),
   }
 }
@@ -317,18 +462,94 @@ function buildEditorMediaHTMLAttributes(
 ) {
   const mergedAttributes = mergeAttributes(baseAttributes, htmlAttributes)
   const normalizedMaxWidth = normalizeRichTextMaxWidth(mergedAttributes.maxWidth)
+  const align = normalizeMediaAlign(mergedAttributes.align)
   const style = normalizeInlineStyle(mergedAttributes.style)
-  const nextStyle = normalizedMaxWidth
-    ? appendInlineStyle(style, `max-width:${normalizedMaxWidth}`)
-    : style
-  const { maxWidth, ...restAttributes } = mergedAttributes
+  const nextStyle = [
+    normalizedMaxWidth ? `max-width:${normalizedMaxWidth}` : '',
+    align ? `text-align:${align}` : '',
+  ].filter(Boolean).reduce(appendInlineStyle, style)
+  const restAttributes = { ...mergedAttributes }
+  delete restAttributes.maxWidth
+  delete restAttributes.align
+  delete restAttributes.caption
   const nextAttributes = nextStyle
     ? mergeAttributes(restAttributes, { style: nextStyle })
     : restAttributes
 
-  return normalizedMaxWidth
-    ? mergeAttributes(nextAttributes, { 'data-max-width': normalizedMaxWidth })
-    : nextAttributes
+  return mergeAttributes(
+    nextAttributes,
+    normalizedMaxWidth ? { 'data-max-width': normalizedMaxWidth } : {},
+    align ? { 'data-align': align } : {}
+  )
+}
+
+function renderCaptionedMediaHTML(
+  kind: EditorMediaKind,
+  htmlAttributes: Record<string, any>,
+  mediaHTML: any[]
+) {
+  const caption = normalizeMediaCaption(htmlAttributes.caption)
+  if (!caption) {
+    return mediaHTML
+  }
+  return [
+    'figure',
+    buildEditorMediaFigureHTMLAttributes(kind, htmlAttributes, caption),
+    mediaHTML,
+    ['figcaption', caption],
+  ]
+}
+
+function buildEditorMediaFigureHTMLAttributes(
+  kind: EditorMediaKind,
+  htmlAttributes: Record<string, any>,
+  caption: string
+) {
+  return mergeAttributes(
+    kind === 'image' ? { 'data-rich-text-image': 'true' } : {},
+    {
+      'data-rich-text-media': 'true',
+      'data-rich-text-kind': kind,
+      'data-caption': caption,
+    },
+    buildMediaContainerHTMLAttributes(htmlAttributes)
+  )
+}
+
+function buildExternalMediaHTMLAttributes(htmlAttributes?: Record<string, any>) {
+  const kind = normalizeExternalMediaKind(htmlAttributes?.kind)
+  const src = normalizeExternalMediaSource(htmlAttributes?.src)
+  const title =
+    String(htmlAttributes?.title || '').trim() || resolveExternalMediaLabel(kind)
+  const cover = String(htmlAttributes?.cover || '').trim()
+  const normalizedMaxWidth = normalizeRichTextMaxWidth(htmlAttributes?.maxWidth)
+  const align = normalizeMediaAlign(htmlAttributes?.align)
+  return mergeAttributes(
+    {
+      'data-rich-media-embed': 'true',
+      'data-rich-media-kind': kind,
+      'data-rich-media-src': src,
+      'data-rich-media-title': title,
+    },
+    cover ? { 'data-rich-media-cover': cover } : {},
+    normalizedMaxWidth ? { 'data-max-width': normalizedMaxWidth } : {},
+    align ? { 'data-align': align } : {}
+  )
+}
+
+function buildMediaContainerHTMLAttributes(htmlAttributes?: Record<string, any>) {
+  const normalizedMaxWidth = normalizeRichTextMaxWidth(htmlAttributes?.maxWidth)
+  const align = normalizeMediaAlign(htmlAttributes?.align)
+  const styles = [
+    normalizedMaxWidth ? `max-width:${normalizedMaxWidth}` : '',
+    align === 'center' ? 'margin-left:auto' : '',
+    align === 'center' ? 'margin-right:auto' : '',
+    align === 'right' ? 'margin-left:auto' : '',
+    align ? `text-align:${align}` : '',
+  ]
+    .filter(Boolean)
+    .join('; ')
+  return styles ? { style: styles } : {}
 }
 
 function appendInlineStyle(style: string, declaration: string) {
@@ -346,7 +567,67 @@ function renderMediaMarkdownLink(node: Record<string, any>, label: string) {
   if (!src) {
     return ''
   }
-  return `[${label}](${src})`
+  const caption = normalizeMediaCaption(node.attrs?.caption)
+  const link = `[${label}](${src})`
+  return caption ? `${link}\n\n_${escapeMarkdownText(caption)}_` : link
+}
+
+function normalizeMediaAlign(value: unknown) {
+  const text = String(value || '').trim().toLowerCase()
+  return ['left', 'center', 'right'].includes(text) ? text : ''
+}
+
+function firstNormalizedMediaMaxWidth(...values: unknown[]) {
+  for (const value of values) {
+    const normalized =
+      normalizeRichTextMaxWidth(value) ||
+      normalizeRichTextMaxWidth(normalizeNumericWidth(value))
+    if (normalized) {
+      return normalized
+    }
+  }
+  return ''
+}
+
+function normalizeNumericWidth(value: unknown) {
+  const text = String(value || '').trim()
+  if (!text) {
+    return ''
+  }
+  const number = Number(text)
+  return Number.isFinite(number) && number > 0 ? `${number}px` : ''
+}
+
+function normalizeExternalMediaKind(value: unknown) {
+  const text = String(value || '').trim().toLowerCase()
+  return text === 'audio' ? 'audio' : 'video'
+}
+
+function resolveExternalMediaLabel(value: unknown) {
+  return normalizeExternalMediaKind(value) === 'audio' ? '查看音频' : '查看视频'
+}
+
+function normalizeExternalMediaSource(value: unknown) {
+  const text = String(value || '').trim()
+  return /^https?:\/\//i.test(text) ? text : ''
+}
+
+function resolveMediaElement(element: HTMLElement, kind: EditorMediaKind) {
+  const tagName = kind === 'image' ? 'img' : kind
+  if (element.tagName.toLowerCase() === tagName) {
+    return element
+  }
+  return element.querySelector(`${tagName}[src]`) as HTMLElement | null
+}
+
+function normalizeMediaCaption(value: unknown) {
+  return String(value || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 300)
 }
 
 function escapeMarkdownText(value: string) {

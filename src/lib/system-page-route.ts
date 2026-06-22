@@ -13,9 +13,14 @@ export function systemPageRoute(name: string) {
 
 function runtimeApiOwner() {
   const runtime = getRuntimeConfig()
+  const pagePrefix = String(runtime.pagePrefix || '').trim()
+  if (pagePrefix) {
+    return pagePrefix
+  }
+
   const apiPrefix = String(runtime.apiPrefix || '').trim()
   if (apiPrefix) {
-    return apiPrefix
+    return firstPathSegment(apiPrefix)
   }
 
   const host = String(runtime.host || '').trim()

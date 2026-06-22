@@ -36,6 +36,7 @@ import {
   ListOrdered,
   Loader2,
   Music4,
+  Newspaper,
   Palette,
   Quote,
   Redo2,
@@ -57,11 +58,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { importArticleFromURL } from '@/lib/article-import'
 import {
   normalizeRichTextHexColor,
   richTextLinkClassName,
@@ -337,6 +338,10 @@ export function RichTextEditor({
   const [remoteAssetState, setRemoteAssetState] = useState<Record<string, RemoteAssetTransferState>>({})
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false)
   const [linkHref, setLinkHref] = useState('')
+  const [articlePopoverOpen, setArticlePopoverOpen] = useState(false)
+  const [articleURL, setArticleURL] = useState('')
+  const [articleImporting, setArticleImporting] = useState(false)
+  const [articleImportError, setArticleImportError] = useState('')
   const selectionRef = useRef<{ from: number; to: number } | null>(null)
 
   const editorExtensions = useMemo(
@@ -717,6 +722,40 @@ export function RichTextEditor({
     setLinkPopoverOpen(false)
   }
 
+  const importArticleURL = async () => {
+    if (!editor || disabled || articleImporting) {
+      return
+    }
+
+    const url = articleURL.trim()
+    if (!url) {
+      setArticleImportError('请输入文章链接。')
+      return
+    }
+
+    setArticleImporting(true)
+    setArticleImportError('')
+    setUploadMessage('正在导入文章...')
+    try {
+      const article = await importArticleFromURL(url)
+      const pasted = normalizePastedRichTextHTML(article.html)
+      if (!pasted.html.trim()) {
+        throw new Error('未解析到文章正文')
+      }
+
+      editor.chain().focus().insertContent(pasted.html).run()
+      appendPastedRemoteAssets([...article.assets, ...pasted.assets])
+      setArticleURL('')
+      setArticlePopoverOpen(false)
+      setUploadMessage(resolveArticleImportMessage(article.assets, pasted.assets))
+    } catch (importError) {
+      setArticleImportError(importError instanceof Error ? importError.message : '导入文章失败')
+      setUploadMessage('')
+    } finally {
+      setArticleImporting(false)
+    }
+  }
+
   const rememberCurrentSelection = () => {
     if (!editor) {
       return
@@ -958,6 +997,79 @@ export function RichTextEditor({
               </form>
             </PopoverContent>
           </Popover>
+          {richControlsEnabled ? (
+            <Popover
+              open={articlePopoverOpen}
+              onOpenChange={(open) => {
+                setArticlePopoverOpen(open)
+                if (open) {
+                  setArticleImportError('')
+                }
+              }}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  className={TOOLBAR_BUTTON_CLASS}
+                  onMouseDown={(event) => {
+                    event.preventDefault()
+                    rememberCurrentSelection()
+                  }}
+                  disabled={disabled || !editor || articleImporting}
+                  title="导入文章链接"
+                >
+                  {articleImporting ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Newspaper className="size-3.5" />
+                  )}
+                  <span className="sr-only">导入文章链接</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-96 p-3">
+                <form
+                  className="space-y-3"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void importArticleURL()
+                  }}
+                >
+                  <div className="space-y-1.5">
+                    <Input
+                      value={articleURL}
+                      onChange={(event) => setArticleURL(event.target.value)}
+                      placeholder="粘贴微信公众号、百家号或文章页链接"
+                      autoFocus
+                      disabled={articleImporting}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      导入后会尽量保留正文结构、图片和可识别媒体；平台内嵌音视频会转成媒体卡片。
+                    </p>
+                    {articleImportError ? (
+                      <p className="text-xs text-destructive">{articleImportError}</p>
+                    ) : null}
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setArticlePopoverOpen(false)}
+                      disabled={articleImporting}
+                    >
+                      取消
+                    </Button>
+                    <Button type="submit" size="sm" disabled={articleImporting}>
+                      {articleImporting ? <Loader2 className="size-4 animate-spin" /> : null}
+                      导入
+                    </Button>
+                  </div>
+                </form>
+              </PopoverContent>
+            </Popover>
+          ) : null}
           {richControlsEnabled
             ? EDITOR_MEDIA_CONTROLS.filter((control) => uploadKinds.includes(control.kind)).map(
                 ({ kind, icon: Icon, label }) => (
@@ -1085,6 +1197,22 @@ export function RichTextEditor({
       ) : null}
     </div>
   )
+}
+
+function resolveArticleImportMessage(
+  articleAssets: PastedRemoteMediaAsset[],
+  pastedAssets: PastedRemoteMediaAsset[]
+) {
+  const records = new Map<string, PastedRemoteMediaAsset>()
+  const combinedAssets = [...articleAssets, ...pastedAssets]
+  combinedAssets.forEach((asset) => {
+    records.set(pastedMediaAssetKey(asset), asset)
+  })
+  const assets = Array.from(records.values())
+  if (assets.length === 0) {
+    return '文章已导入。'
+  }
+  return `文章已导入，检测到 ${formatRemoteAssetCounts(assets)} 来自外部链接。`
 }
 
 function clipboardImageFiles(data: DataTransfer | null) {
@@ -1723,10 +1851,6 @@ function EditorMediaButton({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        <DropdownMenuLabel className="flex items-center gap-2">
-          <Icon className="size-4" />
-          {label}
-        </DropdownMenuLabel>
         <DropdownMenuItem onSelect={() => onUpload(kind)}>
           上传{label}
         </DropdownMenuItem>

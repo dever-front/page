@@ -22,6 +22,7 @@ export type AppearanceConfig = {
 
 export type RuntimeConfig = {
   siteKey: string
+  pagePrefix: string
   apiPrefix: string
   skin: string
   routerMode: 'hash' | 'history'
@@ -64,6 +65,7 @@ export type RuntimePluginConfig = {
 export type AppRuntimeConfig = {
   siteKey?: string
   basePath?: string
+  pagePrefix?: string
   apiPrefix?: string
   apiHost?: string
   siteApiHost?: string
@@ -96,6 +98,7 @@ const DEFAULT_APP_CONFIG: AppConfig = {
   },
   runtime: {
     siteKey: 'admin',
+    pagePrefix: 'front',
     apiPrefix: 'front',
     skin: 'default',
     routerMode: 'history',
@@ -145,6 +148,12 @@ function mergeRuntimeConfig(runtime?: AppRuntimeConfig): AppConfig {
   const apiPrefix = normalizeAPIPrefix(
     runtime?.apiPrefix || runtime?.apiHost || DEFAULT_APP_CONFIG.runtime.host
   )
+  const pagePrefix = normalizePagePrefix(
+    runtime?.pagePrefix ||
+      apiPrefix ||
+      runtime?.apiHost ||
+      DEFAULT_APP_CONFIG.runtime.pagePrefix
+  )
   const site = normalizeSiteConfig(DEFAULT_APP_CONFIG.site, runtime?.site)
 
   if (basePath) {
@@ -165,6 +174,7 @@ function mergeRuntimeConfig(runtime?: AppRuntimeConfig): AppConfig {
       {
         ...DEFAULT_APP_CONFIG.runtime,
         siteKey,
+        pagePrefix,
         apiPrefix,
         basePath,
         host,
@@ -301,6 +311,14 @@ function apiPrefixFromPath(value: string) {
     parts.shift()
   }
   return parts.join('/')
+}
+
+function normalizePagePrefix(value?: string) {
+  const apiPrefix = normalizeAPIPrefix(value)
+  if (!apiPrefix) {
+    return ''
+  }
+  return apiPrefix.split('/').filter(Boolean)[0] || ''
 }
 
 function joinBasePath(basePath: string, relativePath: string) {

@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { AssistantFieldGenerateButton } from '@/components/assistant/form-actions'
 import { AssistantMediaGenerateLazyButton } from '@/components/assistant/lazy-media-generate'
 import {
   normalizeEditorUploadRules,
@@ -36,6 +37,18 @@ export function FormEditor({
     () => normalizeEditorUploadRules(mergeResourceUploadRules(baseUploadRules, uploadRuleMetas)),
     [baseUploadRules, uploadRuleMetas]
   )
+  const editorAssistantAdornment =
+    item.mode !== 'form'
+      ? null
+      : assistantAdornment !== undefined
+        ? assistantAdornment
+        : (
+            <AssistantFieldGenerateButton
+              item={item}
+              store={store}
+              className="h-7 w-7 rounded-md bg-background/80"
+            />
+          )
 
   return (
     <RichTextEditor
@@ -50,7 +63,7 @@ export function FormEditor({
       maxHeight={maxHeight}
       controlClassName={item.meta?.controlClassName}
       uploadRules={uploadRules}
-      assistantAdornment={assistantAdornment}
+      assistantAdornment={editorAssistantAdornment}
       renderAiGenerate={({ kind, disabled: mediaDisabled, onGenerated }) => (
         <AssistantMediaGenerateLazyButton
           store={store}

@@ -19,10 +19,16 @@ export const richTextMediaNodeNames: Record<RichTextMediaKind, string> = {
   audio: 'editorMediaAudio',
 }
 
+export const richTextExternalMediaNodeName = 'editorMediaEmbed'
+
 const richTextNodeAliases: Record<string, string> = {
   audio: richTextMediaNodeNames.audio,
+  editorMediaExternal: richTextExternalMediaNodeName,
+  externalMedia: richTextExternalMediaNodeName,
   image: richTextMediaNodeNames.image,
   mediaAudio: richTextMediaNodeNames.audio,
+  mediaEmbed: richTextExternalMediaNodeName,
+  mediaExternal: richTextExternalMediaNodeName,
   mediaImage: richTextMediaNodeNames.image,
   mediaVideo: richTextMediaNodeNames.video,
   video: richTextMediaNodeNames.video,
@@ -125,6 +131,9 @@ function hasVisibleRichText(node: RichTextNode): boolean {
   }
   if (node.type === richTextMediaNodeNames.audio) {
     return !!String(node.attrs?.src || '').trim()
+  }
+  if (node.type === richTextExternalMediaNodeName) {
+    return !!String(node.attrs?.src || node.attrs?.href || '').trim()
   }
   if (node.type === 'agentAbilityPlaceholder' || node.type === 'agentTaskPlaceholder') {
     return true

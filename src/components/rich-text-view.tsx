@@ -3,13 +3,14 @@ import {
   isEmptyRichTextDoc,
   normalizeRichTextMaxWidth,
   parseRichTextDoc,
+  richTextExternalMediaNodeName,
   richTextMediaNodeNames,
   type RichTextMark,
   type RichTextNode,
 } from '@/lib/rich-text'
 import {
+  richTextBlockStyleToCss,
   richTextLinkClassName,
-  richTextTextAlignToCss,
   richTextTextStyleToCss,
 } from '@/lib/rich-text-style'
 import { safeRichTextHref } from '@/lib/rich-text-link'
@@ -123,6 +124,8 @@ function renderRichTextNode(node: RichTextNode | null | undefined, key: string):
       return renderRichTextVideo(node, key)
     case richTextMediaNodeNames.audio:
       return renderRichTextAudio(node, key)
+    case richTextExternalMediaNodeName:
+      return renderRichTextExternalMedia(node, key)
     default:
       return <Fragment key={key}>{children}</Fragment>
   }
@@ -186,6 +189,20 @@ function renderRichTextImage(node: RichTextNode, key: string) {
   if (!attrs.src) {
     return null
   }
+  const caption = normalizeMediaCaption(node.attrs?.caption)
+  if (caption) {
+    return (
+      <figure key={key} className="my-4 max-w-full" style={attrs.style}>
+        <img
+          src={attrs.src}
+          alt={String(node.attrs?.alt || '')}
+          title={String(node.attrs?.title || '')}
+          style={{ margin: 0, maxWidth: '100%' }}
+        />
+        {renderMediaCaption(caption)}
+      </figure>
+    )
+  }
   return (
     <img
       key={key}
@@ -201,6 +218,21 @@ function renderRichTextVideo(node: RichTextNode, key: string) {
   const attrs = mediaAttrs(node)
   if (!attrs.src) {
     return null
+  }
+  const caption = normalizeMediaCaption(node.attrs?.caption)
+  if (caption) {
+    return (
+      <figure key={key} className="my-4 max-w-full" style={attrs.style}>
+        <video
+          src={attrs.src}
+          controls
+          preload="metadata"
+          playsInline
+          style={{ margin: 0, maxWidth: '100%' }}
+        />
+        {renderMediaCaption(caption)}
+      </figure>
+    )
   }
   return (
     <video
@@ -219,7 +251,50 @@ function renderRichTextAudio(node: RichTextNode, key: string) {
   if (!attrs.src) {
     return null
   }
+  const caption = normalizeMediaCaption(node.attrs?.caption)
+  if (caption) {
+    return (
+      <figure key={key} className="my-4 max-w-full" style={attrs.style}>
+        <audio src={attrs.src} controls preload="none" className="block w-full" />
+        {renderMediaCaption(caption)}
+      </figure>
+    )
+  }
   return <audio key={key} src={attrs.src} controls preload="none" style={attrs.style} />
+}
+
+function renderRichTextExternalMedia(node: RichTextNode, key: string) {
+  const src = String(node.attrs?.src || node.attrs?.href || '').trim()
+  if (!src) {
+    return null
+  }
+  const kind = String(node.attrs?.kind || '').trim().toLowerCase() === 'audio' ? 'audio' : 'video'
+  const title =
+    String(node.attrs?.title || '').trim() || (kind === 'audio' ? '查看音频' : '查看视频')
+  const cover = String(node.attrs?.cover || '').trim()
+  return (
+    <div key={key} style={mediaWrapperStyle(node)}>
+      <a
+        href={safeRichTextHref(src)}
+        target="_blank"
+        rel="noreferrer"
+        className="my-4 flex w-full max-w-full items-center gap-3 rounded-lg border bg-muted/25 p-3 no-underline transition hover:bg-muted/40"
+        style={mediaAttrs(node).style}
+      >
+        {cover ? (
+          <img src={cover} alt="" className="m-0 h-14 w-20 shrink-0 rounded-md object-cover" />
+        ) : (
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-background text-xs font-medium text-muted-foreground">
+            {kind === 'audio' ? '音频' : '视频'}
+          </span>
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-foreground">{title}</span>
+          <span className="mt-1 block truncate text-xs text-muted-foreground">{src}</span>
+        </span>
+      </a>
+    </div>
+  )
 }
 
 function renderRichTextPlaceholder(node: RichTextNode, key: string) {
@@ -281,7 +356,7 @@ function headingTag(node: RichTextNode) {
 }
 
 function blockStyle(node: RichTextNode): CSSProperties | undefined {
-  return richTextTextAlignToCss(node.attrs?.textAlign) as CSSProperties | undefined
+  return richTextBlockStyleToCss(node.attrs || {}) as CSSProperties | undefined
 }
 
 function mediaAttrs(node: RichTextNode): {
@@ -290,8 +365,56 @@ function mediaAttrs(node: RichTextNode): {
 } {
   const src = String(node.attrs?.src || '').trim()
   const maxWidth = normalizeRichTextMaxWidth(node.attrs?.maxWidth)
+  const align = normalizeMediaAlign(node.attrs?.align)
   return {
     src,
-    style: maxWidth ? { maxWidth } : undefined,
+    style: {
+      ...(maxWidth ? { maxWidth } : {}),
+      ...mediaAlignStyle(align),
+    },
   }
+}
+
+function mediaWrapperStyle(node: RichTextNode): CSSProperties | undefined {
+  const align = normalizeMediaAlign(node.attrs?.align)
+  if (!align || align === 'left') {
+    return undefined
+  }
+  return {
+    display: 'flex',
+    justifyContent: align === 'center' ? 'center' : 'flex-end',
+  }
+}
+
+function normalizeMediaAlign(value: unknown) {
+  const text = String(value || '').trim().toLowerCase()
+  return text === 'center' || text === 'right' ? text : 'left'
+}
+
+function mediaAlignStyle(align: string): CSSProperties {
+  if (align === 'center') {
+    return { marginLeft: 'auto', marginRight: 'auto' }
+  }
+  if (align === 'right') {
+    return { marginLeft: 'auto' }
+  }
+  return {}
+}
+
+function normalizeMediaCaption(value: unknown) {
+  return String(value || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 300)
+}
+
+function renderMediaCaption(caption: string) {
+  return (
+    <figcaption className="mt-2 whitespace-pre-line break-words text-center text-xs leading-5 text-muted-foreground">
+      {caption}
+    </figcaption>
+  )
 }

@@ -1,5 +1,6 @@
 import { Extension, Mark, mergeAttributes } from '@tiptap/core'
 import {
+  normalizeRichTextLineHeight,
   normalizeRichTextTextAlign,
   normalizeRichTextTextStyleAttrs,
   richTextStyleToCssText,
@@ -101,10 +102,12 @@ export const RichTextTextAlign = Extension.create({
           textAlign: {
             default: null,
             parseHTML: (element) => normalizeRichTextTextAlign(element.style.textAlign) || null,
-            renderHTML: (attributes) => {
-              const textAlign = normalizeRichTextTextAlign(attributes.textAlign)
-              return textAlign ? { style: `text-align: ${textAlign}` } : {}
-            },
+            renderHTML: (attributes) => renderBlockStyleHTML(attributes),
+          },
+          lineHeight: {
+            default: null,
+            parseHTML: (element) => normalizeRichTextLineHeight(element.style.lineHeight) || null,
+            rendered: false,
           },
         },
       },
@@ -130,6 +133,19 @@ export const RichTextTextAlign = Extension.create({
     }
   },
 })
+
+function renderBlockStyleHTML(attributes: Record<string, unknown>) {
+  const textAlign = normalizeRichTextTextAlign(attributes.textAlign)
+  const lineHeight = normalizeRichTextLineHeight(attributes.lineHeight)
+  const styles: string[] = []
+  if (textAlign) {
+    styles.push(`text-align: ${textAlign}`)
+  }
+  if (lineHeight) {
+    styles.push(`line-height: ${lineHeight}`)
+  }
+  return styles.length > 0 ? { style: styles.join('; ') } : {}
+}
 
 function updateBlockAttributes(commands: {
   updateAttributes: (type: string, attrs: Record<string, unknown>) => boolean
