@@ -10,7 +10,6 @@ import {
 import { useNavigate } from '@tanstack/react-router'
 import {
   Bot,
-  Brain,
   History,
   Loader2,
   Plus,
@@ -75,12 +74,10 @@ import {
 } from '@/lib/floating-layer'
 import {
   assistantSessionContextKey,
-  chooseAssistantMemory,
   clearAssistantSession,
   loadAssistantSession,
   saveAssistantMessage,
   type AssistantMemoryReview,
-  type AssistantMemoryReviewAction,
 } from '@/lib/assistant/session'
 import { stripRouterBasePath } from '@/lib/router-path'
 import {
@@ -101,7 +98,6 @@ import {
   AssistantReferencePicker,
 } from './reference-picker'
 import { AssistantInteractionDialog } from './interaction-dialog'
-import { AssistantMemoryDialog } from './memory-dialog'
 import { AssistantSessionHistoryDialog } from './session-history-dialog'
 
 const ASSISTANT_AGENT_KEY = 'front-assistant'
@@ -158,6 +154,8 @@ function AssistantHeaderIconButton({
             size="icon"
             variant={active ? 'secondary' : 'ghost'}
             disabled={disabled}
+            aria-label={label}
+            title={label}
             onClick={onClick}
           >
             {children}
@@ -190,7 +188,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
   const [sessionID, setSessionID] = useState(0)
   const [sessionLoading, setSessionLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const [memoryOpen, setMemoryOpen] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
 
@@ -701,53 +698,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
     return appliedIndexes
   }
 
-  const chooseMemoryReview = async (
-    messageID: string,
-    review: AssistantMemoryReview,
-    action: AssistantMemoryReviewAction
-  ) => {
-    if (running) {
-      return
-    }
-    try {
-      const result = await chooseAssistantMemory({
-        candidateID: review.candidate_id,
-        memoryID: action.memory_id,
-        sourceMessageID: review.source_message_id,
-        choice: action.key,
-      })
-      const nextReview = {
-        ...review,
-        status: streamValueText(result.status) || action.key,
-        text: memoryChoiceResultText(action.key, streamValueText(result.status)),
-        actions: [],
-      }
-      setMessages((current) =>
-        patchAssistantMessage(current, messageID, (message) => ({
-          ...message,
-          output: {
-            ...(message.output || {}),
-            memory_review: nextReview,
-          },
-        }))
-      )
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '记忆操作失败'
-      setMessages((current) =>
-        patchAssistantMessage(current, messageID, (item) => ({
-          ...item,
-          output: {
-            ...(item.output || {}),
-            memory_review: {
-              ...review,
-              error: message,
-            },
-          },
-        }))
-      )
-    }
-  }
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -781,14 +731,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
                   onClick={() => setHistoryOpen(true)}
                 >
                   <History className="size-4" />
-                </AssistantHeaderIconButton>
-                <AssistantHeaderIconButton
-                  label="长期记忆"
-                  active={memoryOpen}
-                  disabled={running || sessionLoading}
-                  onClick={() => setMemoryOpen(true)}
-                >
-                  <Brain className="size-4" />
                 </AssistantHeaderIconButton>
                 <AssistantHeaderIconButton
                   label="新建会话"
@@ -865,10 +807,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
                       ) : null}
                       <AssistantMemoryReviewCard
                         review={normalizeMemoryReview(message.output?.memory_review)}
-                        disabled={running}
-                        onSelect={(review, action) =>
-                          void chooseMemoryReview(message.id, review, action)
-                        }
                       />
                       {message.role === 'assistant' && !message.interaction ? (
                         <AssistantSuggestionChoices
@@ -965,16 +903,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
         layerClassName={ASSISTANT_DIALOG_LAYER_CLASS}
         layerZIndex={ASSISTANT_DIALOG_LAYER_Z_INDEX}
         onOpenSession={(id) => openSessionFromHistory(id)}
-      />
-      <AssistantMemoryDialog
-        open={memoryOpen}
-        onOpenChange={setMemoryOpen}
-        agentKey={ASSISTANT_AGENT_KEY}
-        contextKey={sessionContextKey}
-        disabled={running || sessionLoading}
-        assistantLayer
-        layerClassName={ASSISTANT_DIALOG_LAYER_CLASS}
-        layerZIndex={ASSISTANT_DIALOG_LAYER_Z_INDEX}
       />
       <AssistantInteractionDialog
         open={
@@ -1136,62 +1064,43 @@ function AssistantInteractionNotice({
 
 function AssistantMemoryReviewCard({
   review,
-  disabled,
-  onSelect,
 }: {
   review: AssistantMemoryReview | null
-  disabled?: boolean
-  onSelect: (
-    review: AssistantMemoryReview,
-    action: AssistantMemoryReviewAction
-  ) => void
 }) {
-  if (!review) {
+  if (!review || review.status === 'pending') {
     return null
   }
-  const actions = Array.isArray(review.actions) ? review.actions : []
   return (
     <div className="mt-2 rounded-md border bg-muted/30 px-2 py-2 text-xs text-muted-foreground">
       <div className="font-medium text-foreground">
-        {review.status === 'saved'
-          ? review.text || '已记住'
-          : review.type === 'conflict'
-            ? '这条记忆和已有记忆不一致'
-            : '发现一条可能需要长期记住的规则'}
+        {review.text || assistantMemoryReviewTitle(review.status)}
       </div>
-      {review.status === 'pending' ? (
+      {review.title || review.content ? (
         <div className="mt-1 leading-5">
-          <div className="text-foreground">{review.title}</div>
+          {review.title ? <div className="text-foreground">{review.title}</div> : null}
           {review.content ? <div>{review.content}</div> : null}
-          {review.existing?.content ? (
-            <div className="mt-1 text-muted-foreground">
-              原记忆：{review.existing.content}
-            </div>
-          ) : null}
         </div>
       ) : null}
       {review.error ? (
         <div className="mt-1 text-destructive">{streamValueText(review.error)}</div>
       ) : null}
-      {actions.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {actions.map((action) => (
-            <Button
-              key={action.key}
-              type="button"
-              size="sm"
-              variant={action.key === 'remember' || action.key === 'update' ? 'default' : 'outline'}
-              className="h-7 px-2 text-xs"
-              disabled={disabled}
-              onClick={() => onSelect(review, action)}
-            >
-              {action.label}
-            </Button>
-          ))}
-        </div>
-      ) : null}
     </div>
   )
+}
+
+function assistantMemoryReviewTitle(status: string) {
+  switch (status) {
+    case 'saved':
+      return '已自动保存长期记忆'
+    case 'updated':
+      return '已自动更新长期记忆'
+    case 'deduped':
+      return '已更新长期记忆权重'
+    case 'forgot':
+      return '已清理相关长期记忆'
+    default:
+      return '长期记忆已处理'
+  }
 }
 
 function normalizeMemoryReview(value: unknown): AssistantMemoryReview | null {
@@ -1202,21 +1111,10 @@ function normalizeMemoryReview(value: unknown): AssistantMemoryReview | null {
   if (!status) {
     return null
   }
-  const actions = Array.isArray(value.actions)
-    ? value.actions
-        .filter(isRecord)
-        .map((item) => ({
-          key: streamValueText(item.key),
-          label: streamValueText(item.label),
-          memory_id: Number(item.memory_id || 0) || undefined,
-        }))
-        .filter((item) => item.key && item.label)
-    : []
   return {
     status,
     type: streamValueText(value.type),
     text: streamValueText(value.text),
-    candidate_id: Number(value.candidate_id || 0) || undefined,
     source_message_id: Number(value.source_message_id || 0) || undefined,
     title: streamValueText(value.title),
     content: streamValueText(value.content),
@@ -1225,28 +1123,8 @@ function normalizeMemoryReview(value: unknown): AssistantMemoryReview | null {
     reason: streamValueText(value.reason),
     memory: isRecord(value.memory) ? (value.memory as any) : null,
     existing: isRecord(value.existing) ? (value.existing as any) : null,
-    actions,
     ...(value.error ? { error: streamValueText(value.error) } : {}),
   } as AssistantMemoryReview
-}
-
-function memoryChoiceResultText(choice: string, status: string) {
-  if (choice === 'undo') {
-    return status === 'undone' ? '已撤销这条记忆。' : '已处理。'
-  }
-  if (choice === 'session') {
-    return '已设为仅本次使用，不会写入长期记忆。'
-  }
-  if (choice === 'keep_old') {
-    return '已保留原记忆。'
-  }
-  if (choice === 'ignore') {
-    return '已忽略这条候选记忆。'
-  }
-  if (choice === 'update') {
-    return '已更新记忆。'
-  }
-  return '已记住。'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

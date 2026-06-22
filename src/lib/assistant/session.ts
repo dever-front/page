@@ -14,7 +14,6 @@ const MEMORIES_API = '/bot/admin/assistant/memories'
 const MEMORY_API = '/bot/admin/assistant/memory'
 const UPDATE_MEMORY_API = '/bot/admin/assistant/update_memory'
 const FORGET_MEMORY_API = '/bot/admin/assistant/forget_memory'
-const MEMORY_CHOICE_API = '/bot/admin/assistant/memory_choice'
 
 export type AssistantSessionStatus = 'active' | 'archived' | 'all'
 export type AssistantMemoryStatus = 'active' | 'disabled' | 'all'
@@ -69,17 +68,10 @@ export type AssistantMemoryRecord = {
   created_at: string
 }
 
-export type AssistantMemoryReviewAction = {
-  key: string
-  label: string
-  memory_id?: number
-}
-
 export type AssistantMemoryReview = {
   status: string
   type?: string
   text?: string
-  candidate_id?: number
   source_message_id?: number
   title?: string
   content?: string
@@ -88,7 +80,6 @@ export type AssistantMemoryReview = {
   reason?: string
   memory?: AssistantMemoryRecord | null
   existing?: AssistantMemoryRecord | null
-  actions?: AssistantMemoryReviewAction[]
   error?: string
 }
 
@@ -308,20 +299,6 @@ export async function updateAssistantMemory(input: {
 
 export async function deleteAssistantMemory(id: number) {
   await assistantRequest(FORGET_MEMORY_API, { id })
-}
-
-export async function chooseAssistantMemory(input: {
-  candidateID?: number
-  memoryID?: number
-  sourceMessageID?: number
-  choice: string
-}) {
-  return await assistantRequest(MEMORY_CHOICE_API, {
-    candidate_id: input.candidateID || 0,
-    memory_id: input.memoryID || 0,
-    source_message_id: input.sourceMessageID || 0,
-    choice: input.choice,
-  })
 }
 
 export function assistantSessionContextKey(
