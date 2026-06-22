@@ -17,6 +17,7 @@ import * as storeModule from '@/lib/store'
 import * as streamModule from '@/lib/stream'
 import * as uploadModule from '@/lib/upload'
 import * as utilsModule from '@/lib/utils'
+import * as richTextHtmlModule from '@/lib/rich-text-html'
 import * as uploadRuleMetasModule from '@/hooks/use-upload-rule-metas'
 import { Button, buttonVariants } from '@/components/ui/button'
 import * as cardModule from '@/components/ui/card'
@@ -39,6 +40,7 @@ import * as energonContentViewModule from '@/components/energon/content-view'
 import * as energonProgressModule from '@/components/energon/progress'
 import * as siteLogoModule from '@/components/layout/site-logo'
 import * as richTextEditorModule from '@/components/rich-text-editor'
+import * as richTextViewModule from '@/components/rich-text-view'
 import * as searchableOptionPickerModule from '@/components/searchable-option-picker'
 import * as streamTimingModule from '@/components/stream-timing'
 import { defineFrontPlugin, lazyNode, mergePluginNodes } from './types'
@@ -81,6 +83,7 @@ function createCompatModules(): Record<string, Record<string, any>> {
     '@/components/energon/progress': energonProgressModule,
     '@/components/layout/site-logo': siteLogoModule,
     '@/components/rich-text-editor': richTextEditorModule,
+    '@/components/rich-text-view': richTextViewModule,
     '@/components/searchable-option-picker': searchableOptionPickerModule,
     '@/components/stream-timing': streamTimingModule,
     '@/components/ui/button': { Button, buttonVariants },
@@ -107,6 +110,7 @@ function createCompatModules(): Record<string, Record<string, any>> {
       mergePluginNodes,
     },
     '@/lib/request': requestModule,
+    '@/lib/rich-text-html': richTextHtmlModule,
     '@/lib/resource': resourceModule,
     '@/lib/runtime-stream-output': runtimeStreamOutputModule,
     '@/lib/runtime-stream-runner': runtimeStreamRunnerModule,

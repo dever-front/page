@@ -1,8 +1,10 @@
 import { normalizeRichTextMaxWidth } from '@/lib/rich-text'
 import {
+  richTextBlockStyleToCss,
   normalizeRichTextHexColor,
   richTextFontFamilies,
   richTextFontSizes,
+  richTextStyleToCssText,
 } from '@/lib/rich-text-style'
 import { isSafeRichTextHref, normalizeRichTextHref } from '@/lib/rich-text-link'
 import { resolveAssetUrl } from '@/lib/request'
@@ -52,6 +54,7 @@ const inlineTags = new Set([
   'B',
   'BDI',
   'BDO',
+  'BR',
   'CITE',
   'CODE',
   'DEL',
@@ -74,6 +77,8 @@ const inlineTags = new Set([
   'U',
   'VAR',
 ])
+
+const articleBlockTags = new Set(['DIV', 'SECTION', 'ARTICLE', 'MAIN', 'ASIDE'])
 
 const mediaExtensions: Record<PastedRemoteMediaKind, string[]> = {
   image: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg'],
@@ -331,10 +336,8 @@ function normalizeElementStyle(element: HTMLElement) {
   }
 
   if (isBlockElement(element)) {
-    setStyleAttribute(element, styles.blockStyle)
-    if (styles.textStyle && hasOnlyInlineChildren(element)) {
-      wrapChildrenInStyledSpan(element, styles.textStyle)
-    }
+    const target = normalizeArticleBlockElement(element, styles.blockStyle)
+    setStyleAttribute(target, styles.blockStyle)
     return
   }
 
@@ -347,6 +350,23 @@ function normalizeElementStyle(element: HTMLElement) {
   if (styles.textStyle && inlineTags.has(tagName)) {
     wrapChildrenInStyledSpan(element, styles.textStyle)
   }
+}
+
+function normalizeArticleBlockElement(element: HTMLElement, blockStyle: string) {
+  if (!articleBlockTags.has(element.tagName)) {
+    return element
+  }
+
+  if (hasOnlyInlineChildren(element) && element.textContent?.trim()) {
+    return replaceElementTag(element, 'p')
+  }
+
+  if (blockStyle && hasBlockElementChild(element)) {
+    wrapDirectInlineChildrenInParagraph(element)
+    element.setAttribute('data-rich-text-block', 'true')
+  }
+
+  return element
 }
 
 function normalizeAnchorElement(element: HTMLAnchorElement, context: PasteSourceContext) {
@@ -1344,7 +1364,6 @@ function resolveElementMediaKind(element: HTMLElement): PastedRemoteMediaKind | 
 function buildSupportedStyleParts(element: HTMLElement): StyleParts {
   const style = element.style
   const textStyles: string[] = []
-  const blockStyles: string[] = []
   const mediaStyles: string[] = []
 
   const color = normalizeColor(style.color || element.getAttribute('color'))
@@ -1370,14 +1389,34 @@ function buildSupportedStyleParts(element: HTMLElement): StyleParts {
   }
 
   const textAlign = normalizeTextAlign(style.textAlign || element.getAttribute('align'))
-  if (textAlign) {
-    blockStyles.push(`text-align: ${textAlign}`)
-  }
 
   const lineHeight = normalizeLineHeight(style.lineHeight)
-  if (lineHeight) {
-    blockStyles.push(`line-height: ${lineHeight}`)
-  }
+
+  const blockStyle = richTextBlockStyleToCss({
+    textAlign,
+    lineHeight,
+    color,
+    backgroundColor,
+    fontSize,
+    fontFamily,
+    textIndent: style.textIndent,
+    marginTop: style.marginTop,
+    marginRight: style.marginRight,
+    marginBottom: style.marginBottom,
+    marginLeft: style.marginLeft,
+    paddingTop: style.paddingTop,
+    paddingRight: style.paddingRight,
+    paddingBottom: style.paddingBottom,
+    paddingLeft: style.paddingLeft,
+    border: style.border,
+    borderTop: style.borderTop,
+    borderRight: style.borderRight,
+    borderBottom: style.borderBottom,
+    borderLeft: style.borderLeft,
+    borderRadius: style.borderRadius,
+    width: style.width,
+    maxWidth: style.maxWidth,
+  })
 
   const maxWidth = firstNormalizedMaxWidth(
     style.maxWidth,
@@ -1391,7 +1430,7 @@ function buildSupportedStyleParts(element: HTMLElement): StyleParts {
 
   return {
     textStyle: textStyles.join('; '),
-    blockStyle: blockStyles.join('; '),
+    blockStyle: richTextStyleToCssText(blockStyle || {}),
     mediaStyle: mediaStyles.join('; '),
   }
 }
@@ -1878,8 +1917,53 @@ function hasOnlyInlineChildren(element: HTMLElement) {
   return Array.from(element.children).every((child) => inlineTags.has(child.tagName))
 }
 
+function hasBlockElementChild(element: HTMLElement) {
+  return Array.from(element.children).some((child) => !inlineTags.has(child.tagName))
+}
+
+function wrapDirectInlineChildrenInParagraph(element: HTMLElement) {
+  let paragraph: HTMLElement | null = null
+  const nodes = Array.from(element.childNodes)
+
+  nodes.forEach((node) => {
+    if (!isDirectInlineContentNode(node)) {
+      paragraph = null
+      if (node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()) {
+        node.remove()
+      }
+      return
+    }
+
+    if (!paragraph) {
+      paragraph = element.ownerDocument.createElement('p')
+      element.insertBefore(paragraph, node)
+    }
+    paragraph.appendChild(node)
+  })
+}
+
+function isDirectInlineContentNode(node: ChildNode) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return Boolean(node.textContent?.trim())
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return false
+  }
+  return inlineTags.has((node as HTMLElement).tagName)
+}
+
 function isBlockElement(element: HTMLElement) {
   return !inlineTags.has(element.tagName)
+}
+
+function replaceElementTag(element: HTMLElement, tagName: string) {
+  const replacement = element.ownerDocument.createElement(tagName)
+  Array.from(element.attributes).forEach((attr) => {
+    replacement.setAttribute(attr.name, attr.value)
+  })
+  moveChildren(element, replacement)
+  element.replaceWith(replacement)
+  return replacement
 }
 
 function setStyleAttribute(element: HTMLElement, style: string) {

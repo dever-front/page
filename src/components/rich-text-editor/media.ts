@@ -657,7 +657,7 @@ function normalizeMediaCaption(value: unknown) {
     .replace(/\n[ \t]+/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
-    .slice(0, 300)
+    .slice(0, 1000)
 }
 
 function escapeMarkdownText(value: string) {

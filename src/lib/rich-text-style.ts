@@ -5,6 +5,56 @@ export type RichTextTextStyleAttrs = {
   fontSize?: string | null
 }
 
+export type RichTextBlockStyleAttrs = RichTextTextStyleAttrs & {
+  textAlign?: string | null
+  lineHeight?: string | null
+  textIndent?: string | null
+  marginTop?: string | null
+  marginRight?: string | null
+  marginBottom?: string | null
+  marginLeft?: string | null
+  paddingTop?: string | null
+  paddingRight?: string | null
+  paddingBottom?: string | null
+  paddingLeft?: string | null
+  border?: string | null
+  borderTop?: string | null
+  borderRight?: string | null
+  borderBottom?: string | null
+  borderLeft?: string | null
+  borderRadius?: string | null
+  width?: string | null
+  maxWidth?: string | null
+}
+
+export const richTextBlockStyleKeys = [
+  'textAlign',
+  'lineHeight',
+  'color',
+  'backgroundColor',
+  'fontFamily',
+  'fontSize',
+  'textIndent',
+  'marginTop',
+  'marginRight',
+  'marginBottom',
+  'marginLeft',
+  'paddingTop',
+  'paddingRight',
+  'paddingBottom',
+  'paddingLeft',
+  'border',
+  'borderTop',
+  'borderRight',
+  'borderBottom',
+  'borderLeft',
+  'borderRadius',
+  'width',
+  'maxWidth',
+] as const
+
+export type RichTextBlockStyleKey = (typeof richTextBlockStyleKeys)[number]
+
 export const richTextFontFamilies = [
   { label: '系统', value: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
   { label: '微软雅黑', value: '"Microsoft YaHei", "PingFang SC", sans-serif' },
@@ -52,6 +102,7 @@ const allowedTextAlignments = new Set(['left', 'center', 'right', 'justify'])
 const hexColorPattern = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i
 const rgbColorPattern = /^rgba?\(([^)]+)\)$/i
 const cssLineHeightPattern = /^(\d+(?:\.\d+)?)(px|em|rem|%)?$/i
+const cssLengthPattern = /^(-?\d+(?:\.\d+)?)(px|em|rem|%)$/i
 
 export function normalizeRichTextTextStyleAttrs(
   value: RichTextTextStyleAttrs | Record<string, unknown> | null | undefined
@@ -100,6 +151,36 @@ export function richTextTextAlignToCss(value: unknown) {
   return textAlign ? { textAlign } : undefined
 }
 
+export function normalizeRichTextBlockStyleAttrs(
+  value: RichTextBlockStyleAttrs | Record<string, unknown> | null | undefined
+): RichTextBlockStyleAttrs {
+  return {
+    textAlign: normalizeRichTextTextAlign(value?.textAlign) || null,
+    lineHeight: normalizeRichTextLineHeight(value?.lineHeight) || null,
+    color: normalizeRichTextColor(value?.color, allowedTextColors),
+    backgroundColor: normalizeRichTextColor(value?.backgroundColor, allowedHighlightColors),
+    fontFamily: normalizeRichTextToken(value?.fontFamily, allowedFontFamilies),
+    fontSize: normalizeRichTextToken(value?.fontSize, allowedFontSizes),
+    textIndent: normalizeRichTextSpacing(value?.textIndent, { maxPx: 160, allowNegative: true }),
+    marginTop: normalizeRichTextSpacing(value?.marginTop, { maxPx: 240, allowAuto: true }),
+    marginRight: normalizeRichTextSpacing(value?.marginRight, { maxPx: 240, allowAuto: true }),
+    marginBottom: normalizeRichTextSpacing(value?.marginBottom, { maxPx: 240, allowAuto: true }),
+    marginLeft: normalizeRichTextSpacing(value?.marginLeft, { maxPx: 240, allowAuto: true }),
+    paddingTop: normalizeRichTextSpacing(value?.paddingTop, { maxPx: 240 }),
+    paddingRight: normalizeRichTextSpacing(value?.paddingRight, { maxPx: 240 }),
+    paddingBottom: normalizeRichTextSpacing(value?.paddingBottom, { maxPx: 240 }),
+    paddingLeft: normalizeRichTextSpacing(value?.paddingLeft, { maxPx: 240 }),
+    border: normalizeRichTextBorder(value?.border),
+    borderTop: normalizeRichTextBorder(value?.borderTop),
+    borderRight: normalizeRichTextBorder(value?.borderRight),
+    borderBottom: normalizeRichTextBorder(value?.borderBottom),
+    borderLeft: normalizeRichTextBorder(value?.borderLeft),
+    borderRadius: normalizeRichTextRadius(value?.borderRadius),
+    width: normalizeRichTextSize(value?.width),
+    maxWidth: normalizeRichTextSize(value?.maxWidth),
+  }
+}
+
 export function normalizeRichTextLineHeight(value: unknown) {
   const text = String(value || '').trim().toLowerCase()
   if (!text) {
@@ -137,14 +218,30 @@ export function normalizeRichTextLineHeight(value: unknown) {
 
 export function richTextBlockStyleToCss(value: Record<string, unknown> | null | undefined) {
   const style: Record<string, string> = {}
-  const textAlign = normalizeRichTextTextAlign(value?.textAlign)
-  const lineHeight = normalizeRichTextLineHeight(value?.lineHeight)
-  if (textAlign) {
-    style.textAlign = textAlign
-  }
-  if (lineHeight) {
-    style.lineHeight = lineHeight
-  }
+  const attrs = normalizeRichTextBlockStyleAttrs(value)
+  appendStyleValue(style, 'textAlign', attrs.textAlign)
+  appendStyleValue(style, 'lineHeight', attrs.lineHeight)
+  appendStyleValue(style, 'color', attrs.color)
+  appendStyleValue(style, 'backgroundColor', attrs.backgroundColor)
+  appendStyleValue(style, 'fontFamily', attrs.fontFamily)
+  appendStyleValue(style, 'fontSize', attrs.fontSize)
+  appendStyleValue(style, 'textIndent', attrs.textIndent)
+  appendStyleValue(style, 'marginTop', attrs.marginTop)
+  appendStyleValue(style, 'marginRight', attrs.marginRight)
+  appendStyleValue(style, 'marginBottom', attrs.marginBottom)
+  appendStyleValue(style, 'marginLeft', attrs.marginLeft)
+  appendStyleValue(style, 'paddingTop', attrs.paddingTop)
+  appendStyleValue(style, 'paddingRight', attrs.paddingRight)
+  appendStyleValue(style, 'paddingBottom', attrs.paddingBottom)
+  appendStyleValue(style, 'paddingLeft', attrs.paddingLeft)
+  appendStyleValue(style, 'border', attrs.border)
+  appendStyleValue(style, 'borderTop', attrs.borderTop)
+  appendStyleValue(style, 'borderRight', attrs.borderRight)
+  appendStyleValue(style, 'borderBottom', attrs.borderBottom)
+  appendStyleValue(style, 'borderLeft', attrs.borderLeft)
+  appendStyleValue(style, 'borderRadius', attrs.borderRadius)
+  appendStyleValue(style, 'width', attrs.width)
+  appendStyleValue(style, 'maxWidth', attrs.maxWidth)
   return Object.keys(style).length > 0 ? style : undefined
 }
 
@@ -172,6 +269,13 @@ function normalizeRichTextToken(value: unknown, allowed: Set<string>) {
     return text
   }
   return normalizeCSSFontSize(text) || null
+}
+
+function appendStyleValue(style: Record<string, string>, key: string, value: unknown) {
+  const text = String(value || '').trim()
+  if (text) {
+    style[key] = text
+  }
 }
 
 function normalizeRGBColor(value: string) {
@@ -225,6 +329,106 @@ function normalizeCSSFontSize(value: string) {
     return ''
   }
   return `${size}px`
+}
+
+function normalizeRichTextSpacing(
+  value: unknown,
+  options: { maxPx: number; allowNegative?: boolean; allowAuto?: boolean }
+) {
+  const text = String(value || '').trim().toLowerCase()
+  if (!text) {
+    return null
+  }
+  if (options.allowAuto && text === 'auto') {
+    return text
+  }
+  return normalizeRichTextLength(text, {
+    minPx: options.allowNegative ? -options.maxPx : 0,
+    maxPx: options.maxPx,
+    maxPercent: 100,
+  })
+}
+
+function normalizeRichTextRadius(value: unknown) {
+  const text = String(value || '').trim().toLowerCase()
+  if (!text) {
+    return null
+  }
+  const parts = text.split(/\s+/).filter(Boolean)
+  if (parts.length < 1 || parts.length > 4) {
+    return null
+  }
+  const normalized = parts.map((part) =>
+    normalizeRichTextLength(part, { minPx: 0, maxPx: 160, maxPercent: 100 })
+  )
+  return normalized.every(Boolean) ? normalized.join(' ') : null
+}
+
+function normalizeRichTextSize(value: unknown) {
+  const text = String(value || '').trim().toLowerCase()
+  if (!text || text === 'auto') {
+    return null
+  }
+  return normalizeRichTextLength(text, { minPx: 1, maxPx: 1600, maxPercent: 100 })
+}
+
+function normalizeRichTextLength(
+  value: string,
+  options: { minPx: number; maxPx: number; maxPercent: number }
+) {
+  if (value === '0') {
+    return '0'
+  }
+  const match = value.match(cssLengthPattern)
+  if (!match) {
+    return null
+  }
+  const number = Number(match[1])
+  const unit = match[2].toLowerCase()
+  if (!Number.isFinite(number)) {
+    return null
+  }
+  if (unit === '%') {
+    return number >= 0 && number <= options.maxPercent ? `${number}%` : null
+  }
+  if (unit === 'px') {
+    return number >= options.minPx && number <= options.maxPx ? `${number}px` : null
+  }
+  if (unit === 'em' || unit === 'rem') {
+    const min = options.minPx < 0 ? -20 : 0
+    return number >= min && number <= 20 ? `${number}${unit}` : null
+  }
+  return null
+}
+
+function normalizeRichTextBorder(value: unknown) {
+  const text = String(value || '').trim().toLowerCase()
+  if (!text || text === 'none' || text === '0') {
+    return text || null
+  }
+  if (
+    text.length > 120 ||
+    /(?:url|expression|var|calc)\s*\(/i.test(text) ||
+    /[;{}<>]/.test(text)
+  ) {
+    return null
+  }
+
+  const parts = text.split(/\s+/).filter(Boolean)
+  const hasStyle = parts.some((part) =>
+    [
+      'solid',
+      'dashed',
+      'dotted',
+      'double',
+      'none',
+    ].includes(part)
+  )
+  const hasWidth = parts.some((part) =>
+    Boolean(normalizeRichTextLength(part, { minPx: 0, maxPx: 32, maxPercent: 100 }))
+  )
+  const hasColor = parts.some((part) => Boolean(normalizeRichTextColor(part, allowedTextColors)))
+  return hasStyle && (hasWidth || hasColor) ? text : null
 }
 
 function toKebabCase(value: string) {

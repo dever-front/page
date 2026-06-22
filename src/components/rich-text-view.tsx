@@ -10,9 +10,14 @@ import {
 } from '@/lib/rich-text'
 import {
   richTextBlockStyleToCss,
-  richTextLinkClassName,
   richTextTextStyleToCss,
 } from '@/lib/rich-text-style'
+import {
+  normalizeRichTextMediaCaption,
+  richTextContentClassName,
+  richTextMediaCaptionClassName,
+  richTextPreviewClassName,
+} from '@/lib/rich-text-html'
 import { safeRichTextHref } from '@/lib/rich-text-link'
 import { cn } from '@/lib/utils'
 
@@ -30,38 +35,11 @@ export function RichTextView({ value, className, preview }: RichTextViewProps) {
   }
 
   return (
-    <div className={cn(richTextClassName, preview && previewClassName, className)}>
+    <div className={cn(richTextContentClassName, preview && richTextPreviewClassName, className)}>
       {renderRichTextDoc(doc)}
     </div>
   )
 }
-
-const richTextClassName = cn(
-  'min-w-0 text-sm leading-6 text-foreground',
-  richTextLinkClassName,
-  '[&_audio]:my-4 [&_audio]:block [&_audio]:w-full [&_audio]:max-w-sm',
-  '[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border',
-  '[&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground',
-  '[&_code]:rounded [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.85em]',
-  '[&_h1]:mb-3 [&_h1]:mt-4 [&_h1]:text-xl [&_h1]:font-semibold',
-  '[&_h2]:mb-2.5 [&_h2]:mt-4 [&_h2]:text-lg [&_h2]:font-semibold',
-  '[&_h3]:mb-2 [&_h3]:mt-3 [&_h3]:text-base [&_h3]:font-semibold',
-  '[&_h4]:mb-1.5 [&_h4]:mt-3 [&_h4]:text-sm [&_h4]:font-semibold',
-  '[&_h5]:mb-1.5 [&_h5]:mt-3 [&_h5]:text-sm [&_h5]:font-medium',
-  '[&_h6]:mb-1.5 [&_h6]:mt-3 [&_h6]:text-xs [&_h6]:font-medium',
-  '[&_h6]:text-muted-foreground [&_hr]:my-4 [&_hr]:border-border',
-  '[&_img]:my-4 [&_img]:block [&_img]:max-w-full [&_img]:rounded-lg',
-  '[&_li]:my-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6',
-  '[&_p]:my-2 [&_pre]:my-3 [&_pre]:overflow-auto [&_pre]:rounded-lg',
-  '[&_pre]:bg-muted/60 [&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0',
-  '[&_strong]:font-semibold [&_table]:my-3 [&_table]:w-full [&_table]:border-collapse',
-  '[&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1',
-  '[&_th]:border [&_th]:border-border [&_th]:bg-muted/50 [&_th]:px-2',
-  '[&_th]:py-1 [&_th]:text-left [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6',
-  '[&_video]:my-4 [&_video]:block [&_video]:max-w-full [&_video]:rounded-lg [&_video]:bg-black/90'
-)
-
-const previewClassName = 'line-clamp-2 max-w-full overflow-hidden [&_*]:inline [&_br]:hidden'
 
 function renderRichTextDoc(doc: RichTextNode) {
   return renderRichTextChildren(doc, 'doc')
@@ -97,10 +75,12 @@ function renderRichTextNode(node: RichTextNode | null | undefined, key: string):
       return <br key={key} />
     case 'heading':
       return createElement(headingTag(node), { key, style: blockStyle(node) }, children)
+    case 'articleBlock':
+      return <div key={key} style={blockStyle(node)}>{children}</div>
     case 'horizontalRule':
       return <hr key={key} />
     case 'listItem':
-      return <li key={key}>{children}</li>
+      return <li key={key} style={blockStyle(node)}>{children}</li>
     case 'orderedList':
       return <ol key={key}>{children}</ol>
     case 'paragraph':
@@ -189,7 +169,7 @@ function renderRichTextImage(node: RichTextNode, key: string) {
   if (!attrs.src) {
     return null
   }
-  const caption = normalizeMediaCaption(node.attrs?.caption)
+  const caption = normalizeRichTextMediaCaption(node.attrs?.caption)
   if (caption) {
     return (
       <figure key={key} className="my-4 max-w-full" style={attrs.style}>
@@ -219,7 +199,7 @@ function renderRichTextVideo(node: RichTextNode, key: string) {
   if (!attrs.src) {
     return null
   }
-  const caption = normalizeMediaCaption(node.attrs?.caption)
+  const caption = normalizeRichTextMediaCaption(node.attrs?.caption)
   if (caption) {
     return (
       <figure key={key} className="my-4 max-w-full" style={attrs.style}>
@@ -251,7 +231,7 @@ function renderRichTextAudio(node: RichTextNode, key: string) {
   if (!attrs.src) {
     return null
   }
-  const caption = normalizeMediaCaption(node.attrs?.caption)
+  const caption = normalizeRichTextMediaCaption(node.attrs?.caption)
   if (caption) {
     return (
       <figure key={key} className="my-4 max-w-full" style={attrs.style}>
@@ -401,19 +381,9 @@ function mediaAlignStyle(align: string): CSSProperties {
   return {}
 }
 
-function normalizeMediaCaption(value: unknown) {
-  return String(value || '')
-    .replace(/\r\n?/g, '\n')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n[ \t]+/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-    .slice(0, 300)
-}
-
 function renderMediaCaption(caption: string) {
   return (
-    <figcaption className="mt-2 whitespace-pre-line break-words text-center text-xs leading-5 text-muted-foreground">
+    <figcaption className={richTextMediaCaptionClassName}>
       {caption}
     </figcaption>
   )

@@ -96,7 +96,7 @@ import {
   type PastedRemoteMediaAsset,
 } from './paste-html'
 import { editorTableExtensions } from './table'
-import { RichTextStyleMark, RichTextTextAlign } from './style'
+import { RichTextArticleBlock, RichTextStyleMark, RichTextTextAlign } from './style'
 import {
   inputValue,
   normalizeRichTextEditorValue,
@@ -373,6 +373,7 @@ export function RichTextEditor({
       Underline,
       RichTextStyleMark,
       RichTextTextAlign,
+      RichTextArticleBlock,
       CodeBlockLowlight.configure({
         lowlight: editorLowlight,
         defaultLanguage: null,
@@ -1324,8 +1325,13 @@ function RemoteAssetTransferBanner({
           <Button
             type="button"
             size="sm"
-            variant={failedCount > 0 ? 'destructive' : 'outline'}
-            className="h-8 bg-background/80"
+            variant="outline"
+            className={cn(
+              'h-8 shadow-sm',
+              failedCount > 0
+                ? 'border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive dark:text-red-200'
+                : 'border-amber-300 bg-white text-amber-950 hover:bg-amber-50 hover:text-amber-950 dark:border-amber-700/70 dark:bg-amber-950/50 dark:text-amber-50 dark:hover:bg-amber-900/70'
+            )}
             disabled={disabled || transferring}
             onClick={onTransfer}
           >
