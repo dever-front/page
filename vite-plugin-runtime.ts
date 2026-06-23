@@ -23,9 +23,12 @@ type FrontSite = {
   name?: string
   subtitle?: string
   description?: string
-  url?: string
+  url?: string[]
+  logo?: string
+  favicon?: string
   api?: string
   assets?: FrontSiteAssets
+  config?: FrontSiteConfig
   setting?: FrontSiteSetting
   access?: {
     mode?: string
@@ -34,6 +37,15 @@ type FrontSite = {
   public?: string[]
   entry?: string
   auth?: unknown[]
+}
+
+type FrontSiteConfig = {
+  name?: string
+  subtitle?: string
+  description?: string
+  url?: string[]
+  logo?: string
+  favicon?: string
 }
 
 type FrontSiteAssets = {
@@ -86,6 +98,10 @@ export function deverRuntimePlugin({
       server.middlewares.use((req, res, next) => {
         void (async () => {
           const pathname = requestPathname(req.url || '')
+          const hostSiteKey = runtimeSiteKeyFromHost(
+            projectRoot,
+            req.headers.host
+          )
           const apiProxy = devAPIProxyTarget(
             projectRoot,
             req.url || '',
@@ -98,20 +114,47 @@ export function deverRuntimePlugin({
 
           const pluginSourceAsset = runtimePluginSourceAsset(
             projectRoot,
-            pathname
+            pathname,
+            hostSiteKey
           )
           if (pluginSourceAsset) {
             sendPluginSourceAsset(res, pluginSourceAsset)
             return
           }
 
-          const siteAsset = runtimeSiteAsset(projectRoot, pathname)
+          const siteAsset = runtimeSiteAsset(
+            projectRoot,
+            pathname,
+            hostSiteKey
+          )
           if (siteAsset) {
             sendRuntimeAsset(res, siteAsset)
             return
           }
 
           const defaultSiteKey = defaultRuntimeSiteKey(projectRoot)
+          if (pathname === '/' && hostSiteKey) {
+            const site = loadRuntimeSite(projectRoot, hostSiteKey)
+            if (!site) {
+              res.statusCode = 404
+              res.end('runtime site not found')
+              return
+            }
+            const indexFile = path.join(projectRoot, 'front', 'index.html')
+            const rawHtml = fs.readFileSync(indexFile, 'utf8')
+            const html = await server.transformIndexHtml(
+              req.url || '/',
+              injectRuntimeIntoHtml(
+                rawHtml,
+                runtimePayload(projectRoot, hostSiteKey, site, '/')
+              )
+            )
+            res.statusCode = 200
+            res.setHeader('Cache-Control', 'no-cache')
+            res.setHeader('Content-Type', 'text/html; charset=utf-8')
+            res.end(html)
+            return
+          }
           if (pathname === '/') {
             res.statusCode = 302
             res.setHeader('Location', `/${defaultSiteKey}/`)
@@ -138,7 +181,8 @@ export function deverRuntimePlugin({
           const runtimeKey = runtimeSiteKey(
             projectRoot,
             req.url || '',
-            req.headers.referer
+            req.headers.referer,
+            req.headers.host
           )
           if (runtimeKey) {
             const site = loadRuntimeSite(projectRoot, runtimeKey)
@@ -155,12 +199,23 @@ export function deverRuntimePlugin({
               'application/javascript; charset=utf-8'
             )
             res.end(
-              runtimeScript(runtimePayload(projectRoot, runtimeKey, site))
+              runtimeScript(
+                runtimePayload(
+                  projectRoot,
+                  runtimeKey,
+                  site,
+                  hostSiteKey === runtimeKey ? '/' : `/${runtimeKey}`
+                )
+              )
             )
             return
           }
 
-          const htmlSiteKey = htmlRuntimeSiteKey(projectRoot, pathname)
+          const htmlSiteKey = htmlRuntimeSiteKey(
+            projectRoot,
+            pathname,
+            req.headers.host
+          )
           if (!htmlSiteKey) {
             next()
             return
@@ -179,7 +234,12 @@ export function deverRuntimePlugin({
             req.url || '/',
             injectRuntimeIntoHtml(
               rawHtml,
-              runtimePayload(projectRoot, htmlSiteKey, site)
+              runtimePayload(
+                projectRoot,
+                htmlSiteKey,
+                site,
+                hostSiteKey === htmlSiteKey ? '/' : `/${htmlSiteKey}`
+              )
             )
           )
           res.statusCode = 200
@@ -192,41 +252,54 @@ export function deverRuntimePlugin({
   }
 }
 
-function htmlRuntimeSiteKey(projectRoot: string, pathname: string) {
+function htmlRuntimeSiteKey(
+  projectRoot: string,
+  pathname: string,
+  hostHeader?: string | string[]
+) {
   if (path.posix.extname(pathname)) {
     return ''
   }
 
+  const hostSiteKey = runtimeSiteKeyFromHost(projectRoot, hostHeader)
+  if (hostSiteKey) {
+    return hostSiteKey
+  }
   const siteKey = pathname.split('/').find(Boolean) || ''
   return siteKey && isRuntimeSiteKey(projectRoot, siteKey) ? siteKey : ''
 }
 
-function runtimePayload(projectRoot: string, siteKey: string, site: FrontSite) {
+function runtimePayload(
+  projectRoot: string,
+  siteKey: string,
+  site: FrontSite,
+  basePath = `/${siteKey}`
+) {
   const apiPrefix = trimSlashes(site.api || DEFAULT_API)
   const runtimeSetting = site.setting?.runtime || {}
   return {
     siteKey,
-    basePath: `/${siteKey}`,
+    basePath,
     apiPrefix,
     apiHost: `${DEV_API_PREFIX}/${apiPrefix}/`,
     site: {
       name: site.name || siteKey,
       subtitle: site.subtitle,
       description: site.description,
-      url: site.url,
+      url: site.url?.[0],
       logo:
-        runtimeSiteAssetUrl(siteKey, site.assets?.logo) ||
-        `/${siteKey}/assets/images/logo.svg`,
+        runtimeSiteAssetUrl(basePath, site.assets?.logo) ||
+        runtimeBaseURL(basePath, 'assets/images/logo.svg'),
       favicon:
-        runtimeSiteAssetUrl(siteKey, site.assets?.favicon) ||
-        `/${siteKey}/assets/images/favicon.svg`,
+        runtimeSiteAssetUrl(basePath, site.assets?.favicon) ||
+        runtimeBaseURL(basePath, 'assets/images/favicon.svg'),
     },
     appearance: site.setting?.appearance || {},
     runtime: {
       ...runtimeSetting,
       plugins: runtimePluginDescriptors(
         projectRoot,
-        siteKey,
+        basePath,
         runtimeSetting.plugins
       ),
     },
@@ -239,12 +312,12 @@ function runtimePayload(projectRoot: string, siteKey: string, site: FrontSite) {
 
 function runtimePluginDescriptors(
   projectRoot: string,
-  siteKey: string,
+  basePath: string,
   configuredPlugins?: Array<string | RuntimePluginDescriptor>
 ) {
   const configured = Array.isArray(configuredPlugins) ? configuredPlugins : []
   const descriptors = configured.map((plugin) =>
-    normalizeRuntimePluginDescriptor(projectRoot, siteKey, plugin)
+    normalizeRuntimePluginDescriptor(projectRoot, basePath, plugin)
   )
   const seen = new Set(configured.map(runtimePluginName).filter(Boolean))
 
@@ -253,7 +326,7 @@ function runtimePluginDescriptors(
       continue
     }
     descriptors.push(
-      sourceRuntimePluginDescriptor(projectRoot, siteKey, pluginName)
+      sourceRuntimePluginDescriptor(projectRoot, basePath, pluginName)
     )
     seen.add(pluginName)
   }
@@ -263,7 +336,7 @@ function runtimePluginDescriptors(
 
 function normalizeRuntimePluginDescriptor(
   projectRoot: string,
-  siteKey: string,
+  basePath: string,
   plugin: string | RuntimePluginDescriptor
 ): string | RuntimePluginDescriptor {
   if (typeof plugin !== 'string') {
@@ -271,7 +344,7 @@ function normalizeRuntimePluginDescriptor(
   }
   const name = cleanPluginName(plugin)
   if (name && name === plugin.trim() && !/[/?#]/.test(plugin)) {
-    return sourceRuntimePluginDescriptor(projectRoot, siteKey, name)
+    return sourceRuntimePluginDescriptor(projectRoot, basePath, name)
   }
   return plugin
 }
@@ -315,7 +388,7 @@ function cleanPluginName(value: string) {
 
 function sourceRuntimePluginDescriptor(
   projectRoot: string,
-  siteKey: string,
+  basePath: string,
   pluginName: string
 ): RuntimePluginDescriptor {
   const metadata = readPluginSourceMetadata(
@@ -325,7 +398,7 @@ function sourceRuntimePluginDescriptor(
       PLUGIN_SOURCE_ENTRY
     )
   )
-  const mount = `/${siteKey}/${PLUGIN_SOURCE_MOUNT_DIR}/${pluginName}`
+  const mount = runtimeBaseURL(basePath, `${PLUGIN_SOURCE_MOUNT_DIR}/${pluginName}`)
   return {
     name: metadata.name,
     manifest: `${mount}/${PLUGIN_MANIFEST}`,
@@ -461,7 +534,22 @@ function injectRuntimeIntoHtml(html: string, payload: unknown) {
   return html.replace('</head>', `${script}\n  </head>`)
 }
 
-function runtimeSiteAsset(projectRoot: string, pathname: string) {
+function runtimeSiteAsset(
+  projectRoot: string,
+  pathname: string,
+  hostSiteKey = ''
+) {
+  const hostAssetMatch = pathname.match(/^\/assets\/([^/][^?]*)$/)
+  if (hostSiteKey && hostAssetMatch?.[1]) {
+    return (
+      existingSafePath(frontAssetRoot(projectRoot, hostSiteKey), hostAssetMatch[1]) ||
+      existingSafePath(
+        frontAssetRoot(projectRoot, DEFAULT_SITE_KEY),
+        fallbackAssetPath(hostAssetMatch[1])
+      )
+    )
+  }
+
   const match = pathname.match(/^\/([^/]+)\/assets\/([^/][^?]*)$/)
   const siteKey = match?.[1] || ''
   const assetPath = match?.[2] || ''
@@ -486,8 +574,22 @@ type PluginSourceAsset = {
 
 function runtimePluginSourceAsset(
   projectRoot: string,
-  pathname: string
+  pathname: string,
+  hostSiteKey = ''
 ): PluginSourceAsset | null {
+  if (hostSiteKey) {
+    const hostPattern = new RegExp(
+      `^\\/${PLUGIN_SOURCE_MOUNT_DIR}\\/([^/]+)\\/(.+)$`
+    )
+    const hostMatch = pathname.match(hostPattern)
+    if (hostMatch?.[1] && hostMatch?.[2]) {
+      const sourceRoot = resolvePluginSourceRoot(projectRoot, hostMatch[1])
+      return sourceRoot
+        ? { pluginName: hostMatch[1], sourceRoot, rel: hostMatch[2] }
+        : null
+    }
+  }
+
   const pattern = new RegExp(
     `^\\/([^/]+)\\/${PLUGIN_SOURCE_MOUNT_DIR}\\/([^/]+)\\/(.+)$`
   )
@@ -601,7 +703,8 @@ function runtimeAssetContentType(filePath: string) {
 function runtimeSiteKey(
   projectRoot: string,
   rawUrl: string,
-  referer?: string | string[]
+  referer?: string | string[],
+  hostHeader?: string | string[]
 ) {
   const pathname = requestPathname(rawUrl)
   const match = pathname.match(/^\/([^/]+)\/runtime\.js$/)
@@ -613,8 +716,30 @@ function runtimeSiteKey(
     return ''
   }
 
+  const hostSiteKey = runtimeSiteKeyFromHost(projectRoot, hostHeader)
+  if (hostSiteKey) {
+    return hostSiteKey
+  }
+
   const refererSiteKey = runtimeSiteKeyFromReferer(projectRoot, referer)
   return refererSiteKey || defaultRuntimeSiteKey(projectRoot)
+}
+
+function runtimeSiteKeyFromHost(
+  projectRoot: string,
+  hostHeader?: string | string[]
+) {
+  const host = normalizeHostHeader(hostHeader)
+  if (!host) {
+    return ''
+  }
+  const sites = readFrontManifestConfig(projectRoot).sites || {}
+  for (const [siteKey, site] of Object.entries(sites)) {
+    if (site.url?.some((item) => normalizeURLHost(item) === host)) {
+      return siteKey
+    }
+  }
+  return ''
 }
 
 function runtimeSiteKeyFromReferer(
@@ -644,6 +769,66 @@ function requestHostname(hostHeader?: string | string[]) {
     return '127.0.0.1'
   }
   return host.split(':')[0] || '127.0.0.1'
+}
+
+function normalizeHostHeader(hostHeader?: string | string[]) {
+  const rawValue = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader
+  const firstValue = String(rawValue || '')
+    .split(',')[0]
+    .trim()
+  if (!firstValue) {
+    return ''
+  }
+  let withoutPath = firstValue.split('/')[0]
+  if (firstValue.includes('://')) {
+    try {
+      withoutPath = new URL(firstValue).host
+    } catch {
+      return ''
+    }
+  }
+  return normalizeHostPort(withoutPath, '')
+}
+
+function normalizeURLHost(value: string) {
+  const raw = String(value || '').trim()
+  if (!raw) {
+    return ''
+  }
+  try {
+    const parsed = new URL(raw)
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return ''
+    }
+    return normalizeHostPort(parsed.host, parsed.protocol)
+  } catch {
+    return ''
+  }
+}
+
+function normalizeHostPort(value: string, protocol: string) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\[/, '')
+    .replace(/\]$/, '')
+    .replace(/\.$/, '')
+  if (!normalized) {
+    return ''
+  }
+  const match = normalized.match(/^([^:]+):(\d+)$/)
+  if (!match) {
+    return normalized
+  }
+  const [, host, port] = match
+  if (
+    (protocol === 'http:' && port === '80') ||
+    (protocol === 'https:' && port === '443') ||
+    (!protocol && ['80', '443'].includes(port))
+  ) {
+    return host
+  }
+  return `${host}:${port}`
 }
 
 function defaultRuntimeSiteKey(projectRoot: string) {
@@ -899,7 +1084,7 @@ function uniqueStrings(values: string[]) {
   )
 }
 
-function runtimeSiteAssetUrl(siteKey: string, assetValue?: string) {
+function runtimeSiteAssetUrl(basePath: string, assetValue?: string) {
   const value = normalizeRuntimeAssetValue(assetValue)
   if (!value) {
     return ''
@@ -912,7 +1097,16 @@ function runtimeSiteAssetUrl(siteKey: string, assetValue?: string) {
   ) {
     return value
   }
-  return `/${siteKey}/assets/${trimAssetPrefix(value)}`
+  return runtimeBaseURL(basePath, `assets/${trimAssetPrefix(value)}`)
+}
+
+function runtimeBaseURL(basePath: string, relativePath: string) {
+  const base = `/${trimSlashes(basePath)}`
+  const rel = trimSlashes(relativePath)
+  if (base === '/') {
+    return `/${rel}`
+  }
+  return `${base}/${rel}`
 }
 
 function trimAssetPrefix(value: string) {
@@ -976,6 +1170,8 @@ function readFrontManifestConfig(projectRoot: string): FrontConfig {
     }
   }
 
+  applyProjectFrontConfig(projectRoot, config)
+
   config.public = uniqueStrings(config.public || [])
   if (config.sites && Object.keys(config.sites).length > 0) {
     for (const [siteKey, site] of Object.entries(config.sites)) {
@@ -1012,6 +1208,74 @@ function readComponentManifest(filePath: string): ComponentManifest {
   return JSON.parse(content) as ComponentManifest
 }
 
+function applyProjectFrontConfig(projectRoot: string, config: FrontConfig) {
+  const projectConfig = readProjectFrontConfig(projectRoot)
+  const sites = projectConfig.sites || {}
+  for (const [rawSiteKey, override] of Object.entries(sites)) {
+    const siteKey = trimSlashes(rawSiteKey)
+    if (!siteKey) {
+      continue
+    }
+    const current = config.sites?.[siteKey]
+    if (!current) {
+      throw new Error(`config/front 定义了未知站点 "${siteKey}"`)
+    }
+    const normalizedOverride = normalizeProjectSiteOverride(override, siteKey)
+    config.sites![siteKey] = {
+      ...current,
+      ...normalizedOverride,
+      assets: normalizedOverride.assets
+        ? {
+            ...(current.assets || {}),
+            ...normalizedOverride.assets,
+          }
+        : current.assets,
+    }
+  }
+}
+
+function readProjectFrontConfig(projectRoot: string): FrontConfig {
+  for (const filePath of [
+    path.join(projectRoot, 'backend', 'config', 'front.json'),
+    path.join(projectRoot, 'backend', 'config', 'front.jsonc'),
+  ]) {
+    if (!fs.existsSync(filePath)) {
+      continue
+    }
+    const content = stripJsonComments(fs.readFileSync(filePath, 'utf8'))
+    return JSON.parse(content) as FrontConfig
+  }
+  return {}
+}
+
+function normalizeProjectSiteOverride(site: FrontSite, siteKey: string) {
+  if (site.url !== undefined && !Array.isArray(site.url)) {
+    throw new Error(`config/front sites.${siteKey}.url 必须是字符串数组`)
+  }
+  const override: FrontSite = {}
+  if (stringValue(site.name)) {
+    override.name = stringValue(site.name)
+  }
+  if (stringValue(site.subtitle)) {
+    override.subtitle = stringValue(site.subtitle)
+  }
+  if (stringValue(site.description)) {
+    override.description = stringValue(site.description)
+  }
+  if (site.url !== undefined) {
+    override.url = normalizeStringList(site.url)
+  }
+  const logo = stringValue(site.logo || site.assets?.logo)
+  const favicon = stringValue(site.favicon || site.assets?.favicon)
+  if (logo || favicon) {
+    override.assets = normalizeRuntimeAssets({
+      logo: logo || site.assets?.logo,
+      favicon: favicon || site.assets?.favicon,
+    })
+  }
+  return override
+}
+
 function defaultRuntimeSite(siteKey: string): FrontSite {
   return {
     api: siteKey === DEFAULT_SITE_KEY ? DEFAULT_API : siteKey,
@@ -1023,15 +1287,16 @@ function defaultRuntimeSite(siteKey: string): FrontSite {
 }
 
 function hasRuntimeSiteOwnerFields(site: FrontSite) {
+  const siteConfig = site.config || {}
   return Boolean(
-    stringValue(site.name) ||
-      stringValue(site.subtitle) ||
-      stringValue(site.description) ||
-      stringValue(site.url) ||
+    stringValue(siteConfig.name || site.name) ||
+      stringValue(siteConfig.subtitle || site.subtitle) ||
+      stringValue(siteConfig.description || site.description) ||
+      normalizeStringList(siteConfig.url || site.url).length > 0 ||
       stringValue(site.api) ||
       stringValue(site.entry) ||
-      stringValue(site.assets?.logo) ||
-      stringValue(site.assets?.favicon) ||
+      stringValue(siteConfig.logo || site.logo || site.assets?.logo) ||
+      stringValue(siteConfig.favicon || site.favicon || site.assets?.favicon) ||
       stringValue(site.access?.mode) ||
       stringValue(site.access?.authProvider) ||
       stringValue(site.setting?.appearance?.theme) ||
@@ -1050,14 +1315,26 @@ function mergeRuntimeSiteOwnerFields(
   incoming: FrontSite,
   siteKey: string
 ): FrontSite {
+  const siteConfig = incoming.config || incoming
   return mergeRuntimeSiteContributions(
     {
       ...current,
       ...incoming,
+      name: stringValue(siteConfig.name) || current.name,
+      subtitle: stringValue(siteConfig.subtitle) || current.subtitle,
+      description: stringValue(siteConfig.description) || current.description,
+      url:
+        normalizeStringList(siteConfig.url).length > 0
+          ? normalizeStringList(siteConfig.url)
+          : current.url,
       api: trimSlashes(
         incoming.api || (siteKey === DEFAULT_SITE_KEY ? DEFAULT_API : siteKey)
       ),
-      assets: normalizeRuntimeAssets(incoming.assets),
+      assets: normalizeRuntimeAssets({
+        logo: siteConfig.logo || incoming.logo || incoming.assets?.logo,
+        favicon:
+          siteConfig.favicon || incoming.favicon || incoming.assets?.favicon,
+      }),
       access: normalizeRuntimeAccess(incoming.access),
       setting: normalizeRuntimeSetting(incoming.setting),
     },
@@ -1089,6 +1366,7 @@ function normalizeRuntimeSite(site: FrontSite, siteKey: string): FrontSite {
     access: normalizeRuntimeAccess(site.access),
     setting: normalizeRuntimeSetting(site.setting),
     public: normalizeStringList(site.public),
+    url: normalizeStringList(site.url),
   }
 }
 

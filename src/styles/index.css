@@ -17,6 +17,17 @@
     @apply overflow-x-hidden;
     font-size: 15.3px;
   }
+  html.font-inter {
+    font-family: var(--font-inter);
+    font-optical-sizing: auto;
+  }
+  html.font-manrope {
+    font-family: var(--font-manrope);
+    font-optical-sizing: auto;
+  }
+  html.font-system {
+    font-family: var(--font-system);
+  }
   body {
     @apply min-h-svh w-full bg-background text-[0.9375rem] text-foreground has-[div[data-variant='inset']]:bg-sidebar;
   }
