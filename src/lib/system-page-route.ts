@@ -4,11 +4,28 @@ const DEFAULT_SYSTEM_PAGE_OWNER = 'front'
 const DEFAULT_SITE_KEY = 'admin'
 
 export function systemPageRoute(name: string) {
+  return runtimePageRoute(name)
+}
+
+export function runtimePageRoute(name: string) {
   const pageName = String(name || '')
     .trim()
     .replace(/^\/+|\/+$/g, '')
   const owner = runtimeApiOwner()
-  return pageName ? `${owner}/${pageName}` : owner
+  if (!pageName) {
+    return owner
+  }
+  if (isRouteUnderPrefix(pageName, owner)) {
+    return pageName
+  }
+  return `${owner}/${pageName}`
+}
+
+function isRouteUnderPrefix(route: string, prefix: string) {
+  if (!route || !prefix) {
+    return false
+  }
+  return route === prefix || route.startsWith(`${prefix}/`)
 }
 
 function runtimeApiOwner() {

@@ -5,9 +5,10 @@ import { getCookie } from '@/lib/cookies'
 import {
   FRONT_RUNTIME_REFRESH_EVENT,
   loadMainBootstrap,
+  loadMainInfo,
   type FrontRuntimeRefreshDetail,
 } from '@/lib/request'
-import { systemPageRoute } from '@/lib/system-page-route'
+import { runtimePageRoute, systemPageRoute } from '@/lib/system-page-route'
 import { LayoutProvider } from '@/context/layout-provider'
 import { SearchProvider } from '@/context/search-provider'
 import { SidebarProvider } from '@/components/ui/sidebar'
@@ -112,11 +113,39 @@ const blankMenu: any[] = []
 const blankNavGroups: any[] = []
 
 function BlankShellLayout({ children }: AuthenticatedLayoutProps) {
-  const mainRoute = systemPageRoute('main')
+  const fallbackRoute = systemPageRoute('main')
+  const [mainRoute, setMainRoute] = useState(fallbackRoute)
+  const [ready, setReady] = useState(false)
   const shellValue = {
     menu: blankMenu,
     navGroups: blankNavGroups,
     children,
+  }
+
+  useEffect(() => {
+    let active = true
+
+    async function loadBlankEntry() {
+      const { entry } = await loadMainInfo()
+      if (!active) return
+
+      setMainRoute(entry ? runtimePageRoute(entry) : fallbackRoute)
+      setReady(true)
+    }
+
+    void loadBlankEntry().catch(() => {
+      if (!active) return
+      setMainRoute(fallbackRoute)
+      setReady(true)
+    })
+
+    return () => {
+      active = false
+    }
+  }, [fallbackRoute])
+
+  if (!ready) {
+    return <FrontBootFallback />
   }
 
   return (
