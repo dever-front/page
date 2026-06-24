@@ -6,7 +6,8 @@ import { runActionsWithResult } from '@/lib/action'
 import { cn } from '@/lib/utils'
 import { getByPath, resolvePath, setByPath } from '@/lib/path'
 import { normalizeDataContainerKey, reloadStoreDataContainer } from '@/lib/page-data-reload'
-import type { PageStore } from '@/lib/store'
+import { resetRemoteSearchValues } from '@/lib/remote-search'
+import type { PageStore, PageStoreState } from '@/lib/store'
 import { ActionButton } from './shared/action-button'
 import { ShowStatus } from './status'
 import type { NodeItemProps } from '../../nodes'
@@ -34,7 +35,6 @@ export function ShowCategoryList({
   )
   const [categories, setCategories] = useState(resolvedCategories)
   const currentValue = normalizeCategoryValue(value)
-  const queryKey = resolveCategoryQueryKey(item.value, item.meta?.queryKey)
   const labelField = String(item.meta?.labelField || 'value').trim() || 'value'
   const emptyText = String(item.meta?.emptyText || '暂无分类。').trim() || '暂无分类。'
   const title = String(item.meta?.title || item.name || '').trim()
@@ -47,7 +47,6 @@ export function ShowCategoryList({
   const uncategorizedLabel = String(item.meta?.uncategorizedLabel || '未分类').trim() || '未分类'
   const selectable = item.meta?.selectable !== false
   const remote = item.meta?.remote === true
-  const syncQuery = resolveCategorySyncQuery(item.meta)
   const reloadKey = resolveCategoryReloadKey(item.meta)
   const defaultFirst = item.meta?.defaultFirst === true
   const sortable = item.meta?.sortable === true
@@ -88,20 +87,35 @@ export function ShowCategoryList({
 
       const normalizedValue = normalizeCategoryValue(nextValue)
       const assignValue = normalizedValue || ''
-      setValue(assignValue)
+      const categoryChanged = assignValue !== currentValue
 
       if (!remote) {
+        setValue(assignValue)
         return
       }
 
       const targetStore = resolveCategoryTargetStore(store, item.value)
-      resetCategoryPage(targetStore, item.meta, reloadKey)
-      if (queryKey && syncQuery) {
-        replaceCategoryQuery(queryKey, assignValue)
+      const searchLayoutId = resolveCategorySearchLayoutId(
+        item.meta,
+        targetStore.getState().schema
+      )
+      if (categoryChanged) {
+        resetRemoteSearchValues(targetStore, searchLayoutId)
       }
+      setValue(assignValue)
+      resetCategoryPage(targetStore, item.meta, reloadKey)
       await reloadStoreDataContainer(targetStore, reloadKey)
     },
-    [item.meta, item.value, queryKey, reloadKey, remote, selectable, setValue, store, syncQuery]
+    [
+      currentValue,
+      item.meta,
+      item.value,
+      reloadKey,
+      remote,
+      selectable,
+      setValue,
+      store,
+    ]
   )
 
   useEffect(() => {
@@ -407,28 +421,20 @@ export function ShowCategoryList({
   )
 }
 
-function resolveCategoryQueryKey(valuePath?: string, overrideKey?: unknown) {
-  const customKey = String(overrideKey || '').trim()
-  if (customKey) {
-    return customKey
-  }
-
-  const path = String(valuePath || '').trim()
-  if (!path) {
-    return ''
-  }
-
-  const { key } = resolvePath(path)
-  const segments = key.split('.').filter(Boolean)
-  return segments[segments.length - 1] || ''
-}
-
-function resolveCategorySyncQuery(meta?: Record<string, any>) {
-  return meta?.syncQuery === true
-}
-
 function resolveCategoryReloadKey(meta?: Record<string, any>) {
   return normalizeDataContainerKey(String(meta?.reloadDataKey || meta?.reloadKey || 'table'))
+}
+
+function resolveCategorySearchLayoutId(
+  meta: Record<string, any> | undefined,
+  schema: PageStoreState['schema']
+) {
+  const customLayoutId = String(meta?.searchLayoutId || meta?.resetSearchLayoutId || '').trim()
+  if (customLayoutId) {
+    return customLayoutId
+  }
+
+  return schema.nodes?.['content-toolbar'] ? 'content-toolbar' : ''
 }
 
 function resolveCategoryTargetStore(store: PageStore, valuePath?: string) {
@@ -447,21 +453,6 @@ function resetCategoryPage(
   const pagePath =
     String(meta?.pagePath || '').trim() || `data.${reloadKey || 'table'}.page`
   store.getState().setValueByPath(pagePath, 1)
-}
-
-function replaceCategoryQuery(queryKey: string, value: string) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  const url = new URL(window.location.href)
-  if (value) {
-    url.searchParams.set(queryKey, value)
-  } else {
-    url.searchParams.delete(queryKey)
-  }
-  url.searchParams.delete('page')
-  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
 }
 
 function resolveCategoryLabel(category: Record<string, any>, labelField: string) {

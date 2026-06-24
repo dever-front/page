@@ -47,6 +47,9 @@ export type RuntimeStreamWatchOptions<TOutput = Record<string, unknown>> = {
   transport?: 'sse' | 'poll'
   signal?: AbortSignal
   stopOnResult?: boolean
+  recoverOnError?: boolean
+  retryDelayMs?: number
+  maxRetryDelayMs?: number
   onFrame?: (frame: RuntimeStreamFrame<TOutput>) => boolean | void
 }
 
@@ -164,10 +167,15 @@ export async function watchRuntimeStream<TOutput = Record<string, unknown>>({
   transport = 'sse',
   signal,
   stopOnResult = true,
+  recoverOnError = true,
+  retryDelayMs = 1000,
+  maxRetryDelayMs = 5000,
   onFrame,
 }: RuntimeStreamWatchOptions<TOutput>): Promise<RuntimeStreamWatchResult> {
   let cursor = lastID || '0-0'
   let completed = false
+  let mode = transport
+  let nextRetryDelayMs = Math.max(250, retryDelayMs)
 
   const consumeFrame = (frame: RuntimeStreamFrame<TOutput>) => {
     if (signal?.aborted) {
@@ -187,30 +195,80 @@ export async function watchRuntimeStream<TOutput = Record<string, unknown>>({
     }
   }
 
-  if (transport === 'sse') {
-    await readRuntimeStreamEvents<TOutput>(
-      streamApi,
-      requestID,
-      cursor,
-      blockMs,
-      consumeFrame,
-      signal
-    )
-    return { lastID: cursor, completed }
+  const recover = async (error: unknown) => {
+    if (!recoverOnError || !isRecoverableRuntimeStreamError(error)) {
+      throw error
+    }
+    await waitRuntimeStreamRetry(nextRetryDelayMs, signal)
+    nextRetryDelayMs = Math.min(Math.max(nextRetryDelayMs * 2, 250), maxRetryDelayMs)
+    mode = 'poll'
   }
 
-  while (!signal?.aborted) {
-    const frame = await readRuntimeStreamFrame<TOutput>(
-      streamApi,
-      requestID,
-      cursor,
-      blockMs
-    )
-    if (consumeFrame(frame) === false) {
-      break
+  while (!signal?.aborted && !completed) {
+    if (mode === 'sse') {
+      try {
+        await readRuntimeStreamEvents<TOutput>(
+          streamApi,
+          requestID,
+          cursor,
+          blockMs,
+          consumeFrame,
+          signal
+        )
+        if (!completed) {
+          mode = 'poll'
+        }
+        nextRetryDelayMs = Math.max(250, retryDelayMs)
+      } catch (error) {
+        await recover(error)
+      }
+      continue
+    }
+
+    try {
+      const frame = await readRuntimeStreamFrame<TOutput>(
+        streamApi,
+        requestID,
+        cursor,
+        blockMs
+      )
+      nextRetryDelayMs = Math.max(250, retryDelayMs)
+      if (consumeFrame(frame) === false) {
+        break
+      }
+    } catch (error) {
+      await recover(error)
     }
   }
   return { lastID: cursor, completed }
+}
+
+function isRecoverableRuntimeStreamError(error: unknown) {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return false
+  }
+  if (error instanceof TypeError) {
+    return true
+  }
+  const message = error instanceof Error ? error.message : streamValueText(error)
+  return /network|failed to fetch|读取运行流失败\((408|425|429|500|502|503|504)\)/i.test(message)
+}
+
+function waitRuntimeStreamRetry(ms: number, signal?: AbortSignal) {
+  if (signal?.aborted) {
+    return Promise.resolve()
+  }
+  return new Promise<void>((resolve) => {
+    const timerID = setTimeout(resolve, ms)
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timerID)
+        resolve()
+      },
+      { once: true }
+    )
+  })
 }
 
 export async function stopRuntimeStream(requestID: string, stopApi: string) {

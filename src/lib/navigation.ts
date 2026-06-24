@@ -1,8 +1,14 @@
-import { parseRouterSearch } from '@/lib/router-search'
+import {
+  mergeRouterSearchPatch,
+  parseRouterSearch,
+  stringifyRouterSearch,
+} from '@/lib/router-search'
 import {
   getCurrentRouterHref,
+  getCurrentRouterPathname,
   stripRouterBasePath,
 } from '@/lib/router-path'
+import type { PageStore } from '@/lib/store'
 
 export const NAV_QUERY_KEY = '_nav'
 
@@ -15,6 +21,12 @@ type NavigationRecord = {
 }
 
 type NavigationRecords = Record<string, NavigationRecord>
+type BackNavigationOptions = {
+  from?: string
+}
+type StoreNavigationOptions = {
+  reloadDataKey?: string
+}
 
 export type NavigationTarget = {
   to: string
@@ -23,13 +35,14 @@ export type NavigationTarget = {
 
 export function withBackNavigationSearch(
   search?: Record<string, unknown>,
-  enabled?: unknown
+  enabled?: unknown,
+  options?: BackNavigationOptions
 ) {
   if (!isBackNavigationEnabled(enabled)) {
     return search
   }
 
-  const token = createNavigationRecord()
+  const token = createNavigationRecord(options?.from)
   if (!token) {
     return search
   }
@@ -38,6 +51,23 @@ export function withBackNavigationSearch(
     ...(search ?? {}),
     [NAV_QUERY_KEY]: token,
   }
+}
+
+export function buildStoreBackNavigationHref(
+  store?: PageStore | null,
+  options?: StoreNavigationOptions
+) {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  const currentSearch = parseRouterSearch(window.location.search)
+  const nextSearch = mergeRouterSearchPatch(
+    currentSearch,
+    buildStoreNavigationSearchPatch(store, options)
+  )
+  const queryString = stringifyRouterSearch(nextSearch)
+  return `${getCurrentRouterPathname()}${queryString}${window.location.hash || ''}`
 }
 
 export function getNavigationBackTarget(navValue?: unknown): NavigationTarget | null {
@@ -90,8 +120,8 @@ export function parseInternalNavigationHref(href?: unknown): NavigationTarget | 
   }
 }
 
-function createNavigationRecord() {
-  const from = getCurrentInternalHref()
+function createNavigationRecord(fromHref?: string) {
+  const from = normalizeRouteHref(fromHref) || getCurrentInternalHref()
   if (!isSafeInternalHref(from)) {
     return ''
   }
@@ -185,6 +215,51 @@ function appendNavigationSearchParam(
   }
 
   query.set(key, String(value))
+}
+
+function buildStoreNavigationSearchPatch(
+  store?: PageStore | null,
+  options?: StoreNavigationOptions
+) {
+  const patch: Record<string, unknown> = {
+    [NAV_QUERY_KEY]: undefined,
+  }
+  const state = store?.getState()
+  if (!state) {
+    return patch
+  }
+
+  const storeData = isPlainRecord(state.data) ? state.data : {}
+  const search = isPlainRecord(storeData.search) ? storeData.search : {}
+  for (const [key, value] of Object.entries(search)) {
+    patch[key] = normalizeNavigationSearchValue(value)
+  }
+
+  const reloadDataKey = String(options?.reloadDataKey || 'table').trim() || 'table'
+  const table = isPlainRecord(storeData[reloadDataKey]) ? storeData[reloadDataKey] : {}
+  const page = Number(table?.page)
+  const pageSize = Number(table?.pageSize)
+  patch.page = Number.isFinite(page) && page > 1 ? page : undefined
+  patch.pageSize =
+    Number.isFinite(pageSize) && pageSize > 0 && pageSize !== 10
+      ? pageSize
+      : undefined
+
+  return patch
+}
+
+function normalizeNavigationSearchValue(value: unknown) {
+  if (value == null || value === '' || value === '__all__') {
+    return undefined
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value : undefined
+  }
+  return value
+}
+
+function isPlainRecord(value: unknown): value is Record<string, any> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
 function createNavigationToken() {

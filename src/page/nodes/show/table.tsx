@@ -9,7 +9,10 @@ import { ChevronRight, X } from 'lucide-react'
 import { useStore } from 'zustand'
 import { runActions } from '@/lib/action'
 import { resolveLucideIcon } from '@/lib/icon'
-import { withBackNavigationSearch } from '@/lib/navigation'
+import {
+  buildStoreBackNavigationHref,
+  withBackNavigationSearch,
+} from '@/lib/navigation'
 import { getByPath } from '@/lib/path'
 import { stripRouterBasePath } from '@/lib/router-path'
 import type { Column } from '@/lib/schema'
@@ -399,7 +402,10 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
                                   to: stripRouterBasePath(to),
                                   search: withBackNavigationSearch(
                                     search,
-                                    options?.withBack
+                                    options?.withBack,
+                                    {
+                                      from: buildStoreBackNavigationHref(store),
+                                    }
                                   ),
                                 })
                               }

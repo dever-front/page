@@ -23,6 +23,40 @@ export function stringifyRouterSearch(search: RouterSearch): string {
   return queryString ? `?${queryString}` : ''
 }
 
+export function mergeRouterSearchPatch(search: RouterSearch, patch: RouterSearch): RouterSearch {
+  const nextSearch: RouterSearch = { ...(search ?? {}) }
+
+  for (const [key, value] of Object.entries(patch ?? {})) {
+    if (!key) {
+      continue
+    }
+
+    if (isEmptyRouterSearchValue(value)) {
+      delete nextSearch[key]
+      continue
+    }
+
+    nextSearch[key] = value
+  }
+
+  return nextSearch
+}
+
+export function replaceCurrentRouterSearchPatch(patch: RouterSearch): RouterSearch {
+  if (typeof window === 'undefined') {
+    return mergeRouterSearchPatch({}, patch)
+  }
+
+  const nextSearch = mergeRouterSearchPatch(parseRouterSearch(window.location.search), patch)
+  const queryString = stringifyRouterSearch(nextSearch)
+  window.history.replaceState(
+    window.history.state,
+    '',
+    `${window.location.pathname}${queryString}${window.location.hash}`
+  )
+  return nextSearch
+}
+
 function appendSearchValue(result: RouterSearch, key: string, value: unknown) {
   const current = result[key]
   if (current === undefined) {
@@ -79,4 +113,11 @@ function appendSearchParam(
   }
 
   searchParams.set(key, String(value))
+}
+
+function isEmptyRouterSearchValue(value: unknown) {
+  if (value == null || value === '') {
+    return true
+  }
+  return Array.isArray(value) && value.length === 0
 }

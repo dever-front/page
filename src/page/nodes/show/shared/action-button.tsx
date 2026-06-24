@@ -4,7 +4,10 @@ import { runActionsWithResult } from '@/lib/action'
 import { toastActionResult } from '@/lib/action-toast'
 import { matchConditionValue } from '@/lib/condition'
 import { resolveLucideIcon } from '@/lib/icon'
-import { withBackNavigationSearch } from '@/lib/navigation'
+import {
+  buildStoreBackNavigationHref,
+  withBackNavigationSearch,
+} from '@/lib/navigation'
 import { getByPath } from '@/lib/path'
 import { stripRouterBasePath } from '@/lib/router-path'
 import type { ActionConfig } from '@/lib/schema'
@@ -231,7 +234,10 @@ async function runButtonAction(
       to: stripRouterBasePath(buttonMeta.to),
       search: withBackNavigationSearch(
         search,
-        buttonMeta?.withBack ?? buttonMeta?.meta?.withBack
+        buttonMeta?.withBack ?? buttonMeta?.meta?.withBack,
+        {
+          from: buildStoreBackNavigationHref(store),
+        }
       ),
     })
     return true

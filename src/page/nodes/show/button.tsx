@@ -22,6 +22,7 @@ import {
 } from '@/lib/remote-search'
 import { normalizeDataContainerKey, reloadStoreDataContainer } from '@/lib/page-data-reload'
 import {
+  buildStoreBackNavigationHref,
   getNavigationBackTarget,
   parseInternalNavigationHref,
   withBackNavigationSearch,
@@ -70,18 +71,9 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
         store.getState(),
         String(item.meta?.searchLayoutId || layoutId || '').trim()
       )
-      applySearchPatchToStore(store, searchPatch, resolveReloadDataKey(item.meta))
-      if (await reloadStoreDataContainer(store, resolveReloadDataKey(item.meta))) {
-        return true
-      }
-
-      navigate({
-        to: getCurrentRouterPathname(),
-        search: (prev: Record<string, unknown>) => ({
-          ...prev,
-          ...searchPatch,
-        }),
-      })
+      const reloadKey = resolveReloadDataKey(item.meta)
+      applySearchPatchToStore(store, searchPatch, reloadKey)
+      await reloadStoreDataContainer(store, reloadKey)
       return true
     }
 
@@ -120,15 +112,14 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
 
         navigate({
           to: targetPath,
-          search: (prev: Record<string, unknown>) => ({
-            ...prev,
-            ...resetPatch,
-          }),
+          search: resetPatch,
         })
         return true
       }
 
-      const search = withBackNavigationSearch(undefined, item.meta?.withBack)
+      const search = withBackNavigationSearch(undefined, item.meta?.withBack, {
+        from: buildStoreBackNavigationHref(store),
+      })
       navigate({ to: targetPath, search })
       return true
     }

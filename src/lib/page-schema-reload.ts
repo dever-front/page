@@ -9,7 +9,7 @@ import { getByPath } from './path'
 
 type RemoteDataState = {
   search: any
-  containers: Record<string, { page: any; pageSize: any }>
+  containers: Record<string, any>
 }
 
 export async function reloadStorePageSchema(store: PageStore) {
@@ -57,17 +57,17 @@ function captureRemoteDataState(store: PageStore): RemoteDataState | null {
     return null
   }
 
+  const containers: Record<string, any> = {}
+  for (const containerKey of containerKeys) {
+    const containerData = getByPath(state.data, containerKey)
+    if (containerData !== undefined) {
+      containers[containerKey] = cloneValue(containerData)
+    }
+  }
+
   return {
     search: cloneValue(state.data?.search),
-    containers: Object.fromEntries(
-      containerKeys.map((containerKey) => [
-        containerKey,
-        {
-          page: getByPath(state.data, `${containerKey}.page`),
-          pageSize: getByPath(state.data, `${containerKey}.pageSize`),
-        },
-      ])
-    ),
+    containers,
   }
 }
 
@@ -87,18 +87,23 @@ function restoreRemoteDataState(
     })
   }
 
-  for (const [containerKey, containerState] of Object.entries(
+  const currentContainerKeys = new Set(
+    collectRemoteDataContainerKeys(state.schema)
+  )
+  for (const [containerKey, containerData] of Object.entries(
     remoteState.containers
   )) {
-    if (containerState.page != null && containerState.page !== '') {
-      state.setValueByPath(`data.${containerKey}.page`, containerState.page)
+    if (!currentContainerKeys.has(containerKey)) {
+      continue
     }
-    if (containerState.pageSize != null && containerState.pageSize !== '') {
-      state.setValueByPath(
-        `data.${containerKey}.pageSize`,
-        containerState.pageSize
+
+    state.setValueByPath(
+      `data.${containerKey}`,
+      mergePreservedRemoteData(
+        getByPath(state.data, containerKey),
+        containerData
       )
-    }
+    )
   }
 }
 
@@ -139,4 +144,20 @@ function cloneValue<T>(value: T): T {
     return value
   }
   return structuredClone(value)
+}
+
+function mergePreservedRemoteData(currentValue: any, preservedValue: any): any {
+  if (!isPlainObject(currentValue) || !isPlainObject(preservedValue)) {
+    return cloneValue(preservedValue)
+  }
+
+  const merged: Record<string, any> = { ...currentValue }
+  for (const [key, value] of Object.entries(preservedValue)) {
+    merged[key] = mergePreservedRemoteData(currentValue[key], value)
+  }
+  return merged
+}
+
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
 }
