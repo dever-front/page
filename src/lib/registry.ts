@@ -258,6 +258,13 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
     }))
   ),
 
+  // Data
+  'front-data-record-editor': lazyNode(() =>
+    import('@/page/nodes/data-record/editor').then((mod) => ({
+      default: mod.DataRecordEditor,
+    }))
+  ),
+
   // Media
   'media-image': lazyNode(() =>
     import('@/page/nodes/media/image').then((mod) => ({
