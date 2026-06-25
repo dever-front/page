@@ -34,6 +34,7 @@ export const ActionConfigSchema = z.object({
     'delete',
     'export',
     'import',
+    'copy',
     'increment',
     'array',
   ]),

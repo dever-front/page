@@ -12,6 +12,7 @@ import { isItemCurrentlyHidden } from '@/lib/condition'
 import { getByPath, isScopedStorePath, setByPath } from '@/lib/path'
 import { CONTROL_HIDDEN_WHEN_KEY } from '@/lib/page-control'
 import { joinFrontApi, request } from '@/lib/request'
+import { richTextDocToMarkdown } from '@/lib/rich-text'
 import { getStoreValueByPath, useStorePathValue } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import {
@@ -585,6 +586,10 @@ function buildTypeEditorAssistantField(field: TypeEditorFieldItem): AssistantFie
     name: String(field.name || field.placeholder || field.value || '').trim(),
     type: String(field.type || 'form-input').trim(),
   }
+  if (assistantField.type === 'form-editor') {
+    assistantField.contentFormat =
+      field.meta?.contentFormat === 'markdown' ? 'markdown' : 'json'
+  }
   if (field.placeholder) {
     assistantField.placeholder = field.placeholder
   }
@@ -610,9 +615,19 @@ function collectTypeEditorAssistantValues(
     if (!hasMeaningfulValue(value)) {
       continue
     }
-    values[field.path] = value
+    values[field.path] = typeEditorAssistantValue(value, field)
   }
   return values
+}
+
+function typeEditorAssistantValue(value: unknown, field: AssistantFieldContext) {
+  if (field.type === 'form-editor' && field.contentFormat !== 'markdown') {
+    const markdown = richTextDocToMarkdown(value).trim()
+    if (markdown) {
+      return markdown
+    }
+  }
+  return value
 }
 
 function clearAssistantAppliedErrors(
