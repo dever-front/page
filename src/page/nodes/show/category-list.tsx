@@ -119,8 +119,12 @@ export function ShowCategoryList({
   )
 
   useEffect(() => {
+    if (optionLoading && resolvedCategories.length === 0) {
+      return
+    }
+
     setCategories(resolvedCategories)
-  }, [resolvedCategories])
+  }, [optionLoading, resolvedCategories])
 
   useEffect(() => {
     if (!selectable || !defaultFirst || categories.length === 0) {
@@ -238,7 +242,7 @@ export function ShowCategoryList({
               tabIndex={0}
               aria-pressed={currentValue === ''}
               className={cn(
-                'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                'flex min-w-0 w-full items-center gap-2 overflow-hidden rounded-md px-3 py-2 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
                 currentValue === ''
                   ? 'bg-accent text-accent-foreground'
                   : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
@@ -254,7 +258,9 @@ export function ShowCategoryList({
                 void applyCategorySelection('')
               }}
             >
-              <span className="min-w-0 flex-1 truncate font-medium">{clearLabel}</span>
+              <span className="min-w-0 flex-1 truncate font-medium" title={clearLabel}>
+                {clearLabel}
+              </span>
               {summaryCounts.all != null ? (
                 <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
                   {summaryCounts.all}
@@ -269,7 +275,7 @@ export function ShowCategoryList({
               tabIndex={0}
               aria-pressed={currentValue === UNCATEGORIZED_CATEGORY_VALUE}
               className={cn(
-                'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                'flex min-w-0 w-full items-center gap-2 overflow-hidden rounded-md px-3 py-2 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
                 currentValue === UNCATEGORIZED_CATEGORY_VALUE
                   ? 'bg-accent text-accent-foreground'
                   : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
@@ -285,7 +291,12 @@ export function ShowCategoryList({
                 void applyCategorySelection(UNCATEGORIZED_CATEGORY_VALUE)
               }}
             >
-              <span className="min-w-0 flex-1 truncate font-medium">{uncategorizedLabel}</span>
+              <span
+                className="min-w-0 flex-1 truncate font-medium"
+                title={uncategorizedLabel}
+              >
+                {uncategorizedLabel}
+              </span>
               {summaryCounts.uncategorized != null ? (
                 <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
                   {summaryCounts.uncategorized}
@@ -347,7 +358,7 @@ export function ShowCategoryList({
                 {...interactionProps}
                 {...dragProps}
                 className={cn(
-                  'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                  'flex min-w-0 w-full items-center gap-2 overflow-hidden rounded-md px-3 py-2 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
                   selectable
                     ? active
                       ? 'bg-accent text-accent-foreground'
@@ -360,7 +371,12 @@ export function ShowCategoryList({
                 {sortable ? (
                   <GripVertical className="size-4 shrink-0 text-muted-foreground" />
                 ) : null}
-                <span className="min-w-0 flex-1 truncate font-medium">{categoryLabel}</span>
+                <span
+                  className="min-w-0 flex-1 truncate font-medium"
+                  title={categoryLabel}
+                >
+                  {categoryLabel}
+                </span>
                 {categoryCount != null ? (
                   <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
                     {categoryCount}

@@ -2,12 +2,20 @@
  * Show/Table.tsx - 表格展示
  * 使用 shadcn/ui Table 组件
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+} from 'react'
 import { DotsHorizontalIcon } from '@radix-ui/react-icons'
 import { useNavigate } from '@tanstack/react-router'
-import { ChevronRight, X } from 'lucide-react'
+import { ChevronRight, GripVertical, X } from 'lucide-react'
 import { useStore } from 'zustand'
 import { runActions } from '@/lib/action'
+import { moveArrayItem } from '@/lib/array'
 import { resolveLucideIcon } from '@/lib/icon'
 import {
   buildStoreBackNavigationHref,
@@ -77,11 +85,13 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
   const columns: Column[] = item.meta?.columns || []
   const data: any[] = Array.isArray(value) ? value : []
   const rowKey = item.meta?.rowKey || 'id'
+  const tableValuePath = String(item.value || '').trim()
   const fixedColumnLayouts = useMemo(
     () => resolveFixedColumnLayouts(columns),
     [columns]
   )
   const isRemote = item.meta?.remote === true
+  const dragField = String(item.meta?.drag || '').trim()
   const searchKeyword = useTableStoreValue(store, item.meta?.searchPath)
   const extraFilters = useTableFilters(store, item.meta?.filters)
   const currentPage = Number(
@@ -97,11 +107,21 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
   const treeParentKey = String(item.meta?.parentKey || 'parent_id')
   const treeLabelField = String(item.meta?.treeLabelField || 'name')
   const selectable = !!item.meta?.selectable
+  const dragEnabled =
+    dragField === 'sort' &&
+    !isRemote &&
+    !treeMode &&
+    tableValuePath !== '' &&
+    Array.isArray(value) &&
+    !item.meta?.pagePath &&
+    !item.meta?.searchPath &&
+    !item.meta?.filters
   const bulkActions = Array.isArray(item.meta?.bulkActions)
     ? item.meta.bulkActions
     : []
   const [selectedRowKeys, setSelectedRowKeys] = useState<Array<string>>([])
   const [collapsedRowKeys, setCollapsedRowKeys] = useState<Array<string>>([])
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
   const selectedRowKeySet = useMemo(
     () => new Set(selectedRowKeys),
     [selectedRowKeys]
@@ -217,6 +237,28 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
     )
   }, [])
 
+  const handleDragOver = useCallback((event: DragEvent<HTMLTableRowElement>) => {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+  }, [])
+
+  const handleDropRow = useCallback(
+    (targetIndex: number) => {
+      if (!dragEnabled || dragIndex == null || dragIndex === targetIndex) {
+        setDragIndex(null)
+        return
+      }
+
+      const nextRows = normalizeDraggedTableRows(
+        moveArrayItem(data, dragIndex, targetIndex),
+        dragField
+      )
+      store.getState().setValueByPath(tableValuePath, nextRows)
+      setDragIndex(null)
+    },
+    [data, dragEnabled, dragField, dragIndex, store, tableValuePath]
+  )
+
   const handleBulkAction = useCallback(
     async (config: any) => {
       if (config?.action?.click) {
@@ -288,6 +330,11 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
                   />
                 </TableHead>
               )}
+              {dragEnabled && (
+                <TableHead className='w-16 bg-background px-4 text-center'>
+                  <span className='sr-only'>拖动排序</span>
+                </TableHead>
+              )}
               {columns.map((col, idx) => {
                 const align = resolveColumnAlign(col)
                 const fixedColumnProps = resolveFixedColumnProps(
@@ -324,7 +371,11 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
             {visibleRows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length + (selectable ? 1 : 0)}
+                  colSpan={
+                    columns.length +
+                    (selectable ? 1 : 0) +
+                    (dragEnabled ? 1 : 0)
+                  }
                   className='h-24 text-center text-muted-foreground'
                 >
                   暂无数据
@@ -334,13 +385,20 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
               visibleRows.map(
                 ({ row, depth, hasChildren, expanded }, rowIdx) => (
                   <TableRow
-                    key={String(row[rowKey] ?? rowIdx)}
+                    key={resolveTableRowRenderKey(row, rowKey, rowIdx)}
                     data-state={
                       selectedRowKeySet.has(String(row[rowKey]))
                         ? 'selected'
                         : undefined
                     }
-                    className='group/row h-12'
+                    className={cn(
+                      'group/row h-12',
+                      dragEnabled && dragIndex === rowIdx && 'opacity-50'
+                    )}
+                    onDragOver={dragEnabled ? handleDragOver : undefined}
+                    onDrop={
+                      dragEnabled ? () => handleDropRow(rowIdx) : undefined
+                    }
                   >
                     {selectable && (
                       <TableCell className='h-12 px-4'>
@@ -351,6 +409,29 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
                           }
                           aria-label={`选择 ${getByPath(row, 'username') ?? row[rowKey] ?? rowIdx}`}
                         />
+                      </TableCell>
+                    )}
+                    {dragEnabled && (
+                      <TableCell className='h-12 px-4'>
+                        <div className='flex justify-center'>
+                          <button
+                            type='button'
+                            draggable
+                            className='inline-flex size-8 cursor-grab items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground active:cursor-grabbing'
+                            aria-label='拖动排序'
+                            onDragStart={(event) => {
+                              event.dataTransfer.effectAllowed = 'move'
+                              event.dataTransfer.setData(
+                                'text/plain',
+                                String(rowIdx)
+                              )
+                              setDragIndex(rowIdx)
+                            }}
+                            onDragEnd={() => setDragIndex(null)}
+                          >
+                            <GripVertical className='size-4' />
+                          </button>
+                        </div>
                       </TableCell>
                     )}
                     {columns.map((col, colIdx) => {
@@ -382,7 +463,7 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
                               row={row}
                               rowIndex={rowIdx}
                               rowKey={rowKey}
-                              tableValuePath={String(item.value || '')}
+                              tableValuePath={tableValuePath}
                               treeMeta={
                                 treeMode && col.value === treeLabelField
                                   ? {
@@ -554,6 +635,28 @@ function useTableFilters(
     () => JSON.parse(snapshot) as Array<{ field: string; value: unknown }>,
     [snapshot]
   )
+}
+
+function normalizeDraggedTableRows(rows: any[], sortField: string) {
+  return rows.map((row, index) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      return row
+    }
+
+    return {
+      ...row,
+      [sortField]: index + 1,
+    }
+  })
+}
+
+function resolveTableRowRenderKey(row: any, rowKey: string, rowIndex: number) {
+  const value = row?.[rowKey]
+  if (value === undefined || value === null || value === '') {
+    return String(rowIndex)
+  }
+
+  return String(value)
 }
 
 /**
