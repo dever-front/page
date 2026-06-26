@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
-import { AudioLines, Check, Image, Loader2, Save, Video, X } from 'lucide-react'
-import { request } from '@/lib/request'
-import { getStoreValueByPath } from '@/lib/store'
 import {
-  digestUploadFile,
-  uploadFileDirect,
-  type UploadDirectPayload,
-} from '@/lib/upload'
-import { RichTextEditor } from '@/components/rich-text-editor'
-import type { NodeItemProps } from '../../nodes'
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
+import { useStore } from 'zustand'
+import { getStoreValueByPath } from '@/lib/store'
+import type { Item } from '@/lib/schema'
+import { NodeList, type NodeItemProps } from '../../nodes'
 
 type DataFieldType =
   | 'text'
@@ -63,18 +61,6 @@ type UploadRule = {
   transport?: string
 }
 
-type UploadValue = {
-  id?: number | string
-  name?: string
-  url?: string
-  download?: string
-  thumbnail?: string
-  open_url?: string
-  kind?: string
-  mime?: string
-  size?: number
-}
-
 type EditorPayload = {
   cate_id?: number | string
   category?: Record<string, unknown>
@@ -85,17 +71,12 @@ type EditorPayload = {
   message?: string
 }
 
-type FieldErrors = Record<string, string>
 type FieldValues = Record<string, unknown>
 
-class RequestFailure extends Error {
-  fieldErrors: FieldErrors
-
-  constructor(message: string, fieldErrors: FieldErrors = {}) {
-    super(message)
-    this.fieldErrors = fieldErrors
-  }
-}
+const editorFormPath = 'data.form'
+const virtualFormNodeKey = 'data-record-editor-fields'
+const emptyFieldValues: FieldValues = {}
+const emptyDataFields: DataField[] = []
 
 export function DataRecordEditor({ item, store }: NodeItemProps) {
   const dataPath =
@@ -109,15 +90,15 @@ export function DataRecordEditor({ item, store }: NodeItemProps) {
     positiveID(editor.selected_template_id) || positiveID(templates[0]?.id)
   const [selectedTemplateID, setSelectedTemplateID] =
     useState(initialTemplateID)
-  const [values, setValues] = useState<FieldValues>({})
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
-  const [formError, setFormError] = useState('')
-  const [successMessage, setSuccessMessage] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [uploadingFieldID, setUploadingFieldID] = useState('')
   const [recordOverrides, setRecordOverrides] = useState<
     Record<string, DataRecord>
   >({})
+  const storeFormTemplateID = useStore(store, (state) =>
+    positiveID(state.data?.form?.data_template_id)
+  )
+  const storeFormSignature = useStore(store, (state) =>
+    formStateSignature(state.data?.form)
+  )
 
   useEffect(() => {
     const nextTemplateID =
@@ -142,13 +123,42 @@ export function DataRecordEditor({ item, store }: NodeItemProps) {
   )
   const selectedRecord =
     recordOverrides[selectedTemplateID] || editor.records?.[selectedTemplateID]
+  const fields = useMemo(
+    () => selectedTemplate?.fields || emptyDataFields,
+    [selectedTemplate]
+  )
 
   useEffect(() => {
-    setValues(initialValuesForTemplate(selectedTemplate, selectedRecord))
-    setFieldErrors({})
-    setFormError('')
-    setSuccessMessage('')
-  }, [selectedTemplateID, selectedTemplate, selectedRecord])
+    const nextValues = initialValuesForTemplate(selectedTemplate, selectedRecord)
+    syncStoreFormValues(store, selectedTemplateID, nextValues)
+  }, [store, selectedTemplateID, selectedTemplate, selectedRecord])
+
+  useEffect(() => {
+    syncVirtualFormNodes(store, fields, editor.upload_rules)
+    return () => syncVirtualFormNodes(store, [])
+  }, [store, fields, editor.upload_rules])
+
+  useEffect(() => {
+    if (!selectedTemplateID || storeFormTemplateID !== selectedTemplateID) {
+      return
+    }
+    const nextValues = readStoreFormValues(store, fields)
+    setRecordOverrides((current) =>
+      updateTemplateRecordValues(
+        current,
+        selectedTemplateID,
+        selectedRecord,
+        nextValues
+      )
+    )
+  }, [
+    fields,
+    selectedRecord,
+    store,
+    storeFormSignature,
+    selectedTemplateID,
+    storeFormTemplateID,
+  ])
 
   if (!positiveID(editor.cate_id)) {
     return (
@@ -166,618 +176,247 @@ export function DataRecordEditor({ item, store }: NodeItemProps) {
     )
   }
 
-  const fields = selectedTemplate?.fields || []
-
-  const saveRecord = async () => {
-    if (!selectedTemplateID) return
-    setSaving(true)
-    setFormError('')
-    setSuccessMessage('')
-    setFieldErrors({})
-    try {
-      const result = await checkedRequest(
-        '/front/route/action?path=front/data_record/set',
-        'post',
-        {
-          key: 'save-record',
-          payload: {
-            data_template_id: selectedTemplateID,
-            values,
-          },
-        }
-      )
-      setRecordOverrides((current) => ({
-        ...current,
-        [selectedTemplateID]: {
-          ...(current[selectedTemplateID] || selectedRecord || {}),
-          id: (result as Record<string, unknown>)?.['id'],
-          values,
-        },
-      }))
-      setSuccessMessage('已保存')
-    } catch (error) {
-      const failure = normalizeRequestFailure(error)
-      setFormError(failure.message)
-      setFieldErrors(normalizeFieldErrors(failure.fieldErrors))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const updateFieldValue = (field: DataField, nextValue: unknown) => {
-    const fieldID = fieldIDText(field)
-    setValues((current) => ({
-      ...current,
-      [fieldID]: nextValue,
-    }))
-    setFieldErrors((current) => {
-      const next = { ...current }
-      delete next[fieldID]
-      return next
-    })
-  }
-
-  const uploadFiles = async (field: DataField, files: File[]) => {
-    const fieldID = fieldIDText(field)
-    const fieldType = fieldTypeText(field)
-    const rule = editor.upload_rules?.[fieldType]
-    if (!rule || !positiveID(rule.id)) {
-      setFieldErrors((current) => ({
-        ...current,
-        [fieldID]: '缺少可用上传规则。',
-      }))
-      return
-    }
-
-    const currentFiles = uploadValues(values[fieldID])
-    const maxCount = maxUploadCount(field)
-    if (currentFiles.length + files.length > maxCount) {
-      setFieldErrors((current) => ({
-        ...current,
-        [fieldID]: `最多上传 ${maxCount} 个文件。`,
-      }))
-      return
-    }
-
-    setUploadingFieldID(fieldID)
-    try {
-      const uploaded: UploadValue[] = []
-      for (const file of files) {
-        uploaded.push(await uploadDataRecordFile(file, rule, fieldType))
-      }
-      updateFieldValue(field, [...currentFiles, ...uploaded])
-    } catch (error) {
-      setFieldErrors((current) => ({
-        ...current,
-        [fieldID]: normalizeRequestFailure(error).message,
-      }))
-    } finally {
-      setUploadingFieldID('')
-    }
-  }
-
   return (
-    <div className='grid min-h-[540px] gap-4 lg:grid-cols-[280px_minmax(0,1fr)]'>
-      <aside className='min-h-0 overflow-hidden rounded-md border bg-background'>
-        <div className='border-b px-4 py-3'>
-          <div className='text-sm font-medium'>数据模板</div>
-          <div className='mt-1 text-xs text-muted-foreground'>
-            {textValue(editor.category?.['name']) || '模板分类'}
-          </div>
-        </div>
-        <div className='max-h-[calc(100vh-260px)] overflow-y-auto p-2'>
-          {templates.map((template) => {
-            const templateID = positiveID(template.id)
-            const active = templateID === selectedTemplateID
-            return (
-              <button
-                key={templateID}
-                type='button'
-                className={[
-                  'mb-1 flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition',
-                  active
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-foreground hover:bg-muted',
-                ].join(' ')}
-                onClick={() => setSelectedTemplateID(templateID)}
-              >
-                <span className='min-w-0 truncate'>
-                  {textValue(template.name) || '未命名模板'}
-                </span>
-                <span className='ml-2 shrink-0 text-xs opacity-70'>
-                  {(template.fields || []).length}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      </aside>
+    <div className='flex min-h-[calc(100vh-220px)] items-start gap-6'>
+      <nav className='w-44 shrink-0 space-y-2'>
+        {templates.map((template) => {
+          const templateID = positiveID(template.id)
+          const active = templateID === selectedTemplateID
+          return (
+            <button
+              key={templateID}
+              type='button'
+              className={[
+                'flex min-h-10 w-full items-center rounded-md px-4 text-left text-sm transition',
+                active
+                  ? 'bg-muted font-semibold text-foreground'
+                  : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
+              ].join(' ')}
+              onClick={() => setSelectedTemplateID(templateID)}
+            >
+              <span className='min-w-0 truncate'>
+                {textValue(template.name) || '未命名模板'}
+              </span>
+            </button>
+          )
+        })}
+      </nav>
 
-      <section className='min-w-0 rounded-md border bg-background'>
-        <div className='flex flex-wrap items-center gap-3 border-b px-5 py-4'>
-          <div className='min-w-0 flex-1'>
-            <h2 className='truncate text-base font-semibold'>
-              {textValue(selectedTemplate?.name) || '数据模板'}
-            </h2>
-          </div>
-          {successMessage ? (
-            <span className='inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-xs text-emerald-700'>
-              <Check className='size-3' />
-              {successMessage}
-            </span>
-          ) : null}
-          <button
-            type='button'
-            className='inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
-            disabled={saving || uploadingFieldID !== ''}
-            onClick={() => void saveRecord()}
-          >
-            {saving ? (
-              <Loader2 className='size-4 animate-spin' />
-            ) : (
-              <Save className='size-4' />
-            )}
-            保存
-          </button>
-        </div>
-
-        <div className='max-h-[calc(100vh-250px)] overflow-y-auto px-5 py-4'>
-          {formError ? (
-            <div className='mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive'>
-              {formError}
-            </div>
-          ) : null}
-
-          {fields.length === 0 ? (
-            <EmptyState title='暂无字段' text='当前模板还没有启用字段。' />
-          ) : (
-            <div className='space-y-5'>
-              {fields.map((field) => {
-                const fieldID = fieldIDText(field)
-                return (
-                  <FieldControl
-                    key={fieldID}
-                    field={field}
-                    value={values[fieldID]}
-                    error={fieldErrors[fieldID]}
-                    uploadRule={editor.upload_rules?.[fieldTypeText(field)]}
-                    uploading={uploadingFieldID === fieldID}
-                    disabled={saving}
-                    onChange={(nextValue) => updateFieldValue(field, nextValue)}
-                    onUpload={(files) => void uploadFiles(field, files)}
-                  />
-                )
-              })}
-            </div>
-          )}
-        </div>
+      <section className='min-w-0 flex-1 rounded-md border bg-background p-6'>
+        {fields.length === 0 ? (
+          <EmptyState title='暂无字段' text='当前模板还没有启用字段。' />
+        ) : (
+          <NodeList layoutId={virtualFormNodeKey} />
+        )}
       </section>
     </div>
   )
 }
 
-function FieldControl({
-  field,
-  value,
-  error,
-  uploadRule,
-  uploading,
-  disabled,
-  onChange,
-  onUpload,
-}: {
-  field: DataField
-  value: unknown
-  error?: string
-  uploadRule?: UploadRule
-  uploading?: boolean
-  disabled?: boolean
-  onChange: (value: unknown) => void
-  onUpload: (files: File[]) => void
-}) {
-  const type = fieldTypeText(field)
-  const fieldID = fieldIDText(field)
-  const label = textValue(field.name) || '字段'
-
-  return (
-    <div className='grid gap-2 md:grid-cols-[150px_minmax(0,1fr)] md:gap-4'>
-      <label
-        className='pt-2 text-sm font-medium text-foreground'
-        htmlFor={`data-field-${fieldID}`}
-      >
-        {label}
-        {field.required ? (
-          <span className='ml-1 text-destructive'>*</span>
-        ) : null}
-      </label>
-      <div className='min-w-0'>
-        {renderFieldInput({
-          field,
-          value,
-          uploadRule,
-          uploading,
-          disabled,
-          onChange,
-          onUpload,
-        })}
-        {field.help_text ? (
-          <div className='mt-1 text-xs text-muted-foreground'>
-            {field.help_text}
-          </div>
-        ) : null}
-        {uploadFieldTypes.has(type) &&
-        (!uploadRule || !positiveID(uploadRule.id)) ? (
-          <div className='mt-1 text-xs text-destructive'>
-            缺少可用上传规则。
-          </div>
-        ) : null}
-        {error ? (
-          <div className='mt-1 text-xs text-destructive'>{error}</div>
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
-function renderFieldInput(input: {
-  field: DataField
-  value: unknown
-  uploadRule?: UploadRule
-  uploading?: boolean
-  disabled?: boolean
-  onChange: (value: unknown) => void
-  onUpload: (files: File[]) => void
-}) {
-  const { field, value, disabled, onChange } = input
-  const type = fieldTypeText(field)
-  const id = `data-field-${fieldIDText(field)}`
-  const placeholder = textValue(field.placeholder)
-  const baseClass =
-    'min-h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60'
-
-  switch (type) {
-    case 'textarea':
-      return (
-        <textarea
-          id={id}
-          className={`${baseClass} min-h-[92px] resize-y`}
-          value={textValue(value)}
-          placeholder={placeholder}
-          disabled={disabled}
-          onChange={(event) => onChange(event.currentTarget.value)}
-        />
-      )
-    case 'editor':
-      return (
-        <RichTextEditor
-          value={textValue(value)}
-          onChange={onChange as (value: string) => void}
-          contentFormat='markdown'
-          placeholder={placeholder}
-          minHeight={220}
-          maxHeight={520}
-          disabled={disabled}
-        />
-      )
-    case 'date':
-      return (
-        <input
-          id={id}
-          type='date'
-          className={baseClass}
-          value={dateInputValue(value)}
-          disabled={disabled}
-          onChange={(event) => onChange(event.currentTarget.value)}
-        />
-      )
-    case 'datetime':
-      return (
-        <input
-          id={id}
-          type='datetime-local'
-          className={baseClass}
-          value={dateTimeInputValue(value)}
-          disabled={disabled}
-          onChange={(event) => onChange(event.currentTarget.value)}
-        />
-      )
-    case 'boolean':
-      return (
-        <label className='inline-flex h-9 items-center gap-2 text-sm'>
-          <input
-            id={id}
-            type='checkbox'
-            className='size-4'
-            checked={Boolean(value)}
-            disabled={disabled}
-            onChange={(event) => onChange(event.currentTarget.checked)}
-          />
-          <span>{Boolean(value) ? '开启' : '关闭'}</span>
-        </label>
-      )
-    case 'radio':
-      return (
-        <OptionRadio
-          field={field}
-          value={value}
-          disabled={disabled}
-          onChange={onChange}
-        />
-      )
-    case 'checkbox':
-      return (
-        <OptionCheckbox
-          field={field}
-          value={value}
-          disabled={disabled}
-          onChange={onChange}
-        />
-      )
-    case 'select':
-      return (
-        <select
-          id={id}
-          className={baseClass}
-          value={textValue(value)}
-          disabled={disabled}
-          onChange={(event) => onChange(event.currentTarget.value)}
-        >
-          <option value=''>{placeholder || '请选择'}</option>
-          {(field.options || []).map((option) => (
-            <option
-              key={textValue(option.value)}
-              value={textValue(option.value)}
-            >
-              {textValue(option.name) || textValue(option.value)}
-            </option>
-          ))}
-        </select>
-      )
-    case 'multi_select':
-      return (
-        <select
-          id={id}
-          className={`${baseClass} min-h-[120px]`}
-          multiple
-          value={stringArray(value)}
-          disabled={disabled}
-          onChange={(event) =>
-            onChange(
-              Array.from(event.currentTarget.selectedOptions).map(
-                (option) => option.value
-              )
-            )
-          }
-        >
-          {(field.options || []).map((option) => (
-            <option
-              key={textValue(option.value)}
-              value={textValue(option.value)}
-            >
-              {textValue(option.name) || textValue(option.value)}
-            </option>
-          ))}
-        </select>
-      )
-    case 'image':
-    case 'video':
-    case 'audio':
-      return <UploadField {...input} />
-    default:
-      return (
-        <input
-          id={id}
-          type='text'
-          className={baseClass}
-          value={textValue(value)}
-          placeholder={placeholder}
-          disabled={disabled}
-          onChange={(event) => onChange(event.currentTarget.value)}
-        />
-      )
+function updateTemplateRecordValues(
+  records: Record<string, DataRecord>,
+  templateID: string,
+  selectedRecord: DataRecord | undefined,
+  values: FieldValues
+) {
+  if (!templateID) return records
+  const existing = records[templateID] || selectedRecord || {}
+  if (fieldValuesEqual(existing.values || {}, values)) {
+    return records
+  }
+  return {
+    ...records,
+    [templateID]: {
+      ...existing,
+      values,
+    },
   }
 }
 
-function OptionRadio({
-  field,
-  value,
-  disabled,
-  onChange,
-}: {
-  field: DataField
-  value: unknown
-  disabled?: boolean
-  onChange: (value: unknown) => void
-}) {
-  const current = textValue(value)
-  return (
-    <div className='flex flex-wrap gap-3'>
-      {(field.options || []).map((option) => {
-        const optionValue = textValue(option.value)
-        return (
-          <label
-            key={optionValue}
-            className='inline-flex h-9 items-center gap-2 text-sm'
-          >
-            <input
-              type='radio'
-              name={`field-${fieldIDText(field)}`}
-              className='size-4'
-              value={optionValue}
-              checked={current === optionValue}
-              disabled={disabled}
-              onChange={() => onChange(optionValue)}
-            />
-            <span>{textValue(option.name) || optionValue}</span>
-          </label>
-        )
-      })}
-    </div>
+function syncVirtualFormNodes(
+  store: NodeItemProps['store'],
+  fields: DataField[],
+  uploadRules: Record<string, UploadRule> = {}
+) {
+  const virtualNodes = fields.map((field) =>
+    buildVirtualFormNode(field, uploadRules)
   )
+  store.setState((state) => {
+    const currentNodes = state.schema.nodes?.[virtualFormNodeKey]
+    if (virtualFormNodesEqual(currentNodes, virtualNodes)) {
+      return state
+    }
+
+    return {
+      schema: {
+        ...state.schema,
+        nodes: {
+          ...state.schema.nodes,
+          [virtualFormNodeKey]: virtualNodes,
+        },
+      },
+    }
+  })
 }
 
-function OptionCheckbox({
-  field,
-  value,
-  disabled,
-  onChange,
-}: {
-  field: DataField
-  value: unknown
-  disabled?: boolean
-  onChange: (value: unknown) => void
-}) {
-  const current = new Set(stringArray(value))
-  return (
-    <div className='flex flex-wrap gap-3'>
-      {(field.options || []).map((option) => {
-        const optionValue = textValue(option.value)
-        return (
-          <label
-            key={optionValue}
-            className='inline-flex h-9 items-center gap-2 text-sm'
-          >
-            <input
-              type='checkbox'
-              className='size-4'
-              value={optionValue}
-              checked={current.has(optionValue)}
-              disabled={disabled}
-              onChange={(event) => {
-                const next = new Set(current)
-                if (event.currentTarget.checked) {
-                  next.add(optionValue)
-                } else {
-                  next.delete(optionValue)
-                }
-                onChange(Array.from(next))
-              }}
-            />
-            <span>{textValue(option.name) || optionValue}</span>
-          </label>
-        )
-      })}
-    </div>
-  )
+function syncStoreFormValues(
+  store: NodeItemProps['store'],
+  templateID: string,
+  values: FieldValues
+) {
+  if (!templateID) return
+  const form = store.getState().data?.form
+  const currentTemplateID = isRecord(form)
+    ? positiveID(form.data_template_id)
+    : ''
+  const currentValues =
+    isRecord(form) && isRecord(form.values) ? form.values : emptyFieldValues
+  if (
+    currentTemplateID === templateID &&
+    fieldValuesEqual(currentValues, values)
+  ) {
+    return
+  }
+  store.getState().setValueByPath(editorFormPath, {
+    data_template_id: templateID,
+    values,
+  })
 }
 
-function UploadField({
-  field,
-  value,
-  uploadRule,
-  uploading,
-  disabled,
-  onChange,
-  onUpload,
-}: {
-  field: DataField
-  value: unknown
-  uploadRule?: UploadRule
-  uploading?: boolean
-  disabled?: boolean
-  onChange: (value: unknown) => void
-  onUpload: (files: File[]) => void
-}) {
-  const files = uploadValues(value)
-  const type = fieldTypeText(field)
-  const maxCount = maxUploadCount(field)
-  const accept = textValue(uploadRule?.accept) || `${type}/*`
-  const canUpload = Boolean(
-    uploadRule && positiveID(uploadRule.id) && files.length < maxCount
-  )
-
-  return (
-    <div className='space-y-3'>
-      <div className='flex flex-wrap items-center gap-2'>
-        <label
-          className={[
-            'inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm font-medium',
-            canUpload && !disabled
-              ? 'hover:bg-muted'
-              : 'cursor-not-allowed opacity-60',
-          ].join(' ')}
-        >
-          {uploadIcon(type)}
-          <span>{uploading ? '上传中' : '选择文件'}</span>
-          {uploading ? <Loader2 className='size-4 animate-spin' /> : null}
-          <input
-            type='file'
-            className='hidden'
-            accept={accept}
-            multiple={maxCount > 1}
-            disabled={!canUpload || disabled || uploading}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => {
-              const selected = Array.from(event.currentTarget.files || [])
-              event.currentTarget.value = ''
-              if (selected.length > 0) onUpload(selected)
-            }}
-          />
-        </label>
-        <span className='text-xs text-muted-foreground'>
-          {files.length}/{maxCount}
-        </span>
-      </div>
-
-      {files.length > 0 ? (
-        <div className='grid gap-2 sm:grid-cols-2 xl:grid-cols-3'>
-          {files.map((file, index) => (
-            <UploadPreviewItem
-              key={`${file.id || file.url || file.name}-${index}`}
-              file={file}
-              type={type}
-              onRemove={() =>
-                onChange(
-                  files.filter((_, currentIndex) => currentIndex !== index)
-                )
-              }
-            />
-          ))}
-        </div>
-      ) : null}
-    </div>
-  )
+function readStoreFormValues(
+  store: NodeItemProps['store'],
+  fields: DataField[]
+) {
+  const form = store.getState().data?.form
+  const source = isRecord(form) ? form.values : undefined
+  return sanitizeTemplateValues(fields, source)
 }
 
-function UploadPreviewItem({
-  file,
-  type,
-  onRemove,
-}: {
-  file: UploadValue
-  type: string
-  onRemove: () => void
-}) {
-  const source =
-    textValue(file.url) || textValue(file.open_url) || textValue(file.download)
-  return (
-    <div className='relative overflow-hidden rounded-md border bg-muted/30'>
-      <button
-        type='button'
-        className='absolute top-2 right-2 z-10 inline-flex size-7 items-center justify-center rounded-full bg-background/90 text-muted-foreground shadow hover:text-destructive'
-        onClick={onRemove}
-      >
-        <X className='size-4' />
-      </button>
-      <div className='flex h-36 items-center justify-center bg-background'>
-        {type === 'image' && source ? (
-          <img
-            src={source}
-            alt={textValue(file.name)}
-            className='h-full w-full object-contain'
-          />
-        ) : type === 'video' && source ? (
-          <video src={source} controls className='h-full w-full' />
-        ) : type === 'audio' && source ? (
-          <audio src={source} controls className='w-[90%]' />
-        ) : (
-          <div className='text-muted-foreground'>{uploadIcon(type)}</div>
-        )}
-      </div>
-      <div className='truncate px-3 py-2 text-xs'>
-        {textValue(file.name) || source || '文件'}
-      </div>
-    </div>
-  )
+function formStateSignature(form: unknown) {
+  if (!isRecord(form)) {
+    return ':[]'
+  }
+  const templateID = positiveID(form.data_template_id)
+  const values = isRecord(form.values) ? form.values : emptyFieldValues
+  return `${templateID}:${fieldValuesSignature(values)}`
+}
+
+function fieldValuesSignature(values: FieldValues) {
+  const keys = Object.keys(values).sort()
+  return JSON.stringify(keys.map((key) => [key, values[key] ?? null]))
+}
+
+function buildVirtualFormNode(
+  field: DataField,
+  uploadRules: Record<string, UploadRule>
+): Item {
+  const fieldID = fieldIDText(field)
+  const fieldType = fieldTypeText(field)
+  const label = textValue(field.name) || '字段'
+  const uploadRule = uploadRules[fieldType]
+  const item: Item = {
+    id: virtualFieldID(field),
+    type: fieldTypeToFormNodeType(fieldType),
+    name: label,
+    mode: 'form',
+    value: `form.values.${fieldID}`,
+    placeholder: fieldPlaceholder(field),
+    info: textValue(field.help_text),
+    validate: field.required
+      ? [
+          {
+            type: 'required',
+            message: `${label}不能为空。`,
+          },
+        ]
+      : undefined,
+    meta: {
+      formLayout: 'horizontal',
+      contentFormat: fieldType === 'editor' ? 'json' : undefined,
+      minHeight: fieldType === 'editor' ? 420 : undefined,
+      maxHeight: fieldType === 'editor' ? 720 : undefined,
+      uploadRules: fieldType === 'editor'
+        ? editorUploadRules(uploadRules)
+        : undefined,
+      uploadType: uploadFieldUploadType(fieldType),
+      kind: uploadFieldKind(fieldType),
+      ruleId: uploadRule ? Number(uploadRule.id || 0) : undefined,
+      maxCount: uploadFieldTypes.has(fieldType) ? maxUploadCount(field) : undefined,
+      multiple: fieldType === 'multi_select' ? true : undefined,
+      inputType: fieldType === 'datetime' ? 'datetime' : undefined,
+      saveMode: uploadFieldTypes.has(fieldType) ? 'url' : undefined,
+      bizKey: uploadFieldTypes.has(fieldType) ? 'front_data_record' : undefined,
+      bizName: uploadFieldTypes.has(fieldType) ? '数据模板' : undefined,
+    },
+    option: optionFieldTypes.has(fieldType)
+      ? (field.options || []).map((option) => ({
+          id: textValue(option.value),
+          value: textValue(option.name) || textValue(option.value),
+          name: textValue(option.name) || textValue(option.value),
+        }))
+      : undefined,
+  }
+  return item
+}
+
+function fieldTypeToFormNodeType(fieldType: string) {
+  switch (fieldType) {
+    case 'textarea':
+      return 'form-textarea'
+    case 'editor':
+      return 'form-editor'
+    case 'date':
+    case 'datetime':
+      return 'form-date'
+    case 'boolean':
+      return 'form-switch'
+    case 'radio':
+      return 'form-radio'
+    case 'checkbox':
+      return 'form-checkbox'
+    case 'select':
+    case 'multi_select':
+      return 'form-select'
+    case 'image':
+    case 'video':
+    case 'audio':
+      return 'form-upload'
+    default:
+      return 'form-input'
+  }
+}
+
+function sanitizeTemplateValues(fields: DataField[], source: unknown) {
+  const record = isRecord(source) ? source : {}
+  const result: FieldValues = {}
+  for (const field of fields) {
+    const fieldID = fieldIDText(field)
+    if (!fieldID || !(fieldID in record)) continue
+    result[fieldID] = record[fieldID]
+  }
+  return result
+}
+
+function fieldValuesEqual(left: FieldValues, right: FieldValues) {
+  const leftKeys = Object.keys(left)
+  const rightKeys = Object.keys(right)
+  if (leftKeys.length !== rightKeys.length) return false
+  return leftKeys.every((key) => fieldValueEqual(left[key], right[key]))
+}
+
+function fieldValueEqual(left: unknown, right: unknown) {
+  if (left === right) return true
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
+}
+
+function virtualFormNodesEqual(current: unknown, next: Item[]) {
+  if (!Array.isArray(current)) {
+    return next.length === 0
+  }
+  if (current.length !== next.length) {
+    return false
+  }
+  return current.every((item, index) => fieldValueEqual(item, next[index]))
 }
 
 function EmptyState({ title, text }: { title: string; text: string }) {
@@ -787,120 +426,6 @@ function EmptyState({ title, text }: { title: string; text: string }) {
       <div className='mt-2 text-sm text-muted-foreground'>{text}</div>
     </div>
   )
-}
-
-async function uploadDataRecordFile(
-  file: File,
-  rule: UploadRule,
-  kind: string
-): Promise<UploadValue> {
-  const hash = await digestUploadFile(file)
-  const init = await checkedRequest('/front/upload/init', 'post', {
-    rule_id: Number(rule.id || 0),
-    name: file.name,
-    size: file.size,
-    mime: file.type,
-    hash,
-    kind,
-    biz_key: 'front_data_record',
-    biz_name: '数据模板',
-  })
-
-  const initData = init as Record<string, unknown>
-  if (
-    textValue(initData['transport'] || rule.transport).toLowerCase() ===
-    'direct'
-  ) {
-    await uploadFileDirect(file, initData['direct'] as UploadDirectPayload)
-  } else {
-    const sessionID = Number(initData['session_id'] || 0)
-    const chunkSize = Math.max(
-      1,
-      Number(initData['chunk_size'] || file.size || 1)
-    )
-    const chunkTotal = Math.max(
-      1,
-      Number(initData['chunk_total'] || Math.ceil(file.size / chunkSize))
-    )
-    for (let index = 0; index < chunkTotal; index += 1) {
-      const start = index * chunkSize
-      const end = Math.min(file.size, start + chunkSize)
-      const form = new FormData()
-      form.append('file', file.slice(start, end))
-      await checkedRequest(
-        `/front/upload/part?session_id=${sessionID}&part_number=${index + 1}`,
-        'post',
-        form
-      )
-    }
-  }
-
-  const completed = await checkedRequest('/front/upload/complete', 'post', {
-    session_id: Number((init as Record<string, unknown>)['session_id'] || 0),
-  })
-  const payload = completed as Record<string, unknown>
-  return {
-    id: payload['id'] as number | string | undefined,
-    name: textValue(payload['name']) || file.name,
-    url:
-      textValue(payload['url']) ||
-      textValue(payload['open_url']) ||
-      textValue(payload['download']),
-    download: textValue(payload['download']),
-    thumbnail: textValue(payload['thumbnail']),
-    open_url: textValue(payload['open_url']),
-    kind: textValue(payload['kind']) || kind,
-    mime: textValue(payload['mime']) || file.type,
-    size: Number(payload['size'] || file.size || 0),
-  }
-}
-
-async function checkedRequest(
-  path: string,
-  method: 'get' | 'post',
-  payload?: unknown
-) {
-  const result = await request(path, method, payload)
-  if (isErrorResponse(result)) {
-    const data = isRecord(result['data']) ? result['data'] : {}
-    throw new RequestFailure(
-      textValue(result['msg']) || textValue(result['message']) || '请求失败',
-      isRecord(data['fieldErrors'])
-        ? objectToTextRecord(data['fieldErrors'])
-        : {}
-    )
-  }
-  if (
-    isRecord(result) &&
-    'data' in result &&
-    ('status' in result || 'code' in result)
-  ) {
-    return result['data']
-  }
-  return result
-}
-
-function isErrorResponse(result: unknown): result is Record<string, unknown> {
-  if (!isRecord(result)) return false
-  const code = Number(result['code'] || 0)
-  const status = Number(result['status'] || 0)
-  return code >= 400 || status === 2
-}
-
-function normalizeRequestFailure(error: unknown): RequestFailure {
-  if (error instanceof RequestFailure) return error
-  if (error instanceof Error)
-    return new RequestFailure(error.message || '请求失败')
-  return new RequestFailure(textValue(error) || '请求失败')
-}
-
-function normalizeFieldErrors(errors: FieldErrors): FieldErrors {
-  const result: FieldErrors = {}
-  for (const [path, message] of Object.entries(errors || {})) {
-    const key = path.split('.').filter(Boolean).pop() || path
-    result[key] = message
-  }
-  return result
 }
 
 function readStoreValue(store: NodeItemProps['store'], path: string) {
@@ -953,44 +478,86 @@ function defaultValueForField(field: DataField): unknown {
   return field.default_value ?? ''
 }
 
-function uploadValues(value: unknown): UploadValue[] {
-  if (!Array.isArray(value)) return []
-  return value.filter(isRecord) as UploadValue[]
-}
-
-function stringArray(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.map(textValue).filter(Boolean)
-  }
-  const text = textValue(value)
-  return text ? [text] : []
-}
-
 function fieldIDText(field: DataField): string {
   return positiveID(field.id)
+}
+
+function virtualFieldID(field: DataField): string {
+  return `data-record-field-${fieldIDText(field)}`
 }
 
 function fieldTypeText(field: DataField): string {
   return textValue(field.field_type) || 'text'
 }
 
+function fieldPlaceholder(field: DataField): string {
+  const customPlaceholder = textValue(field.placeholder)
+  if (customPlaceholder) {
+    return customPlaceholder
+  }
+
+  const label = textValue(field.name) || '内容'
+  const type = fieldTypeText(field)
+  if (
+    type === 'radio' ||
+    type === 'checkbox' ||
+    type === 'select' ||
+    type === 'multi_select' ||
+    type === 'date' ||
+    type === 'datetime' ||
+    type === 'boolean'
+  ) {
+    return `请选择${label}`
+  }
+  if (uploadFieldTypes.has(type)) {
+    return `请上传${label}`
+  }
+  return `请输入${label}`
+}
+
+function editorUploadRules(uploadRules: Record<string, UploadRule>) {
+  return uploadFieldKinds
+    .map((kind) => uploadRuleConfig(kind, uploadRules[kind]))
+    .filter((rule): rule is NonNullable<ReturnType<typeof uploadRuleConfig>> =>
+      Boolean(rule)
+    )
+}
+
+function uploadRuleConfig(kind: string, rule?: UploadRule) {
+  const ruleID = Number(rule?.id || 0)
+  if (!ruleID) {
+    return null
+  }
+  return {
+    ruleId: ruleID,
+    kind,
+    accept: textValue(rule?.accept) || `${kind}/*`,
+    transport: textValue(rule?.transport) || undefined,
+    bizKey: 'front_data_record',
+    bizName: '数据模板',
+  }
+}
+
+function uploadFieldUploadType(fieldType: string) {
+  switch (fieldType) {
+    case 'image':
+      return 'pic'
+    case 'video':
+      return 'video'
+    case 'audio':
+      return 'audio'
+    default:
+      return undefined
+  }
+}
+
+function uploadFieldKind(fieldType: string) {
+  return uploadFieldTypes.has(fieldType) ? fieldType : undefined
+}
+
 function maxUploadCount(field: DataField): number {
   const value = Number(field.max_count || 0)
   return value > 0 ? value : 1
-}
-
-function dateInputValue(value: unknown): string {
-  return textValue(value).slice(0, 10)
-}
-
-function dateTimeInputValue(value: unknown): string {
-  return textValue(value).replace(' ', 'T').slice(0, 16)
-}
-
-function uploadIcon(type: string) {
-  if (type === 'video') return <Video className='size-4' />
-  if (type === 'audio') return <AudioLines className='size-4' />
-  return <Image className='size-4' />
 }
 
 function textValue(value: unknown): string {
@@ -1007,12 +574,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function objectToTextRecord(value: Record<string, unknown>): FieldErrors {
-  const result: FieldErrors = {}
-  for (const [key, item] of Object.entries(value)) {
-    result[key] = textValue(item)
-  }
-  return result
-}
-
-const uploadFieldTypes = new Set(['image', 'video', 'audio'])
+const optionFieldTypes = new Set([
+  'radio',
+  'checkbox',
+  'select',
+  'multi_select',
+])
+const uploadFieldKinds = ['image', 'video', 'audio'] as const
+const uploadFieldTypes = new Set<string>(uploadFieldKinds)

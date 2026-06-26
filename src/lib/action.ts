@@ -1,7 +1,7 @@
 /**
  * action.ts - Action 执行器
  * 统一执行所有 action，所有 action 都必须从这里走
- * 支持动作类型：state / data / request / page / modal / save / delete / export / import / copy / increment / array
+ * 支持动作类型：state / data / request / page / modal / save / delete / export / import / increment / array
  * 支持 action 数组串行执行和 then 链式执行
  */
 import { createExportTask, readCurrentExportQuery } from './export-task'
@@ -104,8 +104,6 @@ export async function runActionConfigWithResult(
       return await handleExportAction(store, config, context)
     case 'import':
       return await handleImportAction(store, config, context)
-    case 'copy':
-      return await handleCopyAction(config, context)
     case 'increment':
       handleIncrementAction(store, config)
       return { success: true }
@@ -173,7 +171,7 @@ function handleStateAction(
       .getState()
       .setValueByPath(
         normalizeActionKeyPath('state', config.key),
-        resolveTemplateValue(config.value, context)
+        resolveContextValue(config.value, context)
       )
   }
 }
@@ -191,7 +189,7 @@ function handleDataAction(
       .getState()
       .setValueByPath(
         normalizeActionKeyPath('data', config.key),
-        resolveTemplateValue(config.value, context)
+        resolveContextValue(config.value, context)
       )
   }
 }
@@ -377,28 +375,6 @@ async function handleImportAction(
       uploadRuleId: Number(config.uploadRuleId || 0),
       then: config.then,
     },
-  }
-}
-
-async function handleCopyAction(
-  config: ActionConfig,
-  context?: ActionContext
-): Promise<ActionRunResult> {
-  const source = config.value ?? config.data ?? config.params ?? ''
-  const text = resolveCopyText(source, context)
-
-  if (!text) {
-    return { success: false, message: '复制内容为空' }
-  }
-
-  try {
-    await writeClipboardText(text)
-    return { success: true, data: text, message: '已复制' }
-  } catch (error: any) {
-    return {
-      success: false,
-      message: error?.message || '复制失败',
-    }
   }
 }
 
@@ -752,62 +728,6 @@ function resolveTemplateValue(value: any, context?: ActionContext): any {
   }
 
   return resolveContextValue(value, context)
-}
-
-function resolveCopyText(value: any, context?: ActionContext) {
-  if (typeof value === 'string') {
-    return value.replace(
-      /\$([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*)/g,
-      (_, path: string) => {
-        const resolved = resolveContextPath(path, context)
-        return resolved == null ? '' : String(resolved)
-      }
-    )
-  }
-
-  const resolved = resolveTemplateValue(value, context)
-  if (resolved == null) {
-    return ''
-  }
-  if (typeof resolved === 'string') {
-    return resolved
-  }
-  return JSON.stringify(resolved)
-}
-
-function resolveContextPath(path: string, context?: ActionContext) {
-  const [root, ...rest] = path.split('.')
-  const rootValue = context?.[root]
-  return rest.length === 0 ? rootValue : getByPath(rootValue, rest.join('.'))
-}
-
-async function writeClipboardText(text: string) {
-  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text)
-    return
-  }
-
-  if (typeof document === 'undefined') {
-    throw new Error('当前环境不支持复制')
-  }
-
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.setAttribute('readonly', '')
-  textarea.style.position = 'fixed'
-  textarea.style.left = '-9999px'
-  textarea.style.top = '0'
-  document.body.appendChild(textarea)
-  textarea.select()
-
-  try {
-    const copied = document.execCommand('copy')
-    if (!copied) {
-      throw new Error('复制失败')
-    }
-  } finally {
-    document.body.removeChild(textarea)
-  }
 }
 
 function resolveActionPayload(

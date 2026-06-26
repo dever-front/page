@@ -227,7 +227,7 @@ function getRemoteMenuChildren(item: RemoteMenuItem) {
 }
 
 function toAppUrl(path: string) {
-  const normalized = normalizeAppPath(path)
+  const normalized = normalizeAppUrl(path)
   if (!normalized) {
     return '/'
   }
@@ -282,6 +282,27 @@ function normalizeAppPath(path: string) {
 
   pathname = stripRouterBasePath(pathname).split('?')[0].split('#')[0].trim()
   const normalized = pathname.replace(/^\/+|\/+$/g, '')
+  if (!normalized) {
+    return ''
+  }
+  return `/${normalized}`
+}
+
+function normalizeAppUrl(path: string) {
+  const rawPath = String(path || '').trim()
+  let route = rawPath
+
+  try {
+    if (/^https?:\/\//i.test(rawPath)) {
+      const url = new URL(rawPath)
+      route = `${url.pathname}${url.search}${url.hash}`
+    }
+  } catch {
+    route = rawPath
+  }
+
+  route = stripRouterBasePath(route).trim()
+  const normalized = route.replace(/^\/+|\/+$/g, '')
   if (!normalized) {
     return ''
   }

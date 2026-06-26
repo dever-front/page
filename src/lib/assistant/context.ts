@@ -1,5 +1,4 @@
 import type { Item, OptionItem, PageSchemaType, ValidateRule } from '@/lib/schema'
-import { richTextDocToMarkdown } from '@/lib/rich-text'
 import type { AssistantPageRegistration } from './registry'
 
 const MAX_FIELDS = 80
@@ -29,7 +28,6 @@ export type AssistantFieldContext = {
   path: string
   name: string
   type: string
-  contentFormat?: 'json' | 'markdown'
   required?: boolean
   placeholder?: string
   info?: string
@@ -130,9 +128,6 @@ function normalizeAssistantFormField(item: Item): AssistantFieldContext | null {
     name: String(item.name || item.key || item.id || path).trim(),
     type: String(item.type || '').trim(),
   }
-  if (field.type === 'form-editor') {
-    field.contentFormat = item.meta?.contentFormat === 'markdown' ? 'markdown' : 'json'
-  }
 
   if (item.placeholder) {
     field.placeholder = item.placeholder
@@ -174,7 +169,7 @@ function collectAssistantFormValues(
     if (value == null || value === '') {
       continue
     }
-    values[field.path] = trimAssistantValue(value, field)
+    values[field.path] = trimAssistantValue(value)
   }
 
   return values
@@ -213,21 +208,14 @@ function normalizeFieldOptions(option: Item['option']): OptionItem[] {
     }))
 }
 
-function trimAssistantValue(
-  value: unknown,
-  field?: AssistantFieldContext
-): unknown {
-  if (field?.type === 'form-editor' && field.contentFormat !== 'markdown') {
-    const markdown = richTextDocToMarkdown(value).trim()
-    if (markdown) {
-      return trimAssistantText(markdown)
-    }
-  }
+function trimAssistantValue(value: unknown): unknown {
   if (typeof value === 'string') {
-    return trimAssistantText(value)
+    return value.length > MAX_VALUE_LENGTH
+      ? `${value.slice(0, MAX_VALUE_LENGTH)}...`
+      : value
   }
   if (Array.isArray(value)) {
-    return value.slice(0, 20).map((item) => trimAssistantValue(item))
+    return value.slice(0, 20).map(trimAssistantValue)
   }
   if (isPlainObject(value)) {
     const entries = Object.entries(value).slice(0, 30)
@@ -236,12 +224,6 @@ function trimAssistantValue(
     )
   }
   return value
-}
-
-function trimAssistantText(value: string) {
-  return value.length > MAX_VALUE_LENGTH
-    ? `${value.slice(0, MAX_VALUE_LENGTH)}...`
-    : value
 }
 
 function getNestedValue(source: Record<string, unknown>, path: string) {

@@ -4,10 +4,6 @@ import type { FrontPermissionItem } from '@/lib/request'
 import type { PageStore } from '@/lib/store'
 import { buildAssistantPageContext, type AssistantPageContext } from './context'
 import {
-  findAssistantField,
-  normalizeAssistantFieldValue,
-} from './field-values'
-import {
   findAssistantPage,
   subscribeAssistantRegistry,
   type AssistantPageRegistration,
@@ -114,7 +110,6 @@ async function applyFormAction(
   const allowedPaths = new Set(
     context?.form?.fields.map((field) => normalizeAssistantActionPath(field.path)) ?? []
   )
-  const fields = context?.form?.fields || []
 
   if (action.type === 'fill_form') {
     const target = normalizeAssistantActionPath(action.target)
@@ -122,12 +117,7 @@ async function applyFormAction(
       toast.error('AI 返回的字段不在当前表单中。')
       return false
     }
-    await applyAssistantFormValues(registration, {
-      [target]: normalizeAssistantFieldValue(
-        findAssistantField(fields, target),
-        action.value
-      ),
-    })
+    await applyAssistantFormValues(registration, { [target]: action.value })
     toast.success(action.summary || '已填入字段')
     return true
   }
@@ -139,10 +129,7 @@ async function applyFormAction(
     if (!isAllowedFormPath(target, allowedPaths)) {
       continue
     }
-    values[target] = normalizeAssistantFieldValue(
-      findAssistantField(fields, target),
-      value
-    )
+    values[target] = value
     applied++
   }
 

@@ -58,6 +58,10 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
         : null
 
   const runCurrentAction = async () => {
+    if (item.meta?.validateForm === true && !store.getState().validateForm()) {
+      return false
+    }
+
     if (item.meta?.back === true) {
       const target = backTarget ?? fallbackBackTarget
       if (target) {

@@ -316,7 +316,7 @@ function renderRichTextPlaceholder(node: RichTextNode) {
   const attrs = node.attrs || {}
   const status = String(attrs.status || 'pending')
   const title = String(attrs.title || attrs.kind || '素材生成').trim()
-  const text = String(attrs.error || attrs.text || '').trim()
+  const text = visiblePlaceholderText(attrs, status)
   const progress = normalizePlaceholderProgress(attrs.progress)
   const failed = status === 'failed'
   const succeeded = status === 'succeeded'
@@ -351,6 +351,28 @@ function renderRichTextPlaceholder(node: RichTextNode) {
           ? renderElement('span', { class: 'shrink-0 tabular-nums' }, `${progress}%`)
           : '')
     ) + renderElement('div', { class: 'h-1.5 overflow-hidden rounded-full bg-muted' }, progressBar)
+  )
+}
+
+function visiblePlaceholderText(attrs: Record<string, unknown>, status: string) {
+  const error = String(attrs.error || '').trim()
+  if (error) {
+    return error
+  }
+  const text = String(attrs.text || '').trim()
+  if (!text) {
+    return ''
+  }
+  if ((status === 'pending' || status === 'running') && isDefaultPlaceholderStatusText(text)) {
+    return ''
+  }
+  return text
+}
+
+function isDefaultPlaceholderStatusText(text: string) {
+  return (
+    /^(图片|图像|视频|音频|文件|附件|素材)生成中，请稍后。?$/.test(text) ||
+    text === '正在调用能力'
   )
 }
 

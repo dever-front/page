@@ -39,10 +39,6 @@ import {
   buildAssistantInteractionInput,
   normalizeAssistantInteraction,
 } from './interaction'
-import {
-  normalizeAssistantFieldValue,
-  normalizeAssistantFieldValues,
-} from './field-values'
 
 type AssistantQuickFillMode = AssistantFormTaskMode
 
@@ -585,9 +581,7 @@ async function applyAssistantQuickFillResult({
   if (actions.length === 0 && field) {
     const fallbackText = cleanFieldText(parsed.cleanText || finalText)
     if (fallbackText) {
-      store
-        .getState()
-        .setValueByPath(field.path, normalizeAssistantFieldValue(field, fallbackText))
+      store.getState().setValueByPath(field.path, fallbackText)
       toast.success(`已生成${field.name}`)
       return { applied: true, text: fallbackText }
     }
@@ -636,10 +630,7 @@ async function applyAssistantContextQuickFillResult({
   if (actions.length === 0 && field) {
     const fallbackText = cleanFieldText(parsed.cleanText || finalText)
     if (fallbackText) {
-      await onApplyField?.(
-        field.path,
-        normalizeAssistantFieldValue(field, fallbackText)
-      )
+      await onApplyField?.(field.path, fallbackText)
       toast.success(`已生成${field.name}`)
       return { applied: true, text: fallbackText }
     }
@@ -648,31 +639,22 @@ async function applyAssistantContextQuickFillResult({
   let applied = false
   for (const action of actions) {
     if (action.type === 'fill_form') {
-      const normalizedValue = normalizeAssistantFieldValues(
-        context.form?.fields || [],
-        { [normalizeAssistantActionPath(action.target)]: action.value }
-      )
-      const target = Object.keys(normalizedValue)[0] || action.target
       if (onApplyField) {
-        await onApplyField(target, normalizedValue[target])
+        await onApplyField(action.target, action.value)
         applied = true
       } else if (onApplyValues) {
-        await onApplyValues(normalizedValue)
+        await onApplyValues({ [normalizeAssistantActionPath(action.target)]: action.value })
         applied = true
       }
       continue
     }
     if (action.type === 'patch_form') {
       const values = filterPatchValues(action.values, context.form?.fields || [])
-      const normalizedValues = normalizeAssistantFieldValues(
-        context.form?.fields || [],
-        values
-      )
       if (onApplyValues) {
-        await onApplyValues(normalizedValues)
-        applied = Object.keys(normalizedValues).length > 0
+        await onApplyValues(values)
+        applied = Object.keys(values).length > 0
       } else if (onApplyField) {
-        for (const [path, value] of Object.entries(normalizedValues)) {
+        for (const [path, value] of Object.entries(values)) {
           await onApplyField(path, value)
           applied = true
         }
