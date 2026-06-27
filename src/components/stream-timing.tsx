@@ -233,6 +233,7 @@ export function StreamTimingBadge({
   const isWaiting = timing.status === 'waiting'
   const label = streamTimingStatusLabel(timing.status)
   const percent = normalizeStreamPercent(timing.percent)
+  const detailLabel = visibleStreamTimingLabel(timing.label)
 
   return (
     <div
@@ -247,7 +248,7 @@ export function StreamTimingBadge({
               : 'border-muted bg-background/70 text-muted-foreground',
         className
       )}
-      title={timing.label || undefined}
+      title={detailLabel || undefined}
     >
       <span
         className={cn(
@@ -270,13 +271,25 @@ export function StreamTimingBadge({
           {percent}%
         </span>
       ) : null}
-      {timing.label ? (
+      {detailLabel ? (
         <span className='max-w-56 min-w-0 truncate text-muted-foreground'>
-          {timing.label}
+          {detailLabel}
         </span>
       ) : null}
     </div>
   )
+}
+
+function visibleStreamTimingLabel(value: unknown) {
+  const label = streamTimingText(value)
+  if (!label) {
+    return ''
+  }
+  const genericLabels = new Set([
+    '等待生成结果',
+    '等待智能体返回',
+  ])
+  return genericLabels.has(label) ? '' : label
 }
 
 function streamTimingStatusLabel(status: StreamTimingStatus) {

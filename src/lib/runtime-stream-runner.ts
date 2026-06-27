@@ -96,7 +96,7 @@ export async function runRuntimeStream<TOutput = Record<string, unknown>>({
       frame as RuntimeStreamFrame<Record<string, any>>
     ) as TOutput
     const outputRecord = output as Record<string, unknown>
-    const event = streamValueText(outputRecord.event).toLowerCase()
+    const event = runtimeStreamEvent(outputRecord)
     const frameText = streamValueText(outputRecord.text)
     const status = { text: frameText, output, frame }
 
@@ -156,7 +156,15 @@ function isRuntimeStatusEvent(event: string) {
     RUN_EVENT.nodeFinished,
     RUN_EVENT.edgeActive,
     RUN_EVENT.waiting,
+    RUN_EVENT.resultCreated,
+    RUN_EVENT.resultProgress,
+    RUN_EVENT.taskProgress,
+    RUN_EVENT.taskDone,
   ].includes(event)
+}
+
+function runtimeStreamEvent(output: Record<string, unknown>) {
+  return streamValueText(output.semantic_event || output.event).toLowerCase()
 }
 
 export async function watchRuntimeStream<TOutput = Record<string, unknown>>({

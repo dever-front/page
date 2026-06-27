@@ -15,6 +15,10 @@ export const RUN_EVENT = {
   nodeFinished: 'node_finished',
   edgeActive: 'edge_active',
   waiting: 'waiting',
+  resultCreated: 'result_created',
+  resultProgress: 'result_progress',
+  taskProgress: 'task_progress',
+  taskDone: 'task_done',
 } as const
 
 export const RUN_FEATURE = {
@@ -42,6 +46,7 @@ export type RunEventKind = (typeof RUN_EVENT_TYPE)[keyof typeof RUN_EVENT_TYPE]
 
 export type RunEventOutput = {
   event?: RunEventType | string
+  semantic_event?: RunEventType | string
   feature?: RunFeatureType | string
   event_type?: RunEventKind | string
   scope?: 'run' | 'think' | 'node' | 'edge' | string
