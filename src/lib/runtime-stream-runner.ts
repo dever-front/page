@@ -1,5 +1,6 @@
 import { requestRaw } from '@/lib/request'
 import { RUN_EVENT } from '@/lib/run-events'
+import { normalizeRuntimeFrameOutput } from '@/lib/runtime-stream-output'
 import {
   assertRuntimeStreamFrameSuccess,
   readRuntimeStreamEvents,
@@ -7,7 +8,6 @@ import {
   streamValueText,
   type RuntimeStreamFrame,
 } from '@/lib/stream'
-import { normalizeRuntimeFrameOutput } from '@/lib/runtime-stream-output'
 
 export type RuntimeStreamStatus<TOutput = Record<string, unknown>> = {
   text: string
@@ -23,6 +23,7 @@ export type RuntimeStreamOptions<TOutput = Record<string, unknown>> = {
   body: Record<string, unknown>
   blockMs?: number
   transport?: 'sse' | 'poll'
+  fallbackToPoll?: boolean
   useStartFrameStreamID?: boolean
   signal?: AbortSignal
   missingRequestIDMessage?: string
@@ -45,6 +46,7 @@ export type RuntimeStreamWatchOptions<TOutput = Record<string, unknown>> = {
   lastID?: string
   blockMs?: number
   transport?: 'sse' | 'poll'
+  fallbackToPoll?: boolean
   signal?: AbortSignal
   stopOnResult?: boolean
   recoverOnError?: boolean
@@ -66,6 +68,7 @@ export async function runRuntimeStream<TOutput = Record<string, unknown>>({
   body,
   blockMs = 1000,
   transport = 'sse',
+  fallbackToPoll = true,
   useStartFrameStreamID = false,
   signal,
   missingRequestIDMessage = '流式请求缺少 request_id。',
@@ -84,8 +87,9 @@ export async function runRuntimeStream<TOutput = Record<string, unknown>>({
   }
   onRequestID?.(requestID)
 
-  let lastID =
-    useStartFrameStreamID ? streamValueText(startFrame?.stream_id) || '0-0' : '0-0'
+  let lastID = useStartFrameStreamID
+    ? streamValueText(startFrame?.stream_id) || '0-0'
+    : '0-0'
   let textOutput = ''
   let finalOutput = {} as TOutput
 
@@ -124,6 +128,7 @@ export async function runRuntimeStream<TOutput = Record<string, unknown>>({
     lastID,
     blockMs,
     transport,
+    fallbackToPoll,
     signal,
     stopOnResult: true,
     onFrame: (frame) => {
@@ -173,6 +178,7 @@ export async function watchRuntimeStream<TOutput = Record<string, unknown>>({
   lastID = '0-0',
   blockMs = 1000,
   transport = 'sse',
+  fallbackToPoll = true,
   signal,
   stopOnResult = true,
   recoverOnError = true,
@@ -194,11 +200,11 @@ export async function watchRuntimeStream<TOutput = Record<string, unknown>>({
       cursor = streamID
     }
     assertRuntimeStreamFrameSuccess(frame)
-    if (onFrame?.(frame) === false) {
-      return false
-    }
+    const shouldStop = onFrame?.(frame) === false
     if (stopOnResult && frame?.type === 'result') {
       completed = true
+    }
+    if (shouldStop || completed) {
       return false
     }
   }
@@ -208,8 +214,13 @@ export async function watchRuntimeStream<TOutput = Record<string, unknown>>({
       throw error
     }
     await waitRuntimeStreamRetry(nextRetryDelayMs, signal)
-    nextRetryDelayMs = Math.min(Math.max(nextRetryDelayMs * 2, 250), maxRetryDelayMs)
-    mode = 'poll'
+    nextRetryDelayMs = Math.min(
+      Math.max(nextRetryDelayMs * 2, 250),
+      maxRetryDelayMs
+    )
+    if (fallbackToPoll) {
+      mode = 'poll'
+    }
   }
 
   while (!signal?.aborted && !completed) {
@@ -223,8 +234,15 @@ export async function watchRuntimeStream<TOutput = Record<string, unknown>>({
           consumeFrame,
           signal
         )
-        if (!completed) {
+        if (!completed && fallbackToPoll) {
           mode = 'poll'
+        } else if (!completed) {
+          await waitRuntimeStreamRetry(nextRetryDelayMs, signal)
+          nextRetryDelayMs = Math.min(
+            Math.max(nextRetryDelayMs * 2, 250),
+            maxRetryDelayMs
+          )
+          continue
         }
         nextRetryDelayMs = Math.max(250, retryDelayMs)
       } catch (error) {
@@ -258,8 +276,11 @@ function isRecoverableRuntimeStreamError(error: unknown) {
   if (error instanceof TypeError) {
     return true
   }
-  const message = error instanceof Error ? error.message : streamValueText(error)
-  return /network|failed to fetch|读取运行流失败\((408|425|429|500|502|503|504)\)/i.test(message)
+  const message =
+    error instanceof Error ? error.message : streamValueText(error)
+  return /network|failed to fetch|读取运行流失败\((408|425|429|500|502|503|504)\)/i.test(
+    message
+  )
 }
 
 function waitRuntimeStreamRetry(ms: number, signal?: AbortSignal) {
