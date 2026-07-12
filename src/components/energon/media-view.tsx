@@ -17,14 +17,18 @@ import {
   type ResourceUploadRule,
 } from '@/lib/resource'
 import { importRemoteFileByRuleStream, type UploadFileItem } from '@/lib/upload'
+import { cn } from '@/lib/utils'
 
 type EnergonMediaKind = 'image' | 'video' | 'audio' | 'file'
+export type EnergonMediaLayout = 'default' | 'chat'
 
 type EnergonMediaViewProps = {
   kind: EnergonMediaKind
   urls: string[]
   meta?: Record<string, any>
   uploadRules?: ResourceUploadRule[]
+  layout?: EnergonMediaLayout
+  previewLayerZIndex?: number
 }
 
 type UploadState = {
@@ -38,6 +42,8 @@ export function EnergonMediaView({
   urls,
   meta,
   uploadRules = [],
+  layout = 'default',
+  previewLayerZIndex,
 }: EnergonMediaViewProps) {
   const baseItems = useMemo(
     () => normalizeUploadUrlItems(urls, { kind }),
@@ -133,6 +139,7 @@ export function EnergonMediaView({
           uploadRule={uploadRule}
           uploadState={uploadState}
           uploadedByURL={uploadedByURL}
+          layout={layout}
           onPreview={openPreview}
           onUpload={saveResource}
         />
@@ -141,9 +148,11 @@ export function EnergonMediaView({
           kind={kind}
           items={previewItems}
           sourceItems={baseItems}
+          meta={meta}
           uploadRule={uploadRule}
           uploadState={uploadState}
           uploadedByURL={uploadedByURL}
+          layout={layout}
           onPreview={openPreview}
           onUpload={saveResource}
         />
@@ -154,21 +163,31 @@ export function EnergonMediaView({
       <ResourcePreviewDialogLazy
         open={previewOpen}
         title="生成资源预览"
-        description="可预览当前生成的图片、视频、音频或文件，也可以保存到资源库。"
+        description={
+          uploadRule
+            ? '可预览当前生成的图片、视频、音频或文件，也可以保存到资源库。'
+            : '可预览当前生成的图片、视频、音频或文件。'
+        }
         items={previewItems}
         initialItemId={previewInitialID}
+        presentation={layout === 'chat' ? 'drawer' : 'dialog'}
+        assistantLayer={layout === 'chat'}
+        layerZIndex={previewLayerZIndex}
         onOpenChange={setPreviewOpen}
-        renderActions={(item) =>
-          item ? (
-            <MediaUploadButton
-              item={resolveSourceItem(item, baseItems, uploadedByURL)}
-              kind={kind}
-              uploadRule={uploadRule}
-              uploadState={uploadState}
-              uploadedByURL={uploadedByURL}
-              onUpload={saveResource}
-            />
-          ) : null
+        renderActions={
+          uploadRule
+            ? (item) =>
+                item ? (
+                  <MediaUploadButton
+                    item={resolveSourceItem(item, baseItems, uploadedByURL)}
+                    kind={kind}
+                    uploadRule={uploadRule}
+                    uploadState={uploadState}
+                    uploadedByURL={uploadedByURL}
+                    onUpload={saveResource}
+                  />
+                ) : null
+            : undefined
         }
       />
     </div>
@@ -182,6 +201,7 @@ function ImageGrid({
   uploadRule,
   uploadState,
   uploadedByURL,
+  layout,
   onPreview,
   onUpload,
 }: {
@@ -191,44 +211,76 @@ function ImageGrid({
   uploadRule?: ResourceUploadRule
   uploadState: Record<string, UploadState>
   uploadedByURL: Record<string, UploadFileItem>
+  layout: EnergonMediaLayout
   onPreview: (item: UploadFileItem) => void
   onUpload: (item: UploadFileItem) => void
 }) {
   const width = Number(meta?.width || 0)
   const height = Number(meta?.height || 0)
+  const chatAspectRatio = layout === 'chat' ? mediaAspectRatio(meta) : ''
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div
+      className={cn(
+        'grid',
+        layout === 'chat' ? 'agent-chat-media-grid' : 'gap-3',
+        layout !== 'chat' && 'sm:grid-cols-2'
+      )}
+      data-count={layout === 'chat' ? items.length : undefined}
+    >
       {items.map((item, index) => {
         const sourceItem = sourceItems[index] || item
         const url = resourceURL(item)
+        const chatLayout = layout === 'chat'
         return (
-          <div key={String(sourceItem.id)} className="rounded-xl border bg-background p-2">
+          <div
+            key={String(sourceItem.id)}
+            className={cn(
+              chatLayout
+                ? 'min-w-0'
+                : 'rounded-xl border bg-background p-2'
+            )}
+          >
             <button
               type="button"
-              className="block w-full overflow-hidden rounded-lg bg-muted/30"
+              className={cn(
+                'block w-full overflow-hidden rounded-lg',
+                !chatLayout && 'bg-muted/30'
+              )}
+              style={
+                chatAspectRatio ? { aspectRatio: chatAspectRatio } : undefined
+              }
               onClick={() => onPreview(sourceItem)}
             >
               <img
                 src={url}
                 alt={item.name}
-                className="max-h-80 w-full object-contain transition-transform hover:scale-[1.01]"
+                className={cn(
+                  'block w-full object-contain transition-transform hover:scale-[1.01]',
+                  chatLayout
+                    ? chatAspectRatio
+                      ? 'h-full rounded-lg object-cover'
+                      : 'h-auto rounded-lg'
+                    : 'max-h-80'
+                )}
               />
             </button>
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <div className="min-w-0 text-xs text-muted-foreground">
-                <div className="truncate">{item.name}</div>
-                {width > 0 && height > 0 ? <div>{width} x {height}</div> : null}
+            {!chatLayout ? (
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <div className="min-w-0 text-xs text-muted-foreground">
+                  <div className="truncate">{item.name}</div>
+                  {width > 0 && height > 0 ? <div>{width} x {height}</div> : null}
+                </div>
+                <MediaUploadButton
+                  item={sourceItem}
+                  kind="image"
+                  uploadRule={uploadRule}
+                  uploadState={uploadState}
+                  uploadedByURL={uploadedByURL}
+                  onUpload={onUpload}
+                />
               </div>
-              <MediaUploadButton
-                item={sourceItem}
-                kind="image"
-                uploadRule={uploadRule}
-                uploadState={uploadState}
-                uploadedByURL={uploadedByURL}
-                onUpload={onUpload}
-              />
-            </div>
+            ) : null}
           </div>
         )
       })}
@@ -236,32 +288,78 @@ function ImageGrid({
   )
 }
 
+function mediaAspectRatio(meta?: Record<string, any>) {
+  for (const value of [
+    meta?.tool_ratio,
+    meta?.aspectRatio,
+    meta?.aspect_ratio,
+    meta?.ratio,
+  ]) {
+    const ratio = normalizeAspectRatio(value)
+    if (ratio) {
+      return ratio
+    }
+  }
+  const width = Number(meta?.width || 0)
+  const height = Number(meta?.height || 0)
+  return width > 0 && height > 0 ? `${width} / ${height}` : ''
+}
+
+function normalizeAspectRatio(value: unknown) {
+  const match = String(value || '')
+    .trim()
+    .match(/^(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)$/)
+  if (!match || Number(match[1]) <= 0 || Number(match[2]) <= 0) {
+    return ''
+  }
+  return `${match[1]} / ${match[2]}`
+}
+
 function MediaList({
   kind,
   items,
   sourceItems,
+  meta,
   uploadRule,
   uploadState,
   uploadedByURL,
+  layout,
   onPreview,
   onUpload,
 }: {
   kind: EnergonMediaKind
   items: UploadFileItem[]
   sourceItems: UploadFileItem[]
+  meta?: Record<string, any>
   uploadRule?: ResourceUploadRule
   uploadState: Record<string, UploadState>
   uploadedByURL: Record<string, UploadFileItem>
+  layout: EnergonMediaLayout
   onPreview: (item: UploadFileItem) => void
   onUpload: (item: UploadFileItem) => void
 }) {
   return (
-    <div className="space-y-3">
+    <div
+      className={layout === 'chat' ? 'agent-chat-media-grid' : 'space-y-3'}
+      data-count={layout === 'chat' ? items.length : undefined}
+    >
       {items.map((item, index) => {
         const sourceItem = sourceItems[index] || item
         return (
-          <div key={String(sourceItem.id)} className="rounded-xl border bg-background p-3">
-            <MediaPreviewInline kind={kind} item={item} onPreview={() => onPreview(sourceItem)} />
+          <div
+            key={String(sourceItem.id)}
+            className={cn(
+              'min-w-0 border bg-background p-3',
+              layout === 'chat' ? 'rounded-lg' : 'rounded-xl'
+            )}
+          >
+            <MediaPreviewInline
+              kind={kind}
+              item={item}
+              meta={meta}
+              layout={layout}
+              onPreview={() => onPreview(sourceItem)}
+            />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0 flex items-center gap-2 text-sm">
                 {kind === 'audio' ? <Music4 className="size-4 text-muted-foreground" /> : null}
@@ -293,17 +391,33 @@ function MediaList({
 function MediaPreviewInline({
   kind,
   item,
+  meta,
+  layout,
   onPreview,
 }: {
   kind: EnergonMediaKind
   item: UploadFileItem
+  meta?: Record<string, any>
+  layout: EnergonMediaLayout
   onPreview: () => void
 }) {
   const url = resourceURL(item)
   if (kind === 'video') {
+    const aspectRatio =
+      layout === 'chat' ? mediaAspectRatio(meta) || '16 / 9' : ''
     return (
-      <div className="group relative overflow-hidden rounded-lg border bg-black">
-        <video src={url} controls className="max-h-96 w-full bg-black" />
+      <div
+        className="group relative overflow-hidden rounded-lg border bg-black"
+        style={aspectRatio ? { aspectRatio } : undefined}
+      >
+        <video
+          src={url}
+          controls
+          className={cn(
+            'w-full bg-black',
+            aspectRatio ? 'h-full object-cover' : 'max-h-96'
+          )}
+        />
         <Button
           type="button"
           size="sm"

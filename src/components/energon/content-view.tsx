@@ -8,7 +8,10 @@ import {
 } from '@/lib/rich-text'
 import { RichTextView } from '@/components/rich-text-view'
 import { Badge } from '@/components/ui/badge'
-import { EnergonMediaView } from '@/components/energon/media-view'
+import {
+  EnergonMediaView,
+  type EnergonMediaLayout,
+} from '@/components/energon/media-view'
 import { EnergonProgressBlock, normalizeEnergonPercent } from '@/components/energon/progress'
 import { normalizeAgentResultOutputValue } from '@/lib/agent-result-protocol'
 import { richTextLinkClassName } from '@/lib/rich-text-style'
@@ -37,6 +40,8 @@ type EnergonContentViewProps = {
   emptyText?: string
   className?: string
   uploadRules?: ResourceUploadRule[]
+  mediaLayout?: EnergonMediaLayout
+  mediaPreviewLayerZIndex?: number
 }
 
 const outputScalarKeys = [
@@ -63,6 +68,8 @@ export function EnergonContentView({
   emptyText = '暂无内容。',
   className,
   uploadRules,
+  mediaLayout = 'default',
+  mediaPreviewLayerZIndex,
 }: EnergonContentViewProps) {
   const items = normalizeEnergonOutput(output)
 
@@ -77,6 +84,8 @@ export function EnergonContentView({
           key={`${item.event || 'output'}-${index}`}
           output={item}
           uploadRules={uploadRules}
+          mediaLayout={mediaLayout}
+          mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
         />
       ))}
       {streaming ? <StreamingCursor /> : null}
@@ -134,9 +143,13 @@ function normalizeOutput(value: any): EnergonOutput {
 function EnergonOutputBlock({
   output,
   uploadRules,
+  mediaLayout,
+  mediaPreviewLayerZIndex,
 }: {
   output: EnergonOutput
   uploadRules?: ResourceUploadRule[]
+  mediaLayout: EnergonMediaLayout
+  mediaPreviewLayerZIndex?: number
 }) {
   const event = valueText(output.event).toLowerCase()
   const isProgressEvent = event === 'start' || event === 'progress'
@@ -178,18 +191,29 @@ function EnergonOutputBlock({
         urls={imageUrls}
         meta={output.meta}
         uploadRules={uploadRules}
+        mediaLayout={mediaLayout}
+        mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
       />
       <VideoBlock
         urls={videoUrls}
+        meta={output.meta}
         uploadRules={uploadRules}
+        mediaLayout={mediaLayout}
+        mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
       />
       <AudioBlock
         urls={audioUrls}
+        meta={output.meta}
         uploadRules={uploadRules}
+        mediaLayout={mediaLayout}
+        mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
       />
       <FileBlock
         urls={normalizeStringList(output.files)}
+        meta={output.meta}
         uploadRules={uploadRules}
+        mediaLayout={mediaLayout}
+        mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
       />
       {output.json != null ? <JsonFallback value={output.json} event={event} /> : null}
     </div>
@@ -242,54 +266,112 @@ function ImageBlock({
   urls,
   meta,
   uploadRules,
+  mediaLayout,
+  mediaPreviewLayerZIndex,
 }: {
   urls: string[]
   meta?: Record<string, any>
   uploadRules?: ResourceUploadRule[]
+  mediaLayout: EnergonMediaLayout
+  mediaPreviewLayerZIndex?: number
 }) {
   if (urls.length === 0) {
     return null
   }
-  return <EnergonMediaView kind="image" urls={urls} meta={meta} uploadRules={uploadRules} />
+  return (
+    <EnergonMediaView
+      kind="image"
+      urls={urls}
+      meta={meta}
+      uploadRules={uploadRules}
+      layout={mediaLayout}
+      previewLayerZIndex={mediaPreviewLayerZIndex}
+    />
+  )
 }
 
 function VideoBlock({
   urls,
+  meta,
   uploadRules,
+  mediaLayout,
+  mediaPreviewLayerZIndex,
 }: {
   urls: string[]
+  meta?: Record<string, any>
   uploadRules?: ResourceUploadRule[]
+  mediaLayout: EnergonMediaLayout
+  mediaPreviewLayerZIndex?: number
 }) {
   if (urls.length === 0) {
     return null
   }
-  return <EnergonMediaView kind="video" urls={urls} uploadRules={uploadRules} />
+  return (
+    <EnergonMediaView
+      kind="video"
+      urls={urls}
+      meta={meta}
+      uploadRules={uploadRules}
+      layout={mediaLayout}
+      previewLayerZIndex={mediaPreviewLayerZIndex}
+    />
+  )
 }
 
 function AudioBlock({
   urls,
+  meta,
   uploadRules,
+  mediaLayout,
+  mediaPreviewLayerZIndex,
 }: {
   urls: string[]
+  meta?: Record<string, any>
   uploadRules?: ResourceUploadRule[]
+  mediaLayout: EnergonMediaLayout
+  mediaPreviewLayerZIndex?: number
 }) {
   if (urls.length === 0) {
     return null
   }
-  return <EnergonMediaView kind="audio" urls={urls} uploadRules={uploadRules} />
+  return (
+    <EnergonMediaView
+      kind="audio"
+      urls={urls}
+      meta={meta}
+      uploadRules={uploadRules}
+      layout={mediaLayout}
+      previewLayerZIndex={mediaPreviewLayerZIndex}
+    />
+  )
 }
 
 function FileBlock({
   urls,
+  meta,
   uploadRules,
+  mediaLayout,
+  mediaPreviewLayerZIndex,
 }: {
   urls: string[]
+  meta?: Record<string, any>
   uploadRules?: ResourceUploadRule[]
+  mediaLayout: EnergonMediaLayout
+  mediaPreviewLayerZIndex?: number
 }) {
   if (urls.length === 0) {
     return null
   }
-  return <EnergonMediaView kind="file" urls={urls} uploadRules={uploadRules} />
+  return (
+    <EnergonMediaView
+      kind="file"
+      urls={urls}
+      meta={meta}
+      uploadRules={uploadRules}
+      layout={mediaLayout}
+      previewLayerZIndex={mediaPreviewLayerZIndex}
+    />
+  )
 }
 
 function JsonFallback({ value, event }: { value: any; event: string }) {

@@ -52,6 +52,7 @@ function SheetContent({
   children,
   side = 'right',
   showCloseButton = true,
+  showOverlay = true,
   onFocusOutside,
   onInteractOutside,
   onPointerDownOutside,
@@ -61,6 +62,7 @@ function SheetContent({
   layerZIndex?: number
   side?: 'top' | 'right' | 'bottom' | 'left'
   showCloseButton?: boolean
+  showOverlay?: boolean
 }) {
   const assistantLayer = isAssistantLayerProp(props as Record<string, unknown>)
 
@@ -72,7 +74,7 @@ function SheetContent({
         className={cn('pointer-events-none fixed inset-0 z-50', layerClassName)}
         style={layerZIndex ? { zIndex: layerZIndex } : undefined}
       >
-        <SheetOverlay className='pointer-events-auto z-0' />
+        {showOverlay ? <SheetOverlay className='pointer-events-auto z-0' /> : null}
         <SheetPrimitive.Content
           data-slot='sheet-content'
           onFocusOutside={(event) => {

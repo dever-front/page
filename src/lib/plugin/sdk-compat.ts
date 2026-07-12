@@ -41,6 +41,7 @@ import * as energonProgressModule from '@/components/energon/progress'
 import * as siteLogoModule from '@/components/layout/site-logo'
 import * as richTextEditorModule from '@/components/rich-text-editor'
 import * as richTextViewModule from '@/components/rich-text-view'
+import * as referenceComposerModule from '@/components/reference-composer'
 import * as searchableOptionPickerModule from '@/components/searchable-option-picker'
 import * as streamTimingModule from '@/components/stream-timing'
 import { defineFrontPlugin, lazyNode, mergePluginNodes } from './types'
@@ -84,6 +85,7 @@ function createCompatModules(): Record<string, Record<string, any>> {
     '@/components/layout/site-logo': siteLogoModule,
     '@/components/rich-text-editor': richTextEditorModule,
     '@/components/rich-text-view': richTextViewModule,
+    '@/components/reference-composer': referenceComposerModule,
     '@/components/searchable-option-picker': searchableOptionPickerModule,
     '@/components/stream-timing': streamTimingModule,
     '@/components/ui/button': { Button, buttonVariants },

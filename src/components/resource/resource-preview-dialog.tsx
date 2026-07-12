@@ -16,6 +16,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { downloadUploadFile, type UploadFileItem } from '@/lib/upload'
 import {
@@ -35,6 +42,8 @@ export type ResourcePreviewDialogProps = {
   renderActions?: (item?: UploadFileItem) => ReactNode
   showDownload?: boolean
   layerClassName?: string
+  layerZIndex?: number
+  presentation?: 'dialog' | 'drawer'
 }
 
 export function ResourcePreviewDialog({
@@ -49,13 +58,14 @@ export function ResourcePreviewDialog({
   renderActions,
   showDownload = true,
   layerClassName = 'z-[80]',
+  layerZIndex,
+  presentation = 'dialog',
 }: ResourcePreviewDialogProps) {
   const previewItems = useMemo(() => items.filter(Boolean), [items])
   const [activeIndex, setActiveIndex] = useState(0)
   const currentItem = previewItems[activeIndex]
   const previewKind = resolveResourcePreviewKind(currentItem)
   const previewUrl = open ? resolvePreviewUrl(currentItem, previewKind) : ''
-  const hasMultiple = previewItems.length > 1
 
   useEffect(() => {
     if (!open) {
@@ -94,92 +104,233 @@ export function ResourcePreviewDialog({
     setActiveIndex((current) => (current + direction + previewItems.length) % previewItems.length)
   }
 
+  const panel = (
+    <ResourcePreviewPanel
+      items={previewItems}
+      activeIndex={activeIndex}
+      currentItem={currentItem}
+      previewKind={previewKind}
+      previewUrl={previewUrl}
+      presentation={presentation}
+      footerExtra={footerExtra}
+      renderActions={renderActions}
+      showDownload={showDownload}
+      onSelect={setActiveIndex}
+      onJump={jumpTo}
+    />
+  )
+
+  if (presentation === 'drawer') {
+    return (
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent
+          data-assistant-layer={assistantLayer ? 'true' : undefined}
+          layerClassName={layerClassName}
+          layerZIndex={layerZIndex}
+          side="right"
+          showOverlay={false}
+          className="w-full gap-0 overflow-hidden p-0 shadow-[-16px_0_40px_rgba(15,23,42,0.12)] sm:w-[66vw] sm:max-w-[66vw]"
+        >
+          <SheetHeader className="shrink-0 border-b px-6 py-4 text-start">
+            <SheetTitle>{title}</SheetTitle>
+            <SheetDescription>{description}</SheetDescription>
+          </SheetHeader>
+          {panel}
+        </SheetContent>
+      </Sheet>
+    )
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-assistant-layer={assistantLayer ? 'true' : undefined}
         layerClassName={layerClassName}
+        layerZIndex={layerZIndex}
         className="flex h-[88vh] max-h-[88vh] max-w-5xl flex-col gap-0 overflow-hidden p-0"
       >
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/30 px-6 py-6 sm:px-16">
-            {hasMultiple ? (
-              <PreviewSwitchButton
-                direction="left"
-                disabled={previewItems.length <= 1}
-                onClick={() => jumpTo(-1)}
-              />
-            ) : null}
-
-            <ResourcePreviewBody
-              item={currentItem}
-              previewKind={previewKind}
-              previewUrl={previewUrl}
-            />
-
-            {hasMultiple ? (
-              <PreviewSwitchButton
-                direction="right"
-                disabled={previewItems.length <= 1}
-                onClick={() => jumpTo(1)}
-              />
-            ) : null}
-          </div>
-
-          <div className="flex flex-col gap-4 border-t bg-background px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0 flex-1 space-y-1">
-              <ResourcePreviewTitle title={currentItem?.name || '未选择资源'} />
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                {currentItem ? (
-                  <>
-                    <span>{formatUploadSize(Number(currentItem.size || 0))}</span>
-                    {currentItem.ext ? (
-                      <span>{String(currentItem.ext).replace(/^\./, '').toUpperCase()}</span>
-                    ) : null}
-                    {currentItem.created_at ? <span>{formatCreatedAt(currentItem.created_at)}</span> : null}
-                    {previewItems.length > 1 ? (
-                      <span>
-                        {activeIndex + 1} / {previewItems.length}
-                      </span>
-                    ) : null}
-                  </>
-                ) : (
-                  <span>当前资源暂不支持预览。</span>
-                )}
-              </div>
-              {footerExtra ? <div className="pt-1">{footerExtra}</div> : null}
-            </div>
-
-            <div className="flex shrink-0 flex-nowrap items-center gap-2 sm:justify-end">
-              {renderActions?.(currentItem)}
-              {hasMultiple ? (
-                <>
-                  <Button type="button" variant="outline" onClick={() => jumpTo(-1)}>
-                    <ChevronLeft className="size-4" />
-                    上一个
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => jumpTo(1)}>
-                    下一个
-                    <ChevronRight className="size-4" />
-                  </Button>
-                </>
-              ) : null}
-              {showDownload && currentItem ? (
-                <Button type="button" onClick={() => void downloadUploadFile(currentItem)}>
-                  <Download className="size-4" />
-                  下载
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        </div>
+        {panel}
       </DialogContent>
     </Dialog>
+  )
+}
+
+function ResourcePreviewPanel({
+  items,
+  activeIndex,
+  currentItem,
+  previewKind,
+  previewUrl,
+  presentation,
+  footerExtra,
+  renderActions,
+  showDownload,
+  onSelect,
+  onJump,
+}: {
+  items: UploadFileItem[]
+  activeIndex: number
+  currentItem?: UploadFileItem
+  previewKind: string
+  previewUrl: string
+  presentation: 'dialog' | 'drawer'
+  footerExtra?: ReactNode
+  renderActions?: (item?: UploadFileItem) => ReactNode
+  showDownload: boolean
+  onSelect: (index: number) => void
+  onJump: (direction: -1 | 1) => void
+}) {
+  const hasMultiple = items.length > 1
+  const drawer = presentation === 'drawer'
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1">
+        <div className="relative flex min-w-0 flex-1 items-center justify-center overflow-hidden bg-muted/20 px-6 py-6 sm:px-12">
+          {hasMultiple && !drawer ? (
+            <PreviewSwitchButton direction="left" onClick={() => onJump(-1)} />
+          ) : null}
+
+          <ResourcePreviewBody
+            item={currentItem}
+            previewKind={previewKind}
+            previewUrl={previewUrl}
+          />
+
+          {hasMultiple && !drawer ? (
+            <PreviewSwitchButton direction="right" onClick={() => onJump(1)} />
+          ) : null}
+        </div>
+
+        {drawer && hasMultiple ? (
+          <ResourcePreviewRail
+            items={items}
+            activeIndex={activeIndex}
+            onSelect={onSelect}
+          />
+        ) : null}
+      </div>
+
+      <div className="flex shrink-0 flex-col gap-4 border-t bg-background px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 flex-1 space-y-1">
+          <ResourcePreviewTitle title={currentItem?.name || '未选择资源'} />
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {currentItem ? (
+              <>
+                <span>{formatUploadSize(Number(currentItem.size || 0))}</span>
+                {currentItem.ext ? (
+                  <span>{String(currentItem.ext).replace(/^\./, '').toUpperCase()}</span>
+                ) : null}
+                {currentItem.created_at ? (
+                  <span>{formatCreatedAt(currentItem.created_at)}</span>
+                ) : null}
+                {hasMultiple ? (
+                  <span>
+                    {activeIndex + 1} / {items.length}
+                  </span>
+                ) : null}
+              </>
+            ) : (
+              <span>当前资源暂不支持预览。</span>
+            )}
+          </div>
+          {footerExtra ? <div className="pt-1">{footerExtra}</div> : null}
+        </div>
+
+        <div className="flex shrink-0 flex-nowrap items-center gap-2 sm:justify-end">
+          {renderActions?.(currentItem)}
+          {hasMultiple && !drawer ? (
+            <>
+              <Button type="button" variant="outline" onClick={() => onJump(-1)}>
+                <ChevronLeft className="size-4" />
+                上一个
+              </Button>
+              <Button type="button" variant="outline" onClick={() => onJump(1)}>
+                下一个
+                <ChevronRight className="size-4" />
+              </Button>
+            </>
+          ) : null}
+          {showDownload && currentItem ? (
+            <Button type="button" onClick={() => void downloadUploadFile(currentItem)}>
+              <Download className="size-4" />
+              下载
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ResourcePreviewRail({
+  items,
+  activeIndex,
+  onSelect,
+}: {
+  items: UploadFileItem[]
+  activeIndex: number
+  onSelect: (index: number) => void
+}) {
+  return (
+    <aside className="w-20 shrink-0 overflow-y-auto border-l bg-background px-2 py-3">
+      <div className="flex flex-col gap-2">
+        {items.map((item, index) => (
+          <ResourcePreviewThumbnail
+            key={`${String(item.id || item.url || item.name)}-${index}`}
+            item={item}
+            active={index === activeIndex}
+            onClick={() => onSelect(index)}
+          />
+        ))}
+      </div>
+    </aside>
+  )
+}
+
+function ResourcePreviewThumbnail({
+  item,
+  active,
+  onClick,
+}: {
+  item: UploadFileItem
+  active: boolean
+  onClick: () => void
+}) {
+  const kind = resolveResourcePreviewKind(item)
+  const thumbnail = String(
+    item.thumbnail ||
+      (kind === 'image' ? item.url || item.download || item.open_url : '') ||
+      ''
+  ).trim()
+
+  return (
+    <button
+      type="button"
+      title={item.name}
+      aria-label={`预览${item.name || '资源'}`}
+      aria-current={active ? 'true' : undefined}
+      onClick={onClick}
+      className={
+        active
+          ? 'flex aspect-square w-full items-center justify-center overflow-hidden rounded-md border-2 border-foreground bg-muted'
+          : 'flex aspect-square w-full items-center justify-center overflow-hidden rounded-md border bg-muted/40 hover:border-foreground/40'
+      }
+    >
+      {thumbnail ? (
+        <img src={thumbnail} alt={item.name} className="h-full w-full object-cover" />
+      ) : kind === 'video' ? (
+        <Video className="size-5 text-muted-foreground" />
+      ) : kind === 'audio' ? (
+        <Music4 className="size-5 text-muted-foreground" />
+      ) : (
+        <File className="size-5 text-muted-foreground" />
+      )}
+    </button>
   )
 }
 
@@ -193,7 +344,7 @@ function resolvePreviewUrl(item: UploadFileItem | undefined, previewKind: string
   }
 
   if (previewKind === 'image') {
-    return String(item.thumbnail || item.url || item.download || item.open_url || '').trim()
+    return String(item.url || item.download || item.open_url || item.thumbnail || '').trim()
   }
 
   return String(item.url || item.download || item.open_url || item.thumbnail || '').trim()
