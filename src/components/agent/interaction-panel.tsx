@@ -26,6 +26,10 @@ import {
   type PowerParam,
   type PowerParamOption,
 } from './stream-request-params'
+import {
+  AgentInteractionStepper,
+  type InteractionStepperParam,
+} from './interaction-stepper'
 
 export type {
   AgentInteraction,
@@ -64,6 +68,7 @@ export function AgentInteractionPanel({
   const interactionType = normalizeText(interaction.type)
   const powerKey = normalizeText(interaction.power)
   const isPowerParams = interactionType === 'power_params'
+  const isStepper = normalizeText(interaction.presentation) === 'stepper'
   const formParams = useMemo(
     () => normalizeInteractionFields(interaction.fields),
     [interaction.fields]
@@ -139,7 +144,7 @@ export function AgentInteractionPanel({
           : 'shrink-0 rounded-md border bg-background'
       }
     >
-      {!hideHeader ? (
+      {!hideHeader && !isStepper ? (
         <div className='border-b px-3 py-2'>
           <div className='text-sm font-medium'>
             {normalizeText(interaction.title) || '需要补充信息'}
@@ -164,6 +169,7 @@ export function AgentInteractionPanel({
         initialData={initialData}
         initialValues={interactionValues}
         autoSubmitValid={autoSubmitValid && isPowerParams}
+        stepper={isStepper}
         extraData={
           isPowerParams && powerSourceTargetID
             ? { source_target_id: powerSourceTargetID }
@@ -186,6 +192,7 @@ function AgentInteractionParamForm({
   initialData,
   initialValues,
   autoSubmitValid,
+  stepper,
   extraData,
   onSubmit,
 }: {
@@ -199,6 +206,7 @@ function AgentInteractionParamForm({
   initialData?: Record<string, unknown>
   initialValues?: Record<string, unknown>
   autoSubmitValid?: boolean
+  stepper?: boolean
   extraData?: Record<string, unknown>
   onSubmit?: (result: AgentInteractionSubmitResult) => void
 }) {
@@ -250,17 +258,17 @@ function AgentInteractionParamForm({
     }))
   }
 
-  const buildSubmitResult = useCallback(():
+  const buildSubmitResult = useCallback((values = paramValues):
     | AgentInteractionSubmitResult
     | string => {
-    const validationError = validateMainParams(params, paramValues)
+    const validationError = validateMainParams(params, values)
     if (validationError) {
       return validationError
     }
 
     const data = {
       ...(extraData || {}),
-      ...buildRequestInput(params, paramValues),
+      ...buildRequestInput(params, values),
     }
     return {
       data,
@@ -296,8 +304,8 @@ function AgentInteractionParamForm({
     readonly,
   ])
 
-  const submit = () => {
-    const result = buildSubmitResult()
+  const submit = (values?: ParamValueMap) => {
+    const result = buildSubmitResult(values)
     if (typeof result === 'string') {
       setError(result)
       return
@@ -339,6 +347,22 @@ function AgentInteractionParamForm({
           </div>
         ) : null}
       </div>
+    )
+  }
+
+  if (stepper) {
+    return (
+      <AgentInteractionStepper
+        params={visibleParams as InteractionStepperParam[]}
+        values={paramValues}
+        files={paramFiles}
+        uploadRuleMetas={uploadRuleMetas}
+        disabled={disabled || loading}
+        error={loadError || error}
+        onValueChange={setParamValue}
+        onFilesChange={setParamFileValue}
+        onSubmit={submit}
+      />
     )
   }
 
@@ -396,7 +420,7 @@ function AgentInteractionParamForm({
           type='button'
           size='sm'
           disabled={disabled || loading}
-          onClick={submit}
+          onClick={() => submit()}
         >
           <Send className='size-3.5' />
           提交并继续
@@ -642,21 +666,21 @@ function normalizeRecord(value: unknown): Record<string, unknown> {
   return isPlainObject(value) ? value : {}
 }
 
-function normalizeInteractionFields(fields: unknown): PowerParam[] {
+function normalizeInteractionFields(fields: unknown): InteractionStepperParam[] {
   if (!Array.isArray(fields)) {
     return []
   }
 
   return fields
     .map((field, index) => normalizeInteractionField(field, index))
-    .filter((field): field is PowerParam => field != null)
+    .filter((field): field is InteractionStepperParam => field != null)
     .sort((left, right) => Number(left.sort || 0) - Number(right.sort || 0))
 }
 
 function normalizeInteractionField(
   field: unknown,
   index: number
-): PowerParam | null {
+): InteractionStepperParam | null {
   if (!isPlainObject(field)) {
     return null
   }
@@ -668,15 +692,26 @@ function normalizeInteractionField(
   }
   const type = normalizeInteractionFieldType(field)
   const options = normalizeInteractionOptions(fieldOptionsSource(field))
+  const controlType = resolveInteractionControlType(type, field, options)
+  const recommendedValues = normalizeRecommendedValues(
+    field.recommended,
+    options,
+    controlType === 'option'
+  )
+  const defaultValue = recommendedDefaultValue(
+    controlType,
+    recommendedValues,
+    normalizeDefaultValue(field)
+  )
 
   return {
     id: normalizeText(field.id || key) || `field_${index + 1}`,
     name: normalizeText(field.name || field.label || key),
     key,
-    type: resolveInteractionControlType(type, field, options),
+    type: controlType,
     usage: 1,
     value_type: normalizeInteractionValueType(field),
-    default_value: normalizeDefaultValue(field),
+    default_value: defaultValue,
     placeholder: normalizeText(field.placeholder),
     required: Boolean(field.required),
     upload_rule_id:
@@ -685,7 +720,55 @@ function normalizeInteractionField(
     max_files: Number(field.max_files || 0),
     sort: Number(field.sort || index + 1),
     options,
+    recommendedValues,
   }
+}
+
+function normalizeRecommendedValues(
+  value: unknown,
+  options: PowerParamOption[],
+  single: boolean
+) {
+  if (!Array.isArray(value) || options.length === 0) {
+    return []
+  }
+  const values: string[] = []
+  for (const item of value) {
+    const text = normalizeText(item)
+    const option = options.find((candidate) =>
+      [candidate.id, candidate.native_value, candidate.value, candidate.name]
+        .map((candidateValue) => normalizeText(candidateValue))
+        .filter(Boolean)
+        .includes(text)
+    )
+    if (!option) {
+      continue
+    }
+    const optionValue = normalizeText(
+      option.native_value || option.value || option.name || option.id
+    )
+    if (!optionValue || values.includes(optionValue)) {
+      continue
+    }
+    values.push(optionValue)
+    if (single) {
+      break
+    }
+  }
+  return values
+}
+
+function recommendedDefaultValue(
+  type: string,
+  recommendedValues: string[],
+  fallback: string
+) {
+  if (recommendedValues.length === 0) {
+    return fallback
+  }
+  return type === 'multi_option'
+    ? JSON.stringify(recommendedValues)
+    : recommendedValues[0]
 }
 
 function defaultInteractionUploadRuleID(

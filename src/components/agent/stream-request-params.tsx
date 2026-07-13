@@ -1193,7 +1193,7 @@ function optionRequestValues(param: PowerParam, value: unknown) {
   })
 }
 
-function optionRequestValue(option: PowerParamOption) {
+export function optionRequestValue(option: PowerParamOption) {
   return (
     String(option.native_value || '').trim() ||
     String(option.value || '').trim() ||
@@ -1209,7 +1209,7 @@ function optionPickerOptions(options: PowerParamOption[]) {
   }))
 }
 
-function isSelectedOptionValue(option: PowerParamOption, values: string[]) {
+export function isSelectedOptionValue(option: PowerParamOption, values: string[]) {
   const candidates = [
     String(option.id),
     String(option.native_value || '').trim(),

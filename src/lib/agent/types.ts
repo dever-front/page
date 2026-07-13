@@ -28,6 +28,7 @@ export type AgentInteractionField = {
   choices?: unknown
   items?: unknown
   enums?: unknown
+  recommended?: unknown[]
 }
 
 export type AgentInteraction = {
@@ -35,6 +36,7 @@ export type AgentInteraction = {
   type?: string
   title?: string
   description?: string
+  presentation?: string
   power?: string
   fields?: AgentInteractionField[]
   values?: Record<string, unknown>
