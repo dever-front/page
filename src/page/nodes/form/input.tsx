@@ -9,6 +9,7 @@ import {
   resolveRemoteSearchMode,
 } from '@/lib/remote-search'
 import { getCurrentRouterPathname } from '@/lib/router-path'
+import { useComposedTextControl } from '@/hooks/use-composed-text-control'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { AssistantFieldGenerateButton } from '@/components/assistant/form-actions'
@@ -42,35 +43,41 @@ export function FormInput({
     []
   )
 
+  const textControl = useComposedTextControl<HTMLInputElement>(
+    value,
+    (nextValue) => {
+      setValue(nextValue)
+
+      if (shouldAutoRemoteSearch && searchKey) {
+        if (debounceRef.current != null) {
+          window.clearTimeout(debounceRef.current)
+        }
+
+        debounceRef.current = window.setTimeout(() => {
+          navigate({
+            to: getCurrentRouterPathname(),
+            search: (prev: Record<string, unknown>) => ({
+              ...prev,
+              page: undefined,
+              [searchKey]: nextValue || undefined,
+            }),
+          })
+        }, 400)
+      }
+    }
+  )
+
   const input = (
     <Input
       id={item.id}
       name={item.id}
       placeholder={item.placeholder}
-      value={value ?? ''}
+      value={textControl.value}
       disabled={!!item.meta?.disabled}
       autoFocus={!!item.meta?.autoFocus}
-      onChange={(e) => {
-        const nextValue = e.target.value
-        setValue(nextValue)
-
-        if (shouldAutoRemoteSearch && searchKey) {
-          if (debounceRef.current != null) {
-            window.clearTimeout(debounceRef.current)
-          }
-
-          debounceRef.current = window.setTimeout(() => {
-            navigate({
-              to: getCurrentRouterPathname(),
-              search: (prev: Record<string, unknown>) => ({
-                ...prev,
-                page: undefined,
-                [searchKey]: nextValue || undefined,
-              }),
-            })
-          }, 400)
-        }
-      }}
+      onChange={textControl.onChange}
+      onCompositionStart={textControl.onCompositionStart}
+      onCompositionEnd={textControl.onCompositionEnd}
       autoComplete={item.meta?.autoComplete ?? 'off'}
       autoCorrect="off"
       autoCapitalize="none"

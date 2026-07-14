@@ -19,7 +19,8 @@ import {
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { EnergonContentView } from '@/components/energon/content-view'
+import { AgentInteractionPanel } from '@/components/agent/interaction-panel'
+import { ContentView } from '@/components/energon/content-view'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Sheet,
@@ -98,7 +99,6 @@ import {
   AssistantReferenceList,
   AssistantReferencePicker,
 } from './reference-picker'
-import { AssistantInteractionDialog } from './interaction-dialog'
 import { AssistantSessionHistoryDialog } from './session-history-dialog'
 
 const ASSISTANT_AGENT_KEY = 'front-assistant'
@@ -180,9 +180,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
   const [running, setRunning] = useState(false)
   const [status, setStatus] = useState('')
   const [timing, setTiming] = useState<StreamTiming | undefined>()
-  const [interactionDialogOpen, setInteractionDialogOpen] = useState(false)
-  const [interactionDialogMessageID, setInteractionDialogMessageID] =
-    useState('')
   const [permissionContext, setPermissionContext] =
     useState<AssistantPermissionContext | null>(null)
   const [permissionLoading, setPermissionLoading] = useState(false)
@@ -205,31 +202,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
     () => buildAssistantPageContext(activePage),
     [activePage, registryVersion]
   )
-  const pendingInteractionMessage = useMemo(
-    () =>
-      [...messages]
-        .reverse()
-        .find(
-          (message) =>
-            message.role === 'assistant' &&
-            message.interaction &&
-            !message.interactionAnswered
-        ),
-    [messages]
-  )
-  const interactionDialogMessage = useMemo(() => {
-    if (!interactionDialogMessageID) {
-      return pendingInteractionMessage
-    }
-    return (
-      messages.find(
-        (message) =>
-          message.id === interactionDialogMessageID &&
-          message.role === 'assistant' &&
-          Boolean(message.interaction)
-      ) || pendingInteractionMessage
-    )
-  }, [interactionDialogMessageID, messages, pendingInteractionMessage])
   const contextText = assistantContextSummary(pageContext)
   const sessionContextKey = useMemo(
     () =>
@@ -331,13 +303,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
   }, [loadDrawerSession, open])
 
   useEffect(() => {
-    if (pendingInteractionMessage?.id) {
-      setInteractionDialogMessageID(pendingInteractionMessage.id)
-      setInteractionDialogOpen(true)
-    }
-  }, [pendingInteractionMessage?.id])
-
-  useEffect(() => {
     if (!open || permissionContext || permissionLoading) {
       return
     }
@@ -372,20 +337,13 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
     setTiming((current) => markStreamTimingStopping(current))
   }
 
-  const changeInteractionDialogOpen = (nextOpen: boolean) => {
-    setInteractionDialogOpen(nextOpen)
-    if (!nextOpen) {
-      setInteractionDialogMessageID('')
-    }
-  }
-
-  const openInteractionDialog = (messageID: string) => {
-    setInteractionDialogMessageID(messageID)
-    setInteractionDialogOpen(true)
-  }
-
-  const submitInteraction = async (result: AgentInteractionSubmitResult) => {
-    const sourceMessage = interactionDialogMessage
+  const submitInteraction = async (
+    messageID: string,
+    result: AgentInteractionSubmitResult
+  ) => {
+    const sourceMessage = messages.find(
+      (message) => message.id === messageID && message.role === 'assistant'
+    )
     if (
       !sourceMessage?.interaction ||
       sourceMessage.interactionAnswered ||
@@ -393,9 +351,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
     ) {
       return
     }
-
-    setInteractionDialogOpen(false)
-    setInteractionDialogMessageID('')
 
     await send({
       text: result.text,
@@ -786,6 +741,7 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
                         role={message.role}
                         content={message.content}
                         output={message.output}
+                        interaction={message.interaction}
                         pending={running}
                       />
                       {message.actions?.map((action, index) => (
@@ -797,14 +753,21 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
                         />
                       ))}
                       {message.interaction ? (
-                        <AssistantInteractionNotice
-                          answered={Boolean(message.interactionAnswered)}
-                          summary={summarizeSubmittedInteraction(
-                            message.interactionData
-                          )}
-                          disabled={running && !message.interactionAnswered}
-                          onOpen={() => openInteractionDialog(message.id)}
-                        />
+                        <div className="mt-3">
+                          <AgentInteractionPanel
+                            interaction={message.interaction}
+                            readonly={Boolean(message.interactionAnswered)}
+                            initialData={message.interactionData}
+                            autoSubmitValid
+                            disabled={running}
+                            onSubmit={
+                              message.interactionAnswered
+                                ? undefined
+                                : (result) =>
+                                    void submitInteraction(message.id, result)
+                            }
+                          />
+                        </div>
                       ) : null}
                       <AssistantMemoryReviewCard
                         review={normalizeMemoryReview(message.output?.memory_review)}
@@ -905,19 +868,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
         layerZIndex={ASSISTANT_DIALOG_LAYER_Z_INDEX}
         onOpenSession={(id) => openSessionFromHistory(id)}
       />
-      <AssistantInteractionDialog
-        open={
-          Boolean(interactionDialogMessage?.interaction) &&
-          interactionDialogOpen
-        }
-        interaction={interactionDialogMessage?.interaction}
-        readonly={Boolean(interactionDialogMessage?.interactionAnswered)}
-        initialData={interactionDialogMessage?.interactionData}
-        autoSubmitValid
-        disabled={running}
-        onOpenChange={changeInteractionDialogOpen}
-        onSubmit={(result) => void submitInteraction(result)}
-      />
     </Sheet>
   )
 }
@@ -1007,11 +957,13 @@ function AssistantMessageContent({
   role,
   content,
   output,
+  interaction,
   pending,
 }: {
   role: ChatMessage['role']
   content: string
   output?: ChatMessage['output']
+  interaction?: AgentInteraction
   pending: boolean
 }) {
   if (!content && !output) {
@@ -1019,11 +971,20 @@ function AssistantMessageContent({
   }
 
   if (role === 'assistant') {
-    const displayContent = assistantDisplayText(content)
-    const displayOutput = assistantDisplayOutput(output, displayContent)
+    const displayContent = interaction
+      ? assistantInteractionDisplayText(content)
+      : assistantDisplayText(content)
+    const displayOutput = interaction
+      ? displayContent
+        ? { text: displayContent }
+        : undefined
+      : assistantDisplayOutput(output, displayContent)
+    if (!displayOutput) {
+      return null
+    }
     return (
-      <EnergonContentView
-        output={displayOutput || (displayContent ? { text: displayContent } : undefined)}
+      <ContentView
+        output={displayOutput}
         emptyText=""
         className="space-y-2 break-words [overflow-wrap:anywhere]"
       />
@@ -1031,6 +992,39 @@ function AssistantMessageContent({
   }
 
   return <div className="whitespace-pre-wrap break-all">{content}</div>
+}
+
+function assistantInteractionDisplayText(text: string) {
+  const displayText = assistantDisplayText(text)
+    .replace(
+      /```(?:agent-interaction|agent-result|agent-output|json)\s*[\s\S]*?```/gi,
+      ''
+    )
+    .trim()
+
+  return isInteractionProtocolText(displayText) ? '' : displayText
+}
+
+function isInteractionProtocolText(text: string) {
+  if (!text.startsWith('{')) {
+    return false
+  }
+
+  try {
+    const parsed = JSON.parse(text)
+    if (!isRecord(parsed)) {
+      return false
+    }
+    const interaction = isRecord(parsed.interaction)
+      ? parsed.interaction
+      : parsed
+    return (
+      Array.isArray(interaction.fields) ||
+      Boolean(streamValueText(interaction.type).trim())
+    )
+  } catch {
+    return false
+  }
 }
 
 function assistantDisplayText(text: string) {
@@ -1158,38 +1152,6 @@ function isAssistantFrontActionValue(value: Record<string, unknown>) {
     default:
       return false
   }
-}
-
-function AssistantInteractionNotice({
-  answered,
-  summary,
-  disabled,
-  onOpen,
-}: {
-  answered: boolean
-  summary?: string
-  disabled?: boolean
-  onOpen: () => void
-}) {
-  return (
-    <div className="mt-2 flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-2 py-1.5 text-xs text-muted-foreground">
-      <span className="min-w-0 truncate">
-        {answered
-          ? `已提交${summary ? `：${summary}` : '。'}`
-          : '需要补充交互信息。'}
-      </span>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        className="h-7 px-2 text-xs"
-        disabled={disabled}
-        onClick={onOpen}
-      >
-        {answered ? '查看参数' : '填写参数'}
-      </Button>
-    </div>
-  )
 }
 
 function AssistantMemoryReviewCard({
@@ -1331,19 +1293,6 @@ function extractAssistantSuggestions(content: string): AssistantSuggestionChoice
     }
   }
   return choices
-}
-
-function summarizeSubmittedInteraction(data?: Record<string, unknown>) {
-  if (!data) {
-    return ''
-  }
-  for (const value of Object.values(data)) {
-    const text = String(value ?? '').trim()
-    if (text && text !== '[object Object]') {
-      return text.length > 28 ? `${text.slice(0, 28)}...` : text
-    }
-  }
-  return ''
 }
 
 function createMessageID() {

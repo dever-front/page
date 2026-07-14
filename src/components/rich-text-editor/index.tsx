@@ -360,6 +360,14 @@ export function RichTextEditor({
   const [articleImporting, setArticleImporting] = useState(false)
   const [articleImportError, setArticleImportError] = useState('')
   const selectionRef = useRef<{ from: number; to: number } | null>(null)
+  const composingRef = useRef(false)
+  const onChangeRef = useRef(onChange)
+  const formatRef = useRef(format)
+
+  useEffect(() => {
+    onChangeRef.current = onChange
+    formatRef.current = format
+  }, [format, onChange])
 
   const editorExtensions = useMemo(
     () => [
@@ -427,6 +435,24 @@ export function RichTextEditor({
           'tiptap-editor relative text-sm leading-7 outline-none [&_.hljs-attr]:text-sky-700 [&_.hljs-attribute]:text-sky-700 [&_.hljs-built_in]:text-violet-700 [&_.hljs-comment]:text-slate-500 [&_.hljs-keyword]:text-pink-700 [&_.hljs-literal]:text-indigo-700 [&_.hljs-meta]:text-slate-500 [&_.hljs-name]:text-emerald-700 [&_.hljs-number]:text-indigo-700 [&_.hljs-params]:text-slate-700 [&_.hljs-property]:text-sky-700 [&_.hljs-punctuation]:text-slate-500 [&_.hljs-regexp]:text-rose-700 [&_.hljs-selector-class]:text-emerald-700 [&_.hljs-selector-id]:text-emerald-700 [&_.hljs-string]:text-amber-700 [&_.hljs-symbol]:text-violet-700 [&_.hljs-tag]:text-emerald-700 [&_.hljs-title]:text-violet-700 [&_.hljs-type]:text-violet-700 [&_.hljs-variable]:text-orange-700 [&_audio]:my-4 [&_audio]:block [&_audio]:w-full [&_audio]:max-w-md [&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_code]:rounded-md [&_code]:bg-slate-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.9em] [&_code]:text-slate-900 [&_h1]:mt-4 [&_h1]:mb-2.5 [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5 [&_h3]:text-sm [&_h3]:font-semibold [&_img]:my-4 [&_img]:block [&_img]:max-w-full [&_img]:rounded-lg [&_li]:ml-4 [&_ol]:list-decimal [&_p]:min-h-6 [&_pre]:my-4 [&_pre]:max-h-[460px] [&_pre]:overflow-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-slate-200 [&_pre]:bg-slate-50 [&_pre]:px-4 [&_pre]:py-3 [&_pre]:shadow-inner [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-sm [&_pre_code]:leading-6 [&_pre_code]:text-slate-900 [&_table]:my-4 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-border [&_th]:bg-muted/50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_ul]:list-disc [&_video]:my-4 [&_video]:block [&_video]:max-w-full [&_video]:rounded-lg [&_video]:bg-black/90',
         style: `min-height:${normalizedMinHeight}px`,
       },
+      handleDOMEvents: {
+        compositionstart: () => {
+          composingRef.current = true
+          return false
+        },
+        compositionend: () => {
+          window.setTimeout(() => {
+            if (!editor || editor.isDestroyed || editor.view.composing) {
+              return
+            }
+            composingRef.current = false
+            onChangeRef.current(
+              serializeRichTextEditorContent(editor, formatRef.current)
+            )
+          }, 0)
+          return false
+        },
+      },
       handlePaste: (_view, event) => {
         if (disabled) {
           return false
@@ -458,7 +484,12 @@ export function RichTextEditor({
     content: initialContent,
     contentType: format,
     onUpdate({ editor: currentEditor }) {
-      onChange(serializeRichTextEditorContent(currentEditor, format))
+      if (composingRef.current || currentEditor.view.composing) {
+        return
+      }
+      onChangeRef.current(
+        serializeRichTextEditorContent(currentEditor, formatRef.current)
+      )
     },
   })
 
@@ -477,7 +508,7 @@ export function RichTextEditor({
     const nextValue = normalizeRichTextEditorValue(value, format)
     const currentValue = serializeRichTextEditorContent(editor, format)
     if (format === 'json' && inputValue(value) !== nextValue) {
-      onChange(nextValue)
+      onChangeRef.current(nextValue)
     }
     if (nextValue === currentValue) {
       return
@@ -488,7 +519,7 @@ export function RichTextEditor({
       emitUpdate: false,
       contentType: format,
     })
-  }, [editor, format, onChange, value])
+  }, [editor, format, value])
 
   useEffect(() => {
     if (!editor) {

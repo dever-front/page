@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react'
+import { ASSISTANT_DIALOG_LAYER_CLASS } from '@/lib/floating-layer'
+import type { ResourceScope, ResourceUploadRule } from '@/lib/resource'
+import type { UploadFileItem } from '@/lib/upload'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -9,9 +12,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ResourceBrowser } from '@/components/resource/resource-browser'
-import { ASSISTANT_DIALOG_LAYER_CLASS } from '@/lib/floating-layer'
-import type { ResourceScope, ResourceUploadRule } from '@/lib/resource'
-import type { UploadFileItem } from '@/lib/upload'
 
 export type ResourcePickerDialogProps = {
   open: boolean
@@ -28,6 +28,7 @@ export type ResourcePickerDialogProps = {
   uploadRules?: ResourceUploadRule[]
   allowUpload?: boolean
   assistantLayer?: boolean
+  layerZIndex?: number
   onOpenChange: (open: boolean) => void
   onConfirm: (items: UploadFileItem[]) => void
 }
@@ -49,6 +50,7 @@ export function ResourcePickerDialog({
   uploadRules = [],
   allowUpload = true,
   assistantLayer = false,
+  layerZIndex,
   onOpenChange,
   onConfirm,
 }: ResourcePickerDialogProps) {
@@ -64,21 +66,26 @@ export function ResourcePickerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         data-assistant-layer={assistantLayer ? 'true' : undefined}
-        layerClassName={assistantLayer ? ASSISTANT_DIALOG_LAYER_CLASS : undefined}
-        className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
+        layerClassName={
+          assistantLayer ? ASSISTANT_DIALOG_LAYER_CLASS : undefined
+        }
+        layerZIndex={layerZIndex}
+        className='flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl'
       >
-        <DialogHeader className="border-b px-6 py-4">
+        <DialogHeader className='border-b px-6 py-4'>
           <DialogTitle>{title}</DialogTitle>
-          {description ? <DialogDescription>{description}</DialogDescription> : null}
+          {description ? (
+            <DialogDescription>{description}</DialogDescription>
+          ) : null}
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+        <div className='min-h-0 flex-1 overflow-y-auto px-6 py-4'>
           <ResourceBrowser
             bizKey={bizKey}
             initialScope={initialScope}
             defaultKind={defaultKind}
             fixedKind={fixedKind}
-            cardDensity="compact"
+            cardDensity='compact'
             uploadRules={uploadRules}
             allowUpload={allowUpload}
             selectionMode={multiple ? 'multiple' : 'single'}
@@ -89,12 +96,16 @@ export function ResourcePickerDialog({
           />
         </div>
 
-        <DialogFooter className="border-t px-6 py-4">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className='border-t px-6 py-4'>
+          <Button
+            type='button'
+            variant='outline'
+            onClick={() => onOpenChange(false)}
+          >
             取消
           </Button>
           <Button
-            type="button"
+            type='button'
             disabled={selectedItems.length === 0}
             onClick={() => {
               onConfirm(selectedItems)

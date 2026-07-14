@@ -2,6 +2,7 @@
  * Form/Textarea.tsx - 多行文本输入
  */
 import { useMemo } from 'react'
+import { useComposedTextControl } from '@/hooks/use-composed-text-control'
 import { cn } from '@/lib/utils'
 import { Textarea } from '@/components/ui/textarea'
 import { AssistantFieldGenerateButton } from '@/components/assistant/form-actions'
@@ -15,10 +16,13 @@ export function FormTextarea({
   store,
   assistantAdornment,
 }: NodeItemProps) {
-  const textValue = String(value ?? '')
+  const textControl = useComposedTextControl<HTMLTextAreaElement>(value, setValue)
   const maxLength = Number(item.meta?.maxLength || 0)
   const showCount = item.meta?.showCount === true || maxLength > 0
-  const currentLength = useMemo(() => textValue.length, [textValue])
+  const currentLength = useMemo(
+    () => textControl.value.length,
+    [textControl.value]
+  )
 
   return (
     <div className="min-w-0 w-full space-y-2">
@@ -27,11 +31,13 @@ export function FormTextarea({
           id={item.id}
           name={item.id}
           placeholder={item.placeholder}
-          value={textValue}
+          value={textControl.value}
           disabled={!!item.meta?.disabled}
           rows={item.meta?.rows || 4}
           maxLength={maxLength > 0 ? maxLength : undefined}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={textControl.onChange}
+          onCompositionStart={textControl.onCompositionStart}
+          onCompositionEnd={textControl.onCompositionEnd}
           aria-invalid={!!error}
           className={cn(
             'min-h-28 w-full min-w-0 resize-y rounded-xl border-border/70 bg-background/80 px-3.5 py-3 pr-11 text-sm leading-6 shadow-xs',

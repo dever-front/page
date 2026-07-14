@@ -1,12 +1,9 @@
 import type { JSONContent } from '@tiptap/core'
-import type {
-  ReferenceInput,
-  ReferencePart,
-  ReferencePreview,
-  ReferenceType,
-} from './types'
+import type { ReferenceInput, ReferencePart, ReferenceType } from './types'
 
-export function serializeReferenceDocument(document: JSONContent): ReferenceInput {
+export function serializeReferenceDocument(
+  document: JSONContent
+): ReferenceInput {
   const parts: ReferencePart[] = []
   const blocks = document.content || []
   blocks.forEach((block, index) => {
@@ -15,18 +12,35 @@ export function serializeReferenceDocument(document: JSONContent): ReferenceInpu
       appendText(parts, '\n')
     }
   })
-  const normalized = parts.filter(
-    (part) => part.type === 'reference' || part.text.length > 0,
-  )
+  const normalized = trimBoundaryWhitespace(parts)
   return {
     text: normalized
-      .map((part) =>
-        part.type === 'text' ? part.text : `@${part.label}`,
-      )
+      .map((part) => (part.type === 'text' ? part.text : `@${part.label}`))
       .join('')
       .trim(),
     content: { version: 1, parts: normalized },
   }
+}
+
+function trimBoundaryWhitespace(parts: ReferencePart[]) {
+  const normalized = parts
+    .filter((part) => part.type === 'reference' || part.text.length > 0)
+    .map((part) => ({ ...part }))
+  const first = normalized[0]
+  if (first?.type === 'text') {
+    first.text = first.text.trimStart()
+    if (!first.text) {
+      normalized.shift()
+    }
+  }
+  const last = normalized[normalized.length - 1]
+  if (last?.type === 'text') {
+    last.text = last.text.trimEnd()
+    if (!last.text) {
+      normalized.pop()
+    }
+  }
+  return normalized
 }
 
 function appendNodes(parts: ReferencePart[], nodes: JSONContent[]) {
@@ -50,7 +64,6 @@ function appendNodes(parts: ReferencePart[], nodes: JSONContent[]) {
           ref_id: refId,
           label,
           usage: String(node.attrs?.usage || '').trim() || undefined,
-          preview: referencePreview(node),
         })
       }
       continue
@@ -59,15 +72,6 @@ function appendNodes(parts: ReferencePart[], nodes: JSONContent[]) {
       appendNodes(parts, node.content)
     }
   }
-}
-
-function referencePreview(node: JSONContent): ReferencePreview | undefined {
-  const preview = {
-    text: String(node.attrs?.previewText || '').trim() || undefined,
-    kind: String(node.attrs?.previewKind || '').trim() || undefined,
-    url: String(node.attrs?.previewUrl || '').trim() || undefined,
-  }
-  return preview.text || preview.kind || preview.url ? preview : undefined
 }
 
 function isReferenceType(value: string): value is ReferenceType {

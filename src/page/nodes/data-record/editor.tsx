@@ -3,7 +3,6 @@ import {
   useMemo,
   useState,
 } from 'react'
-import { useStore } from 'zustand'
 import { getStoreValueByPath } from '@/lib/store'
 import type { Item } from '@/lib/schema'
 import { NodeList, type NodeItemProps } from '../../nodes'
@@ -93,12 +92,6 @@ export function DataRecordEditor({ item, store }: NodeItemProps) {
   const [recordOverrides, setRecordOverrides] = useState<
     Record<string, DataRecord>
   >({})
-  const storeFormTemplateID = useStore(store, (state) =>
-    positiveID(state.data?.form?.data_template_id)
-  )
-  const storeFormSignature = useStore(store, (state) =>
-    formStateSignature(state.data?.form)
-  )
 
   useEffect(() => {
     const nextTemplateID =
@@ -128,6 +121,22 @@ export function DataRecordEditor({ item, store }: NodeItemProps) {
     [selectedTemplate]
   )
 
+  const selectTemplate = (nextTemplateID: string) => {
+    if (!nextTemplateID || nextTemplateID === selectedTemplateID) {
+      return
+    }
+    const currentValues = readStoreFormValues(store, fields)
+    setRecordOverrides((current) =>
+      updateTemplateRecordValues(
+        current,
+        selectedTemplateID,
+        selectedRecord,
+        currentValues
+      )
+    )
+    setSelectedTemplateID(nextTemplateID)
+  }
+
   useEffect(() => {
     const nextValues = initialValuesForTemplate(selectedTemplate, selectedRecord)
     syncStoreFormValues(store, selectedTemplateID, nextValues)
@@ -137,28 +146,6 @@ export function DataRecordEditor({ item, store }: NodeItemProps) {
     syncVirtualFormNodes(store, fields, editor.upload_rules)
     return () => syncVirtualFormNodes(store, [])
   }, [store, fields, editor.upload_rules])
-
-  useEffect(() => {
-    if (!selectedTemplateID || storeFormTemplateID !== selectedTemplateID) {
-      return
-    }
-    const nextValues = readStoreFormValues(store, fields)
-    setRecordOverrides((current) =>
-      updateTemplateRecordValues(
-        current,
-        selectedTemplateID,
-        selectedRecord,
-        nextValues
-      )
-    )
-  }, [
-    fields,
-    selectedRecord,
-    store,
-    storeFormSignature,
-    selectedTemplateID,
-    storeFormTemplateID,
-  ])
 
   if (!positiveID(editor.cate_id)) {
     return (
@@ -192,7 +179,7 @@ export function DataRecordEditor({ item, store }: NodeItemProps) {
                   ? 'bg-muted font-semibold text-foreground'
                   : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
               ].join(' ')}
-              onClick={() => setSelectedTemplateID(templateID)}
+              onClick={() => selectTemplate(templateID)}
             >
               <span className='min-w-0 truncate'>
                 {textValue(template.name) || '未命名模板'}
@@ -290,20 +277,6 @@ function readStoreFormValues(
   const form = store.getState().data?.form
   const source = isRecord(form) ? form.values : undefined
   return sanitizeTemplateValues(fields, source)
-}
-
-function formStateSignature(form: unknown) {
-  if (!isRecord(form)) {
-    return ':[]'
-  }
-  const templateID = positiveID(form.data_template_id)
-  const values = isRecord(form.values) ? form.values : emptyFieldValues
-  return `${templateID}:${fieldValuesSignature(values)}`
-}
-
-function fieldValuesSignature(values: FieldValues) {
-  const keys = Object.keys(values).sort()
-  return JSON.stringify(keys.map((key) => [key, values[key] ?? null]))
 }
 
 function buildVirtualFormNode(

@@ -9,6 +9,8 @@ import {
   type PowerParamOption,
 } from './stream-request-params'
 
+const singleColumnOptionLimit = 6
+
 export type InteractionStepperParam = PowerParam & {
   recommendedValues: string[]
 }
@@ -34,6 +36,7 @@ export function InteractionStepperChoice({
 }) {
   const multiple = param.type === 'multi_option'
   const selectedValues = normalizeSelectedValues(value)
+  const optionColumns = splitOptionColumns(param.options || [])
   const toggleOption = (option: PowerParamOption) => {
     const optionValue = optionRequestValue(option)
     if (!multiple) {
@@ -65,53 +68,64 @@ export function InteractionStepperChoice({
 
   return (
     <div className='space-y-2'>
-      {(param.options || []).map((option) => {
-        const selected = isSelectedOptionValue(option, selectedValues)
-        const recommended = isSelectedOptionValue(
-          option,
-          param.recommendedValues
-        )
-        return (
-          <button
-            key={String(option.id)}
-            type='button'
-            disabled={disabled}
-            className={cn(
-              'flex min-h-12 w-full items-center gap-3 rounded-md border px-3.5 py-2.5 text-left transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
-              selected
-                ? 'border-primary/30 bg-muted text-foreground'
-                : 'border-border bg-background hover:bg-muted/50',
-              disabled && 'cursor-not-allowed opacity-60'
-            )}
-            onClick={() => toggleOption(option)}
-          >
-            <span
-              className={cn(
-                'flex size-5 shrink-0 items-center justify-center border',
-                multiple ? 'rounded-[4px]' : 'rounded-full',
-                selected
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-input text-transparent'
-              )}
-            >
-              {selected ? (
-                <Check className='size-3.5' strokeWidth={2.5} />
-              ) : (
-                <Circle className='size-2 fill-current' />
-              )}
-            </span>
-            <span className='min-w-0 flex-1 break-words text-sm leading-5'>
-              {option.value}
-            </span>
-            {recommended ? (
-              <span className='shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary'>
-                推荐
-              </span>
-            ) : null}
-          </button>
-        )
-      })}
+      <div
+        className={cn(
+          'grid grid-cols-1 gap-2',
+          optionColumns.length > 1 && 'sm:grid-cols-2'
+        )}
+      >
+        {optionColumns.map((column, columnIndex) => (
+          <div key={columnIndex} className='space-y-2'>
+            {column.map((option) => {
+              const selected = isSelectedOptionValue(option, selectedValues)
+              const recommended = isSelectedOptionValue(
+                option,
+                param.recommendedValues
+              )
+              return (
+                <button
+                  key={String(option.id)}
+                  type='button'
+                  disabled={disabled}
+                  className={cn(
+                    'flex min-h-12 w-full items-center gap-3 rounded-md border px-3.5 py-2.5 text-left transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                    selected
+                      ? 'border-primary/30 bg-muted text-foreground'
+                      : 'border-border bg-background hover:bg-muted/50',
+                    disabled && 'cursor-not-allowed opacity-60'
+                  )}
+                  onClick={() => toggleOption(option)}
+                >
+                  <span
+                    className={cn(
+                      'flex size-5 shrink-0 items-center justify-center border',
+                      multiple ? 'rounded-[4px]' : 'rounded-full',
+                      selected
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-input text-transparent'
+                    )}
+                  >
+                    {selected ? (
+                      <Check className='size-3.5' strokeWidth={2.5} />
+                    ) : (
+                      <Circle className='size-2 fill-current' />
+                    )}
+                  </span>
+                  <span className='min-w-0 flex-1 break-words text-sm leading-5'>
+                    {option.value}
+                  </span>
+                  {recommended ? (
+                    <span className='shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary'>
+                      推荐
+                    </span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+        ))}
+      </div>
 
       {customOpen ? (
         <div className='flex items-center gap-2 rounded-md border border-dashed p-2'>
@@ -160,4 +174,12 @@ function normalizeSelectedValues(value: unknown) {
   }
   const text = value == null ? '' : String(value).trim()
   return text ? [text] : []
+}
+
+function splitOptionColumns(options: PowerParamOption[]) {
+  if (options.length <= singleColumnOptionLimit) {
+    return [options]
+  }
+  const midpoint = Math.ceil(options.length / 2)
+  return [options.slice(0, midpoint), options.slice(midpoint)]
 }

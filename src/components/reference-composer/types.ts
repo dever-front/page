@@ -1,14 +1,43 @@
-export type ReferenceType =
-  | 'message'
-  | 'artifact'
-  | 'upload_file'
-  | 'session'
+import type { PowerParam } from '@/components/agent/stream-request-params'
 
-export type ReferencePreview = {
+export type ReferenceType = 'message' | 'artifact' | 'upload_file' | 'session'
+
+export type ReferencePreviewHint = {
   text?: string
   kind?: string
   url?: string
+  sourceUrl?: string
 }
+
+export type ReferencePreviewMedia = {
+  refType?: ReferenceType
+  refId?: number
+  artifactId?: number
+  fileId?: number
+  seriesId?: number
+  kind: string
+  name?: string
+  label: string
+  url: string
+}
+
+export type ReferencePreview = {
+  refType: ReferenceType
+  refId: number
+  title: string
+  text: string
+  media: ReferencePreviewMedia[]
+}
+
+export type ReferencePreviewRequest = {
+  refType: ReferenceType
+  refId: number
+  label: string
+}
+
+export type ReferencePreviewLoader = (
+  request: ReferencePreviewRequest
+) => Promise<ReferencePreview>
 
 export type ReferencePart =
   | { type: 'text'; text: string }
@@ -18,20 +47,23 @@ export type ReferencePart =
       ref_id: number
       label: string
       usage?: string
-      preview?: ReferencePreview
     }
 
 export type ReferenceContent = {
   version: 1
   parts: ReferencePart[]
+  params?: Record<string, unknown>
 }
 
 export type ReferenceInput = {
   text: string
   content: ReferenceContent
+  params?: Record<string, unknown>
 }
 
-export type ReferenceScope = 'current' | 'history' | 'resource'
+export type ReferenceComposerParam = PowerParam
+
+export type ReferenceScope = 'current' | 'history'
 
 export type ReferenceOption = {
   key: string
@@ -39,10 +71,12 @@ export type ReferenceOption = {
   refId: number
   label: string
   description?: string
-  preview?: ReferencePreview
-  parentKey?: string
+  messageRole?: 'user' | 'assistant'
+  preview?: ReferencePreviewHint
+  materials?: ReferenceOption[]
   selectable?: boolean
   hasChildren?: boolean
+  usage?: string
 }
 
 export type ReferenceLoadRequest = {
@@ -64,9 +98,12 @@ export type ReferenceComposerProps = {
   stopping?: boolean
   cancelable?: boolean
   className?: string
+  layerZIndex?: number
+  parameters?: ReferenceComposerParam[]
   loadReferences: (
-    request: ReferenceLoadRequest,
+    request: ReferenceLoadRequest
   ) => Promise<ReferenceLoadResult>
+  loadPreview: ReferencePreviewLoader
   onSubmit: (input: ReferenceInput) => void | Promise<void>
   onCancel?: () => void | Promise<void>
 }

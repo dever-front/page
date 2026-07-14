@@ -1,4 +1,3 @@
-import type { WheelEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Send } from 'lucide-react'
 import type {
@@ -30,6 +29,10 @@ import {
   AgentInteractionStepper,
   type InteractionStepperParam,
 } from './interaction-stepper'
+import {
+  handleInteractionRootWheel,
+  handleInteractionWheel,
+} from './interaction-scroll'
 
 export type {
   AgentInteraction,
@@ -137,11 +140,13 @@ export function AgentInteractionPanel({
 
   return (
     <div
-      onWheel={handleInteractionPanelRootWheel}
+      onWheel={handleInteractionRootWheel}
       className={
         layout === 'dialog'
           ? 'flex min-h-0 flex-col bg-background'
-          : 'shrink-0 rounded-md border bg-background'
+          : readonly
+            ? 'shrink-0'
+            : 'shrink-0 rounded-md border bg-background'
       }
     >
       {!hideHeader && !isStepper ? (
@@ -318,11 +323,11 @@ function AgentInteractionParamForm({
     return (
       <div
         data-agent-interaction-scroll='true'
-        onWheel={handleInteractionPanelWheel}
+        onWheel={handleInteractionWheel}
         className={
           layout === 'dialog'
-            ? 'max-h-[62vh] space-y-2 overflow-y-auto overscroll-contain p-4'
-            : 'max-h-[32vh] space-y-2 overflow-y-auto overscroll-contain p-3'
+            ? 'max-h-[62vh] overflow-y-auto overscroll-contain p-4'
+            : 'max-h-[32vh] overflow-y-auto overscroll-contain py-2'
         }
       >
         {loading ? (
@@ -331,10 +336,6 @@ function AgentInteractionParamForm({
             正在读取参数...
           </div>
         ) : null}
-
-        <div className='rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground'>
-          交互信息已提交，只读查看。
-        </div>
 
         <ReadonlyInteractionValues
           params={visibleParams}
@@ -370,7 +371,7 @@ function AgentInteractionParamForm({
     <>
       <div
         data-agent-interaction-scroll='true'
-        onWheel={handleInteractionPanelWheel}
+        onWheel={handleInteractionWheel}
         className={
           layout === 'dialog'
             ? 'max-h-[62vh] space-y-3 overflow-y-auto overscroll-contain p-4'
@@ -430,63 +431,6 @@ function AgentInteractionParamForm({
   )
 }
 
-function handleInteractionPanelRootWheel(event: WheelEvent<HTMLDivElement>) {
-  const eventTarget = event.target
-  if (
-    eventTarget instanceof HTMLElement &&
-    eventTarget.closest('[data-agent-interaction-scroll="true"]')
-  ) {
-    return
-  }
-
-  const scrollTarget = event.currentTarget.querySelector<HTMLDivElement>(
-    '[data-agent-interaction-scroll="true"]'
-  )
-  if (!scrollTarget) {
-    event.stopPropagation()
-    return
-  }
-
-  scrollInteractionPanel(event, scrollTarget)
-}
-
-function handleInteractionPanelWheel(event: WheelEvent<HTMLDivElement>) {
-  scrollInteractionPanel(event, event.currentTarget)
-}
-
-function scrollInteractionPanel(
-  event: WheelEvent<HTMLDivElement>,
-  target: HTMLDivElement
-) {
-  const scrollDelta = interactionPanelWheelDelta(event, target)
-  if (scrollDelta === 0) {
-    return
-  }
-
-  event.preventDefault()
-  event.stopPropagation()
-  target.scrollTop = Math.max(
-    0,
-    Math.min(
-      target.scrollTop + scrollDelta,
-      target.scrollHeight - target.clientHeight
-    )
-  )
-}
-
-function interactionPanelWheelDelta(
-  event: WheelEvent<HTMLDivElement>,
-  target: HTMLDivElement
-) {
-  if (event.deltaMode === 1) {
-    return event.deltaY * 16
-  }
-  if (event.deltaMode === 2) {
-    return event.deltaY * target.clientHeight
-  }
-  return event.deltaY
-}
-
 function ReadonlyInteractionValues({
   params,
   data,
@@ -524,26 +468,28 @@ function ReadonlyInteractionValues({
 
   if (rows.length === 0) {
     return (
-      <div className='rounded-md border border-dashed px-3 py-4 text-center text-sm text-muted-foreground'>
+      <div className='py-4 text-sm text-muted-foreground'>
         没有提交具体参数。
       </div>
     )
   }
 
   return (
-    <div className='space-y-2'>
+    <dl className='space-y-3'>
       {rows.map((row) => (
         <div
           key={row.key}
-          className='rounded-md border bg-background px-3 py-2'
+          className='grid grid-cols-[minmax(6.5rem,9rem)_minmax(0,1fr)] items-start gap-x-4'
         >
-          <div className='text-xs text-muted-foreground'>{row.label}</div>
-          <div className='mt-1 text-sm leading-5 break-words whitespace-pre-wrap'>
+          <dt className='text-sm leading-6 text-muted-foreground'>
+            {row.label}
+          </dt>
+          <dd className='min-w-0 break-words whitespace-pre-wrap text-sm leading-6 text-foreground'>
             {row.value}
-          </div>
+          </dd>
         </div>
       ))}
-    </div>
+    </dl>
   )
 }
 

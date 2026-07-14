@@ -16,11 +16,33 @@ import {
   resolveResourceKind,
   type ResourceUploadRule,
 } from '@/lib/resource'
-import { importRemoteFileByRuleStream, type UploadFileItem } from '@/lib/upload'
+import {
+  downloadUploadFile,
+  importRemoteFileByRuleStream,
+  type UploadFileItem,
+} from '@/lib/upload'
 import { cn } from '@/lib/utils'
 
-type EnergonMediaKind = 'image' | 'video' | 'audio' | 'file'
+export type EnergonMediaKind = 'image' | 'video' | 'audio' | 'file'
 export type EnergonMediaLayout = 'default' | 'chat'
+
+export type EnergonMediaPreviewItem = {
+  id: string | number
+  name: string
+  url: string
+  thumbnail?: string
+}
+
+export type EnergonMediaPreviewRequest = {
+  kind: EnergonMediaKind
+  items: EnergonMediaPreviewItem[]
+  initialItemId?: string | number
+  download: (itemId: string | number) => Promise<void>
+}
+
+export type EnergonMediaPreviewHandler = (
+  request: EnergonMediaPreviewRequest
+) => void
 
 type EnergonMediaViewProps = {
   kind: EnergonMediaKind
@@ -29,6 +51,7 @@ type EnergonMediaViewProps = {
   uploadRules?: ResourceUploadRule[]
   layout?: EnergonMediaLayout
   previewLayerZIndex?: number
+  onMediaPreview?: EnergonMediaPreviewHandler
 }
 
 type UploadState = {
@@ -44,6 +67,7 @@ export function EnergonMediaView({
   uploadRules = [],
   layout = 'default',
   previewLayerZIndex,
+  onMediaPreview,
 }: EnergonMediaViewProps) {
   const baseItems = useMemo(
     () => normalizeUploadUrlItems(urls, { kind }),
@@ -68,7 +92,30 @@ export function EnergonMediaView({
   }
 
   const openPreview = (item: UploadFileItem) => {
-    setPreviewInitialID((uploadedByURL[resourceURL(item)] || item).id)
+    const selectedItem = uploadedByURL[resourceURL(item)] || item
+    if (onMediaPreview) {
+      onMediaPreview({
+        kind,
+        items: previewItems.map((previewItem) => ({
+          id: previewItem.id,
+          name: previewItem.name,
+          url: resourceURL(previewItem),
+          thumbnail: String(previewItem.thumbnail || '').trim() || undefined,
+        })),
+        initialItemId: selectedItem.id,
+        download: async (itemId) => {
+          const downloadItem = previewItems.find(
+            (previewItem) => String(previewItem.id) === String(itemId)
+          )
+          if (!downloadItem) {
+            throw new Error('未找到要下载的资源')
+          }
+          await downloadUploadFile(downloadItem)
+        },
+      })
+      return
+    }
+    setPreviewInitialID(selectedItem.id)
     setPreviewOpen(true)
   }
 
@@ -160,36 +207,38 @@ export function EnergonMediaView({
 
       <UploadProgressList uploadState={uploadState} />
 
-      <ResourcePreviewDialogLazy
-        open={previewOpen}
-        title="生成资源预览"
-        description={
-          uploadRule
-            ? '可预览当前生成的图片、视频、音频或文件，也可以保存到资源库。'
-            : '可预览当前生成的图片、视频、音频或文件。'
-        }
-        items={previewItems}
-        initialItemId={previewInitialID}
-        presentation={layout === 'chat' ? 'drawer' : 'dialog'}
-        assistantLayer={layout === 'chat'}
-        layerZIndex={previewLayerZIndex}
-        onOpenChange={setPreviewOpen}
-        renderActions={
-          uploadRule
-            ? (item) =>
-                item ? (
-                  <MediaUploadButton
-                    item={resolveSourceItem(item, baseItems, uploadedByURL)}
-                    kind={kind}
-                    uploadRule={uploadRule}
-                    uploadState={uploadState}
-                    uploadedByURL={uploadedByURL}
-                    onUpload={saveResource}
-                  />
-                ) : null
-            : undefined
-        }
-      />
+      {!onMediaPreview ? (
+        <ResourcePreviewDialogLazy
+          open={previewOpen}
+          title="生成资源预览"
+          description={
+            uploadRule
+              ? '可预览当前生成的图片、视频、音频或文件，也可以保存到资源库。'
+              : '可预览当前生成的图片、视频、音频或文件。'
+          }
+          items={previewItems}
+          initialItemId={previewInitialID}
+          presentation={layout === 'chat' ? 'drawer' : 'dialog'}
+          assistantLayer={layout === 'chat'}
+          layerZIndex={previewLayerZIndex}
+          onOpenChange={setPreviewOpen}
+          renderActions={
+            uploadRule
+              ? (item) =>
+                  item ? (
+                    <MediaUploadButton
+                      item={resolveSourceItem(item, baseItems, uploadedByURL)}
+                      kind={kind}
+                      uploadRule={uploadRule}
+                      uploadState={uploadState}
+                      uploadedByURL={uploadedByURL}
+                      onUpload={saveResource}
+                    />
+                  ) : null
+              : undefined
+          }
+        />
+      ) : null}
     </div>
   )
 }

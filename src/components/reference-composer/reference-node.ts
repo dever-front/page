@@ -1,11 +1,22 @@
 import { mergeAttributes, Node } from '@tiptap/core'
+import { ReactNodeViewRenderer } from '@tiptap/react'
+import { ReferenceNodeView } from './reference-node-view'
+import type { ReferencePreviewLoader } from './types'
 
-export const ReferenceNode = Node.create({
+export type ReferenceNodeOptions = {
+  loadPreview?: ReferencePreviewLoader
+}
+
+export const ReferenceNode = Node.create<ReferenceNodeOptions>({
   name: 'reference',
   group: 'inline',
   inline: true,
   atom: true,
   selectable: true,
+
+  addOptions() {
+    return { loadPreview: undefined }
+  },
 
   addAttributes() {
     return {
@@ -13,6 +24,9 @@ export const ReferenceNode = Node.create({
       refId: { default: 0 },
       label: { default: '' },
       usage: { default: '' },
+      previewText: { default: '' },
+      previewKind: { default: '' },
+      previewUrl: { default: '' },
     }
   },
 
@@ -28,27 +42,54 @@ export const ReferenceNode = Node.create({
         'data-reference': '',
         contenteditable: 'false',
       }),
-      `@${label}`,
+      label,
     ]
   },
 
   renderText({ node }) {
-    return `@${String(node.attrs.label || '').trim()}`
+    return String(node.attrs.label || '').trim()
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(ReferenceNodeView)
   },
 
   addKeyboardShortcuts() {
     return {
       Backspace: () => {
-        const { empty, from } = this.editor.state.selection
+        const { empty, from, $from } = this.editor.state.selection
         if (!empty) {
           return false
         }
-        const nodeBefore = this.editor.state.doc.resolve(from).nodeBefore
-        if (nodeBefore?.type.name !== this.name) {
+        const nodeBefore = $from.nodeBefore
+        if (nodeBefore?.type.name === this.name) {
+          return this.editor.commands.deleteRange({
+            from: from - nodeBefore.nodeSize,
+            to: from,
+          })
+        }
+        if (!nodeBefore?.isText || !/\s$/.test(nodeBefore.textContent)) {
           return false
         }
+
+        const spacerStart = from - 1
+        const referenceBefore = this.editor.state.doc.resolve(spacerStart)
+          .nodeBefore
+        if (referenceBefore?.type.name !== this.name) {
+          return false
+        }
+        let deleteFrom = spacerStart - referenceBefore.nodeSize
+        const parentStart = $from.start()
+        if (
+          deleteFrom === parentStart + 1 &&
+          /^\s$/.test(
+            this.editor.state.doc.textBetween(parentStart, deleteFrom)
+          )
+        ) {
+          deleteFrom = parentStart
+        }
         return this.editor.commands.deleteRange({
-          from: from - nodeBefore.nodeSize,
+          from: deleteFrom,
           to: from,
         })
       },

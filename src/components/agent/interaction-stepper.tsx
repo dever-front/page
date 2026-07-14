@@ -21,6 +21,7 @@ import {
   InteractionStepperChoice,
   type InteractionStepperParam,
 } from './interaction-stepper-choice'
+import { handleInteractionWheel } from './interaction-scroll'
 
 export type { InteractionStepperParam } from './interaction-stepper-choice'
 
@@ -127,6 +128,7 @@ export function AgentInteractionStepper({
     <div className='flex min-h-0 flex-col'>
       <div
         data-agent-interaction-scroll='true'
+        onWheel={handleInteractionWheel}
         className='max-h-[58vh] overflow-y-auto overscroll-contain px-4 py-4 sm:px-5'
       >
         <StepperProgress step={step} total={params.length} />

@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   EnergonMediaView,
   type EnergonMediaLayout,
+  type EnergonMediaPreviewHandler,
 } from '@/components/energon/media-view'
 import { EnergonProgressBlock, normalizeEnergonPercent } from '@/components/energon/progress'
 import { normalizeAgentResultOutputValue } from '@/lib/agent-result-protocol'
@@ -34,7 +35,7 @@ export type EnergonOutput = {
   rich?: any
 }
 
-type EnergonContentViewProps = {
+export type ContentViewProps = {
   output?: any
   streaming?: boolean
   emptyText?: string
@@ -42,7 +43,15 @@ type EnergonContentViewProps = {
   uploadRules?: ResourceUploadRule[]
   mediaLayout?: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
+  onMediaPreview?: EnergonMediaPreviewHandler
 }
+
+export type {
+  EnergonMediaKind,
+  EnergonMediaPreviewHandler,
+  EnergonMediaPreviewItem,
+  EnergonMediaPreviewRequest,
+} from '@/components/energon/media-view'
 
 const outputScalarKeys = [
   'event',
@@ -62,7 +71,7 @@ const outputListFields = [
   { target: 'files', sources: ['files', 'file'] },
 ] as const
 
-export function EnergonContentView({
+export function ContentView({
   output,
   streaming = false,
   emptyText = '暂无内容。',
@@ -70,7 +79,8 @@ export function EnergonContentView({
   uploadRules,
   mediaLayout = 'default',
   mediaPreviewLayerZIndex,
-}: EnergonContentViewProps) {
+  onMediaPreview,
+}: ContentViewProps) {
   const items = normalizeEnergonOutput(output)
 
   if (items.length === 0 && !streaming) {
@@ -86,12 +96,15 @@ export function EnergonContentView({
           uploadRules={uploadRules}
           mediaLayout={mediaLayout}
           mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
+          onMediaPreview={onMediaPreview}
         />
       ))}
       {streaming ? <StreamingCursor /> : null}
     </div>
   )
 }
+
+export const EnergonContentView = ContentView
 
 export function normalizeEnergonOutput(value: any): EnergonOutput[] {
   if (value == null || value === '') {
@@ -108,6 +121,10 @@ export function normalizeEnergonOutput(value: any): EnergonOutput[] {
 }
 
 function normalizeOutput(value: any): EnergonOutput {
+  const directRich = parseRichTextDoc(value)
+  if (directRich) {
+    return isEmptyRichTextDoc(directRich) ? {} : { rich: directRich }
+  }
   if (!isPlainObject(value)) {
     return typeof value === 'string' ? { text: value } : { json: value }
   }
@@ -145,11 +162,13 @@ function EnergonOutputBlock({
   uploadRules,
   mediaLayout,
   mediaPreviewLayerZIndex,
+  onMediaPreview,
 }: {
   output: EnergonOutput
   uploadRules?: ResourceUploadRule[]
   mediaLayout: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
+  onMediaPreview?: EnergonMediaPreviewHandler
 }) {
   const event = valueText(output.event).toLowerCase()
   const isProgressEvent = event === 'start' || event === 'progress'
@@ -193,6 +212,7 @@ function EnergonOutputBlock({
         uploadRules={uploadRules}
         mediaLayout={mediaLayout}
         mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
+        onMediaPreview={onMediaPreview}
       />
       <VideoBlock
         urls={videoUrls}
@@ -200,6 +220,7 @@ function EnergonOutputBlock({
         uploadRules={uploadRules}
         mediaLayout={mediaLayout}
         mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
+        onMediaPreview={onMediaPreview}
       />
       <AudioBlock
         urls={audioUrls}
@@ -207,6 +228,7 @@ function EnergonOutputBlock({
         uploadRules={uploadRules}
         mediaLayout={mediaLayout}
         mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
+        onMediaPreview={onMediaPreview}
       />
       <FileBlock
         urls={normalizeStringList(output.files)}
@@ -214,6 +236,7 @@ function EnergonOutputBlock({
         uploadRules={uploadRules}
         mediaLayout={mediaLayout}
         mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
+        onMediaPreview={onMediaPreview}
       />
       {output.json != null ? <JsonFallback value={output.json} event={event} /> : null}
     </div>
@@ -268,12 +291,14 @@ function ImageBlock({
   uploadRules,
   mediaLayout,
   mediaPreviewLayerZIndex,
+  onMediaPreview,
 }: {
   urls: string[]
   meta?: Record<string, any>
   uploadRules?: ResourceUploadRule[]
   mediaLayout: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
+  onMediaPreview?: EnergonMediaPreviewHandler
 }) {
   if (urls.length === 0) {
     return null
@@ -286,6 +311,7 @@ function ImageBlock({
       uploadRules={uploadRules}
       layout={mediaLayout}
       previewLayerZIndex={mediaPreviewLayerZIndex}
+      onMediaPreview={onMediaPreview}
     />
   )
 }
@@ -296,12 +322,14 @@ function VideoBlock({
   uploadRules,
   mediaLayout,
   mediaPreviewLayerZIndex,
+  onMediaPreview,
 }: {
   urls: string[]
   meta?: Record<string, any>
   uploadRules?: ResourceUploadRule[]
   mediaLayout: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
+  onMediaPreview?: EnergonMediaPreviewHandler
 }) {
   if (urls.length === 0) {
     return null
@@ -314,6 +342,7 @@ function VideoBlock({
       uploadRules={uploadRules}
       layout={mediaLayout}
       previewLayerZIndex={mediaPreviewLayerZIndex}
+      onMediaPreview={onMediaPreview}
     />
   )
 }
@@ -324,12 +353,14 @@ function AudioBlock({
   uploadRules,
   mediaLayout,
   mediaPreviewLayerZIndex,
+  onMediaPreview,
 }: {
   urls: string[]
   meta?: Record<string, any>
   uploadRules?: ResourceUploadRule[]
   mediaLayout: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
+  onMediaPreview?: EnergonMediaPreviewHandler
 }) {
   if (urls.length === 0) {
     return null
@@ -342,6 +373,7 @@ function AudioBlock({
       uploadRules={uploadRules}
       layout={mediaLayout}
       previewLayerZIndex={mediaPreviewLayerZIndex}
+      onMediaPreview={onMediaPreview}
     />
   )
 }
@@ -352,12 +384,14 @@ function FileBlock({
   uploadRules,
   mediaLayout,
   mediaPreviewLayerZIndex,
+  onMediaPreview,
 }: {
   urls: string[]
   meta?: Record<string, any>
   uploadRules?: ResourceUploadRule[]
   mediaLayout: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
+  onMediaPreview?: EnergonMediaPreviewHandler
 }) {
   if (urls.length === 0) {
     return null
@@ -370,6 +404,7 @@ function FileBlock({
       uploadRules={uploadRules}
       layout={mediaLayout}
       previewLayerZIndex={mediaPreviewLayerZIndex}
+      onMediaPreview={onMediaPreview}
     />
   )
 }

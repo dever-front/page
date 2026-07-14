@@ -1,29 +1,40 @@
+import { useRef, useState, type ChangeEvent } from 'react'
 import {
-  useRef,
-  useState,
-  type ChangeEvent,
-} from 'react'
-import { Check, FolderOpen, Loader2, Paperclip, Settings2, X } from 'lucide-react'
-import { SearchableOptionPicker } from '@/components/searchable-option-picker'
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
-import { ResourcePickerDialogLazy } from '@/components/resource/lazy-dialogs'
-import { useResourcePreviewDialog } from '@/components/resource/use-resource-preview'
+  Check,
+  FolderOpen,
+  Loader2,
+  Paperclip,
+  X,
+} from 'lucide-react'
 import { findFloatingLayerContainer } from '@/lib/floating-layer'
+import { resolveAssetUrl } from '@/lib/request'
 import {
   formatUploadSize,
   resolveResourceKind,
   type ResourceUploadRule,
 } from '@/lib/resource'
-import { resolveAssetUrl } from '@/lib/request'
-import { uploadFileByRule, type UploadFileItem, type UploadRuleMeta } from '@/lib/upload'
+import {
+  uploadFileByRule,
+  type UploadFileItem,
+  type UploadRuleMeta,
+} from '@/lib/upload'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
+import { ResourcePickerDialogLazy } from '@/components/resource/lazy-dialogs'
+import { useResourcePreviewDialog } from '@/components/resource/use-resource-preview'
+import { SearchableOptionPicker } from '@/components/searchable-option-picker'
+import { PowerParamIcon } from './power-param-icon'
 
 const PARAM_USAGE_MAIN = 1
 const PARAM_USAGE_TOOLBAR = 2
@@ -43,6 +54,7 @@ export type PowerParam = {
   power_param_id?: string | number
   name: string
   key?: string
+  icon?: string
   type: string
   usage: number
   value_type: string
@@ -94,31 +106,34 @@ export function PowerParamField(props: Omit<ParamControlProps, 'surface'>) {
     return null
   }
   if (isDescriptionParam(param)) {
-    return <PowerParamDescription param={param} surface="main" />
+    return <PowerParamDescription param={param} surface='main' />
   }
 
   const currentValue = displayParamValue(param, value)
   const label = paramLabel(param)
 
   return (
-    <div className="space-y-2 rounded-xl bg-muted/30 p-3">
-      <Label className="text-sm font-medium text-foreground">
+    <div className='space-y-2 rounded-xl bg-muted/30 p-3'>
+      <Label className='text-sm font-medium text-foreground'>
         {label}
-        {isRequiredParam(param) ? <span className="ml-0.5 text-destructive">*</span> : null}
+        {isRequiredParam(param) ? (
+          <span className='ml-0.5 text-destructive'>*</span>
+        ) : null}
       </Label>
-      <PowerParamControl
-        {...props}
-        value={currentValue}
-        surface="main"
-      />
+      <PowerParamControl {...props} value={currentValue} surface='main' />
     </div>
   )
 }
 
-export function PowerParamPopover(props: Omit<ParamControlProps, 'surface'>) {
+export function PowerParamPopover({
+  triggerClassName,
+  ...props
+}: Omit<ParamControlProps, 'surface'> & { triggerClassName?: string }) {
   const { param, value, files, disabled } = props
   const [open, setOpen] = useState(false)
-  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
+    null
+  )
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const currentValue = displayParamValue(param, value)
   const label = paramLabel(param)
@@ -131,7 +146,7 @@ export function PowerParamPopover(props: Omit<ParamControlProps, 'surface'>) {
   }
 
   if (isDescriptionParam(param)) {
-    return <PowerParamDescription param={param} surface="toolbar" />
+    return <PowerParamDescription param={param} surface='toolbar' />
   }
 
   return (
@@ -139,36 +154,46 @@ export function PowerParamPopover(props: Omit<ParamControlProps, 'surface'>) {
       <PopoverTrigger asChild>
         <Button
           ref={triggerRef}
-          type="button"
-          variant="outline"
-          size="sm"
+          type='button'
+          variant='outline'
+          size='sm'
           disabled={disabled}
-          className="w-[10.5rem] justify-start gap-1.5 px-2.5"
+          className={cn(
+            'w-[10.5rem] justify-start gap-1.5 px-2.5',
+            triggerClassName
+          )}
           title={`${label}${summary ? `：${summary}` : ''}`}
         >
-          <Settings2 className="size-3.5 shrink-0" />
-          <span className="truncate">{label}</span>
-          {isRequiredParam(param) ? <span className="-ml-1 text-destructive">*</span> : null}
+          <PowerParamIcon
+            name={param.icon}
+            className='size-3.5 shrink-0'
+          />
+          <span className='truncate'>{label}</span>
+          {isRequiredParam(param) ? (
+            <span className='-ml-1 text-destructive'>*</span>
+          ) : null}
           {summary ? (
-            <span className="max-w-[5rem] truncate text-xs text-muted-foreground">
+            <span className='max-w-[5rem] truncate text-xs text-muted-foreground'>
               {summary}
             </span>
           ) : null}
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        align="start"
+        align='start'
         container={portalContainer}
-        className="z-[120] w-80 space-y-3"
+        className='z-[120] w-80 space-y-3'
       >
-        <p className="min-w-0 truncate text-sm font-medium">
+        <p className='min-w-0 truncate text-sm font-medium'>
           {label}
-          {isRequiredParam(param) ? <span className="ml-0.5 text-destructive">*</span> : null}
+          {isRequiredParam(param) ? (
+            <span className='ml-0.5 text-destructive'>*</span>
+          ) : null}
         </p>
         <PowerParamControl
           {...props}
           value={currentValue}
-          surface="toolbar"
+          surface='toolbar'
           onClose={() => setOpen(false)}
         />
       </PopoverContent>
@@ -193,10 +218,13 @@ function PowerParamControl({
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const label = paramLabel(param)
   const resourceRule = resolveParamResourceRule(param, uploadRuleMeta)
-  const { openPreview, previewDialog, hasItems } = useResourcePreviewDialog(files, {
-    title: `${label}详情`,
-    description: '可查看当前上传资源详情；不支持在线预览的文件可直接下载。',
-  })
+  const { openPreview, previewDialog, hasItems } = useResourcePreviewDialog(
+    files,
+    {
+      title: `${label}详情`,
+      description: '可查看当前上传资源详情；不支持在线预览的文件可直接下载。',
+    }
+  )
 
   const handleUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(event.target.files || [])
@@ -223,7 +251,9 @@ function PowerParamControl({
     setMessage('')
     try {
       let nextFiles = multiple ? [...files] : []
-      for (const file of (multiple ? selected.slice(0, remaining) : selected.slice(0, 1))) {
+      for (const file of multiple
+        ? selected.slice(0, remaining)
+        : selected.slice(0, 1)) {
         const uploaded = await uploadFileByRule(ruleId, file, {
           kind: resourceRule?.kind || resolveFileResourceKind(file),
           transport: resourceRule?.transport,
@@ -245,7 +275,9 @@ function PowerParamControl({
 
   const handlePickResources = (selectedFiles: ParamUploadedFile[]) => {
     const maxFiles = resolveMaxFiles(param)
-    const nextFiles = (isFilesParam(param) ? selectedFiles : selectedFiles.slice(0, 1)).slice(0, maxFiles)
+    const nextFiles = (
+      isFilesParam(param) ? selectedFiles : selectedFiles.slice(0, 1)
+    ).slice(0, maxFiles)
     setMessage('')
     onFilesChange(nextFiles)
   }
@@ -269,34 +301,36 @@ function PowerParamControl({
         onPickResources: () => setPickerOpen(true),
         onPreviewFile: handlePreviewFile,
         onRemoveFile: (targetID) =>
-          onFilesChange(files.filter((file) => String(file.id) !== String(targetID))),
+          onFilesChange(
+            files.filter((file) => String(file.id) !== String(targetID))
+          ),
         canPickResources: !!resourceRule,
       })}
 
       {isFileParam(param) ? (
         <input
           ref={fileInputRef}
-          type="file"
-          className="hidden"
+          type='file'
+          className='hidden'
           multiple={isFilesParam(param)}
           accept={uploadRuleMeta?.accept}
           onChange={handleUpload}
         />
       ) : null}
 
-      {message ? <p className="text-xs text-destructive">{message}</p> : null}
+      {message ? <p className='text-xs text-destructive'>{message}</p> : null}
       {resourceRule ? (
         <ResourcePickerDialogLazy
           open={pickerOpen}
           title={`${label}资源库`}
-          description="可从资源库选择匹配当前上传规则的资源。"
-          initialScope="all"
+          description='可从资源库选择匹配当前上传规则的资源。'
+          initialScope='all'
           defaultKind={resourceRule.kind}
-          fixedKind={true}
+          fixedKind={Boolean(resourceRule.kind)}
           value={files}
           multiple={isFilesParam(param)}
           maxSelection={resolveMaxFiles(param)}
-          emptyText="暂无匹配资源。"
+          emptyText='暂无匹配资源。'
           uploadRules={[resourceRule]}
           onOpenChange={setPickerOpen}
           onConfirm={handlePickResources}
@@ -346,14 +380,17 @@ function renderParamControl({
           placeholder={paramInputPlaceholder(param)}
           disabled={disabled}
           rows={surface === 'main' ? 4 : 3}
-          className={cn('resize-y', surface === 'main' && 'min-h-24 rounded-xl')}
+          className={cn(
+            'resize-y',
+            surface === 'main' && 'min-h-24 rounded-xl'
+          )}
           onChange={(event) => onChange(event.target.value)}
         />
       )
     case 'switch':
       return (
-        <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-          <Label className="text-sm font-normal">启用</Label>
+        <div className='flex items-center justify-between rounded-lg border px-3 py-2'>
+          <Label className='text-sm font-normal'>启用</Label>
           <Switch
             checked={isTruthyValue(value)}
             disabled={disabled}
@@ -428,7 +465,7 @@ function SingleOptionControl({
   const selected = value == null ? '' : String(value)
 
   if (options.length === 0) {
-    return <p className="text-xs text-muted-foreground">暂无可选项。</p>
+    return <p className='text-xs text-muted-foreground'>暂无可选项。</p>
   }
 
   if (surface === 'main' && options.length <= INLINE_OPTION_LIMIT) {
@@ -437,7 +474,7 @@ function SingleOptionControl({
         value={selected}
         disabled={disabled}
         onValueChange={(nextValue) => onChange(nextValue)}
-        className="flex flex-wrap items-center gap-x-6 gap-y-2"
+        className='flex flex-wrap items-center gap-x-6 gap-y-2'
       >
         {options.map((option) => {
           const optionValue = optionRequestValue(option)
@@ -446,10 +483,15 @@ function SingleOptionControl({
             <Label
               key={optionID}
               htmlFor={`${param.id}-${optionID}`}
-              className="flex min-w-0 cursor-pointer items-start gap-2.5 font-normal"
+              className='flex min-w-0 cursor-pointer items-start gap-2.5 font-normal'
             >
-              <RadioGroupItem value={optionValue} id={`${param.id}-${optionID}`} />
-              <span className="min-w-0 break-words leading-5">{option.value}</span>
+              <RadioGroupItem
+                value={optionValue}
+                id={`${param.id}-${optionID}`}
+              />
+              <span className='min-w-0 leading-5 break-words'>
+                {option.value}
+              </span>
             </Label>
           )
         })}
@@ -463,15 +505,17 @@ function SingleOptionControl({
         value={selected || undefined}
         options={optionPickerOptions(options)}
         disabled={disabled}
-        placeholder="请选择"
+        placeholder='请选择'
         clearable={false}
-        onChange={(nextValue) => onChange(Array.isArray(nextValue) ? nextValue[0] || '' : nextValue)}
+        onChange={(nextValue) =>
+          onChange(Array.isArray(nextValue) ? nextValue[0] || '' : nextValue)
+        }
       />
     )
   }
 
   return (
-    <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+    <div className='max-h-56 space-y-1 overflow-y-auto pr-1'>
       {options.map((option) => {
         const optionID = String(option.id)
         const optionValue = optionRequestValue(option)
@@ -479,17 +523,24 @@ function SingleOptionControl({
         return (
           <Button
             key={optionID}
-            type="button"
-            variant="ghost"
+            type='button'
+            variant='ghost'
             disabled={disabled}
-            className="h-8 w-full justify-start gap-2 px-2 font-normal"
+            className='h-8 w-full justify-start gap-2 px-2 font-normal'
             onClick={() => {
               onChange(optionValue)
               onClose?.()
             }}
           >
-            <span className="min-w-0 flex-1 truncate text-left">{option.value}</span>
-            <Check className={cn('size-4', checked ? 'opacity-100 text-primary' : 'opacity-0')} />
+            <span className='min-w-0 flex-1 truncate text-left'>
+              {option.value}
+            </span>
+            <Check
+              className={cn(
+                'size-4',
+                checked ? 'text-primary opacity-100' : 'opacity-0'
+              )}
+            />
           </Button>
         )
       })}
@@ -514,7 +565,7 @@ function MultiOptionControl({
   const selected = normalizeStringArray(value)
 
   if (options.length === 0) {
-    return <p className="text-xs text-muted-foreground">暂无可选项。</p>
+    return <p className='text-xs text-muted-foreground'>暂无可选项。</p>
   }
 
   if (surface === 'main' && options.length > INLINE_OPTION_LIMIT) {
@@ -524,14 +575,20 @@ function MultiOptionControl({
         value={selected}
         options={optionPickerOptions(options)}
         disabled={disabled}
-        placeholder="请选择"
+        placeholder='请选择'
         onChange={onChange}
       />
     )
   }
 
   return (
-    <div className={cn(surface === 'main' ? 'flex flex-wrap gap-x-5 gap-y-2' : 'max-h-56 space-y-2 overflow-y-auto pr-1')}>
+    <div
+      className={cn(
+        surface === 'main'
+          ? 'flex flex-wrap gap-x-5 gap-y-2'
+          : 'max-h-56 space-y-2 overflow-y-auto pr-1'
+      )}
+    >
       {options.map((option) => {
         const optionID = String(option.id)
         const optionValue = optionRequestValue(option)
@@ -541,7 +598,8 @@ function MultiOptionControl({
             key={optionID}
             className={cn(
               'flex min-w-0 cursor-pointer items-start gap-2 text-sm',
-              surface === 'toolbar' && 'rounded-md px-1 py-1.5 hover:bg-muted/60'
+              surface === 'toolbar' &&
+                'rounded-md px-1 py-1.5 hover:bg-muted/60'
             )}
           >
             <Checkbox
@@ -552,7 +610,11 @@ function MultiOptionControl({
                   onChange(Array.from(new Set([...selected, optionValue])))
                   return
                 }
-                onChange(selected.filter((current) => !isSelectedOptionValue(option, [current])))
+                onChange(
+                  selected.filter(
+                    (current) => !isSelectedOptionValue(option, [current])
+                  )
+                )
               }}
             />
             <span
@@ -593,64 +655,68 @@ function FileParamControl({
 }) {
   const maxFiles = resolveMaxFiles(param)
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
+    <div className='space-y-2'>
+      <div className='flex items-center justify-between gap-2'>
+        <div className='flex flex-wrap items-center gap-2'>
           <Button
-            type="button"
-            variant="outline"
-            size="sm"
+            type='button'
+            variant='outline'
+            size='sm'
             disabled={disabled || uploading || files.length >= maxFiles}
             onClick={onPickFiles}
           >
-            {uploading ? <Loader2 className="size-4 animate-spin" /> : <Paperclip className="size-4" />}
+            {uploading ? (
+              <Loader2 className='size-4 animate-spin' />
+            ) : (
+              <Paperclip className='size-4' />
+            )}
             {uploading ? '上传中...' : '选择文件'}
           </Button>
           {canPickResources ? (
             <Button
-              type="button"
-              variant="outline"
-              size="sm"
+              type='button'
+              variant='outline'
+              size='sm'
               disabled={disabled || uploading}
               onClick={onPickResources}
             >
-              <FolderOpen className="size-4" />
+              <FolderOpen className='size-4' />
               资源库
             </Button>
           ) : null}
         </div>
-        <span className="text-xs text-muted-foreground">
+        <span className='text-xs text-muted-foreground'>
           {files.length}/{maxFiles}
         </span>
       </div>
 
       {files.length > 0 ? (
-        <div className="space-y-1.5">
+        <div className='space-y-1.5'>
           {files.map((file) => (
             <div
               key={String(file.id)}
-              className="flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs"
+              className='flex items-center gap-2 rounded-lg border px-2 py-1.5 text-xs'
             >
               <button
-                type="button"
-                className="min-w-0 flex-1 truncate text-left text-foreground underline-offset-2 transition hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                type='button'
+                className='min-w-0 flex-1 truncate text-left text-foreground underline-offset-2 transition hover:text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none'
                 title={file.name || '文件资源'}
                 onClick={() => onPreviewFile(file.id)}
               >
                 {file.name || '文件资源'}
               </button>
-              <span className="shrink-0 text-muted-foreground">
+              <span className='shrink-0 text-muted-foreground'>
                 {formatUploadSize(Number(file.size || 0))}
               </span>
               <Button
-                type="button"
-                variant="ghost"
-                size="icon"
+                type='button'
+                variant='ghost'
+                size='icon'
                 disabled={disabled}
-                className="size-6 shrink-0 text-muted-foreground hover:text-destructive"
+                className='size-6 shrink-0 text-muted-foreground hover:text-destructive'
                 onClick={() => onRemoveFile(file.id)}
               >
-                <X className="size-3.5" />
+                <X className='size-3.5' />
               </Button>
             </div>
           ))}
@@ -660,7 +726,7 @@ function FileParamControl({
   )
 }
 
-function resolveParamResourceRule(
+export function resolveParamResourceRule(
   param: PowerParam,
   uploadRuleMeta?: UploadRuleMeta
 ): ResourceUploadRule | undefined {
@@ -671,20 +737,19 @@ function resolveParamResourceRule(
 
   const accept = String(uploadRuleMeta?.accept || '').trim()
   const kind = resolveAcceptResourceKind(accept)
-  if (!kind) {
-    return undefined
-  }
 
   return {
     ruleId,
     accept: accept || undefined,
-    kind,
+    kind: kind || undefined,
     transport: String(uploadRuleMeta?.transport || '').trim() || undefined,
   }
 }
 
 function resolveAcceptResourceKind(accept: string) {
-  const normalized = String(accept || '').trim().toLowerCase()
+  const normalized = String(accept || '')
+    .trim()
+    .toLowerCase()
   if (!normalized) {
     return ''
   }
@@ -693,13 +758,25 @@ function resolveAcceptResourceKind(accept: string) {
     .map((item) => item.trim())
     .filter(Boolean)
 
-  if (tokens.some((item) => item.startsWith('image/') || imageAcceptExtensions.has(item))) {
+  if (
+    tokens.some(
+      (item) => item.startsWith('image/') || imageAcceptExtensions.has(item)
+    )
+  ) {
     return 'image'
   }
-  if (tokens.some((item) => item.startsWith('video/') || videoAcceptExtensions.has(item))) {
+  if (
+    tokens.some(
+      (item) => item.startsWith('video/') || videoAcceptExtensions.has(item)
+    )
+  ) {
     return 'video'
   }
-  if (tokens.some((item) => item.startsWith('audio/') || audioAcceptExtensions.has(item))) {
+  if (
+    tokens.some(
+      (item) => item.startsWith('audio/') || audioAcceptExtensions.has(item)
+    )
+  ) {
     return 'audio'
   }
   return resolveResourceKind({ accept: normalized })
@@ -729,13 +806,7 @@ const imageAcceptExtensions = new Set([
   '.svg',
 ])
 
-const videoAcceptExtensions = new Set([
-  '.mp4',
-  '.mov',
-  '.webm',
-  '.avi',
-  '.mkv',
-])
+const videoAcceptExtensions = new Set(['.mp4', '.mov', '.webm', '.avi', '.mkv'])
 
 const audioAcceptExtensions = new Set([
   '.mp3',
@@ -759,21 +830,23 @@ function PowerParamDescription({
   if (surface === 'toolbar') {
     return (
       <div
-        className="flex min-h-9 max-w-full items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm"
+        className='flex min-h-9 max-w-full items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm'
         title={description || label}
       >
-        <span className="shrink-0 font-medium text-foreground">{label}</span>
+        <span className='shrink-0 font-medium text-foreground'>{label}</span>
         {description ? (
-          <span className="min-w-0 truncate text-muted-foreground">{description}</span>
+          <span className='min-w-0 truncate text-muted-foreground'>
+            {description}
+          </span>
         ) : null}
       </div>
     )
   }
 
   return (
-    <div className="space-y-1.5 rounded-xl border border-dashed bg-muted/20 p-3">
-      <Label className="text-sm font-medium text-foreground">{label}</Label>
-      <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
+    <div className='space-y-1.5 rounded-xl border border-dashed bg-muted/20 p-3'>
+      <Label className='text-sm font-medium text-foreground'>{label}</Label>
+      <p className='text-sm leading-6 whitespace-pre-wrap text-muted-foreground'>
         {description || '暂无说明。'}
       </p>
     </div>
@@ -893,7 +966,10 @@ export function buildRequestInput(
   return input
 }
 
-export function validateMainParams(params: PowerParam[], values: ParamValueMap) {
+export function validateMainParams(
+  params: PowerParam[],
+  values: ParamValueMap
+) {
   for (const param of params) {
     if (!isRequiredParam(param) || isDisplayOnlyParam(param)) {
       continue
@@ -907,7 +983,10 @@ export function validateMainParams(params: PowerParam[], values: ParamValueMap) 
   return ''
 }
 
-export function paramFilesRequestValue(param: PowerParam, files: ParamUploadedFile[]) {
+export function paramFilesRequestValue(
+  param: PowerParam,
+  files: ParamUploadedFile[]
+) {
   const values = files.map(uploadFileRequestValue).filter(Boolean)
   if (isFilesParam(param)) {
     return values
@@ -928,16 +1007,18 @@ export function summarizeParamDisplayValue(param: PowerParam, value: unknown) {
   }
   if (normalizeParamType(param.type) === 'option') {
     return (
-      optionDisplayLabels(param.options || [], normalizeStringArray(value)).join(
-        ' / '
-      ) || '空'
+      optionDisplayLabels(
+        param.options || [],
+        normalizeStringArray(value)
+      ).join(' / ') || '空'
     )
   }
   if (normalizeParamType(param.type) === 'multi_option') {
     return (
-      optionDisplayLabels(param.options || [], normalizeStringArray(value)).join(
-        ' / '
-      ) || '空'
+      optionDisplayLabels(
+        param.options || [],
+        normalizeStringArray(value)
+      ).join(' / ') || '空'
     )
   }
   if (Array.isArray(value)) {
@@ -1003,6 +1084,7 @@ function normalizePowerParam(row: unknown): PowerParam | null {
     power_param_id: row.power_param_id,
     name: valueText(row.name),
     key: valueText(row.key),
+    icon: valueText(row.icon),
     type: normalizeParamType(row.type),
     usage: normalizeParamUsage(row.usage),
     value_type: normalizeValueType(row.value_type),
@@ -1030,7 +1112,10 @@ function parseClientDefaultValue(param: PowerParam) {
     case 'multi_option':
       try {
         const parsed = JSON.parse(value)
-        return optionRequestValues(param, Array.isArray(parsed) ? parsed : [parsed])
+        return optionRequestValues(
+          param,
+          Array.isArray(parsed) ? parsed : [parsed]
+        )
       } catch {
         return optionRequestValues(param, [value])
       }
@@ -1056,7 +1141,9 @@ function optionDefaultValue(param: PowerParam, value: string) {
   if (options.length === 0) {
     return value || undefined
   }
-  const matched = options.find((option) => isSelectedOptionValue(option, [value]))
+  const matched = options.find((option) =>
+    isSelectedOptionValue(option, [value])
+  )
   return optionRequestValue(matched || options[0])
 }
 
@@ -1069,9 +1156,14 @@ function normalizeParamRequestValue(param: PowerParam, value: unknown) {
     case 'switch':
       return convertSwitchValueByType(param, value)
     case 'option':
-      return convertValueByType(param, optionRequestValues(param, value)[0] || value)
+      return convertValueByType(
+        param,
+        optionRequestValues(param, value)[0] || value
+      )
     case 'multi_option':
-      return optionRequestValues(param, value).map((item) => convertValueByType(param, item))
+      return optionRequestValues(param, value).map((item) =>
+        convertValueByType(param, item)
+      )
     case 'files':
       return normalizeStringArray(value)
     case 'file':
@@ -1134,7 +1226,13 @@ function normalizeRequiredFlag(value: unknown) {
 }
 
 function uploadFileRequestValue(file: ParamUploadedFile) {
-  for (const value of [file.url, file.thumbnail, file.download, file.open_url, file.path]) {
+  for (const value of [
+    file.url,
+    file.thumbnail,
+    file.download,
+    file.open_url,
+    file.path,
+  ]) {
     const url = resolveAssetUrl(String(value || '').trim())
     if (url) {
       return url
@@ -1143,7 +1241,11 @@ function uploadFileRequestValue(file: ParamUploadedFile) {
   return ''
 }
 
-function paramSummary(param: PowerParam, value: unknown, files: ParamUploadedFile[]) {
+function paramSummary(
+  param: PowerParam,
+  value: unknown,
+  files: ParamUploadedFile[]
+) {
   if (isFileParam(param)) {
     if (files.length === 0) {
       return ''
@@ -1157,10 +1259,14 @@ function paramSummary(param: PowerParam, value: unknown, files: ParamUploadedFil
     return isTruthyValue(value) ? '是' : '否'
   }
   if (normalizeParamType(param.type) === 'option') {
-    return optionLabels(param.options || [], normalizeStringArray(value)).join(' / ')
+    return optionLabels(param.options || [], normalizeStringArray(value)).join(
+      ' / '
+    )
   }
   if (normalizeParamType(param.type) === 'multi_option') {
-    return optionLabels(param.options || [], normalizeStringArray(value)).join(' / ')
+    return optionLabels(param.options || [], normalizeStringArray(value)).join(
+      ' / '
+    )
   }
   return truncateText(valueText(value), 18)
 }
@@ -1179,7 +1285,9 @@ function optionDisplayLabels(
   }
   return selectedValues
     .map((value) => {
-      const option = options.find((current) => isSelectedOptionValue(current, [value]))
+      const option = options.find((current) =>
+        isSelectedOptionValue(current, [value])
+      )
       return option?.value || (fallbackToRaw ? String(value).trim() : '')
     })
     .filter((label) => label !== '')
@@ -1188,7 +1296,9 @@ function optionDisplayLabels(
 function optionRequestValues(param: PowerParam, value: unknown) {
   const options = param.options || []
   return normalizeStringArray(value).map((current) => {
-    const option = options.find((candidate) => isSelectedOptionValue(candidate, [current]))
+    const option = options.find((candidate) =>
+      isSelectedOptionValue(candidate, [current])
+    )
     return option ? optionRequestValue(option) : current
   })
 }
@@ -1209,7 +1319,10 @@ function optionPickerOptions(options: PowerParamOption[]) {
   }))
 }
 
-export function isSelectedOptionValue(option: PowerParamOption, values: string[]) {
+export function isSelectedOptionValue(
+  option: PowerParamOption,
+  values: string[]
+) {
   const candidates = [
     String(option.id),
     String(option.native_value || '').trim(),
@@ -1231,7 +1344,9 @@ function paramInputPlaceholder(param: PowerParam) {
 }
 
 function normalizeParamType(value: unknown) {
-  const type = String(value || '').trim().toLowerCase()
+  const type = String(value || '')
+    .trim()
+    .toLowerCase()
   switch (type) {
     case 'text':
     case 'string':
@@ -1262,20 +1377,24 @@ function normalizeParamUsage(value: unknown) {
 }
 
 function normalizeValueType(value: unknown) {
-  const type = String(value || '').trim().toLowerCase()
-  return ['number', 'int', 'integer', 'float', 'double'].includes(type) ? 'number' : 'string'
+  const type = String(value || '')
+    .trim()
+    .toLowerCase()
+  return ['number', 'int', 'integer', 'float', 'double'].includes(type)
+    ? 'number'
+    : 'string'
 }
 
-function isFileParam(param: PowerParam) {
+export function isFileParam(param: PowerParam) {
   const type = normalizeParamType(param.type)
   return type === 'file' || type === 'files'
 }
 
-function isFilesParam(param: PowerParam) {
+export function isFilesParam(param: PowerParam) {
   return normalizeParamType(param.type) === 'files'
 }
 
-function resolveMaxFiles(param: PowerParam) {
+export function resolveMaxFiles(param: PowerParam) {
   if (isFilesParam(param)) {
     return Math.max(1, Number(param.max_files || DEFAULT_MAX_FILES))
   }
@@ -1296,18 +1415,26 @@ function convertValueByType(param: PowerParam, value: unknown) {
 
 function convertSwitchValueByType(param: PowerParam, value: unknown) {
   const checked = isTruthyValue(value)
-  return normalizeValueType(param.value_type) === 'string' ? String(checked) : checked
+  return normalizeValueType(param.value_type) === 'string'
+    ? String(checked)
+    : checked
 }
 
 function isTruthyValue(value: unknown) {
-  return value === true ||
+  return (
+    value === true ||
     value === 1 ||
-    ['1', 'true', 'yes', 'y', 'on', '是', '启用'].includes(String(value).toLowerCase())
+    ['1', 'true', 'yes', 'y', 'on', '是', '启用'].includes(
+      String(value).toLowerCase()
+    )
+  )
 }
 
 function normalizeStringArray(value: unknown) {
   if (Array.isArray(value)) {
-    return value.map((current) => String(current)).filter((current) => current.trim() !== '')
+    return value
+      .map((current) => String(current))
+      .filter((current) => current.trim() !== '')
   }
   if (value == null || value === '') {
     return []
