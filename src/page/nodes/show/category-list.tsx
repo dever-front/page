@@ -14,6 +14,7 @@ import type { NodeItemProps } from '../../nodes'
 
 const ALL_CATEGORY_VALUE = '__all__'
 const UNCATEGORIZED_CATEGORY_VALUE = '__uncategorized__'
+const CATEGORY_SORT_STEP = 10
 
 export function ShowCategoryList({
   item,
@@ -515,12 +516,10 @@ function assignCategorySortValues(
   previousCategories: Array<Record<string, any>>,
   sortField: string
 ) {
-  const sortValues = previousCategories.map((category, index) =>
-    normalizeCategorySortValue(getByPath(category, sortField), index)
-  )
+  const sortValues = resolveCategorySortSlots(previousCategories, sortField)
 
   return nextCategories.map((category, index) =>
-    setByPath(category, sortField, sortValues[index] ?? (index + 1) * 10)
+    setByPath(category, sortField, sortValues[index] ?? (index + 1) * CATEGORY_SORT_STEP)
   )
 }
 
@@ -543,9 +542,24 @@ function resolveCategorySortUpdates(
     .filter((update) => String(update.value ?? '') !== String(update.previousValue ?? ''))
 }
 
-function normalizeCategorySortValue(value: unknown, index: number) {
-  const numberValue = Number(value)
-  return Number.isFinite(numberValue) ? numberValue : (index + 1) * 10
+function resolveCategorySortSlots(
+  categories: Array<Record<string, any>>,
+  sortField: string
+) {
+  let previousValue = 0
+
+  return categories.map((category, index) => {
+    const currentValue = Number(getByPath(category, sortField))
+    const fallbackValue = previousValue > 0
+      ? previousValue + CATEGORY_SORT_STEP
+      : (index + 1) * CATEGORY_SORT_STEP
+    const nextValue = Number.isFinite(currentValue) && currentValue > previousValue
+      ? currentValue
+      : fallbackValue
+
+    previousValue = nextValue
+    return nextValue
+  })
 }
 
 function resolveCategoryStatusValue(

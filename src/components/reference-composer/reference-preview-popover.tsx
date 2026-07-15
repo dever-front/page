@@ -134,6 +134,8 @@ export function ReferencePreviewPopover({
     ? ''
     : previewText
   const previewMedia = preview?.media || []
+  const previewContent = preview?.content
+  const hasPreviewContent = hasReferencePreviewContent(previewContent)
   const kind = referencePreviewKind(refType, hint, preview)
 
   return (
@@ -172,7 +174,6 @@ export function ReferencePreviewPopover({
           clearTimer(openTimer)
         }}
         onPointerLeave={scheduleClose}
-        onWheelCapture={(event) => event.stopPropagation()}
         className='z-[2200] w-[min(400px,calc(100vw-24px))] overflow-hidden overscroll-contain rounded-lg border-slate-200 bg-white p-0 text-slate-900 shadow-[0_18px_48px_rgba(15,23,42,0.18)] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
       >
         <div className='relative flex min-h-12 items-center border-b border-slate-200 py-3 pr-12 pl-4 text-left dark:border-slate-700'>
@@ -204,8 +205,12 @@ export function ReferencePreviewPopover({
           <div className='px-4 py-6 text-center text-sm text-red-600 dark:text-red-400'>
             {error}
           </div>
-        ) : bodyText || previewMedia.length > 0 ? (
-          <ReferencePreviewBody text={bodyText} media={previewMedia} />
+        ) : hasPreviewContent || bodyText || previewMedia.length > 0 ? (
+          <ReferencePreviewBody
+            text={bodyText}
+            media={previewMedia}
+            content={previewContent}
+          />
         ) : null}
       </PopoverContent>
     </Popover>
@@ -227,10 +232,24 @@ export function referencePreviewKind(
 function ReferencePreviewBody({
   text,
   media,
+  content,
 }: {
   text?: string
   media: ReferencePreviewMedia[]
+  content?: unknown
 }) {
+  if (hasReferencePreviewContent(content)) {
+    return (
+      <div className='max-h-[min(420px,62vh)] overflow-y-auto overscroll-contain px-4 py-4 text-left'>
+        <ContentView
+          output={content}
+          emptyText=''
+          mediaLayout='chat'
+          className='break-words [overflow-wrap:anywhere] [&_img]:mx-auto [&_video]:mx-auto'
+        />
+      </div>
+    )
+  }
   return (
     <div className='max-h-[min(420px,62vh)] overflow-y-auto overscroll-contain'>
       {media.length > 0 ? (
@@ -255,6 +274,10 @@ function ReferencePreviewBody({
       ) : null}
     </div>
   )
+}
+
+function hasReferencePreviewContent(content: unknown) {
+  return Array.isArray(content) ? content.length > 0 : content != null
 }
 
 function ReferencePreviewMediaView({

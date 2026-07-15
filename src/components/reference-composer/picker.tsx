@@ -236,7 +236,6 @@ export function ReferencePicker({
       <div
         ref={listRef}
         className='reference-picker-list'
-        onWheelCapture={(event) => event.stopPropagation()}
       >
         {loading ? (
           <div className='reference-picker-state'>
@@ -397,6 +396,8 @@ function ReferenceOptionButton({
     variant === 'turn'
       ? 'reference-picker-item reference-picker-turn-message'
       : 'reference-picker-item'
+  const previewSide =
+    variant === 'turn' && item.messageRole === 'assistant' ? 'left' : 'right'
 
   return (
     <ReferencePreviewPopover
@@ -407,7 +408,7 @@ function ReferenceOptionButton({
       loadPreview={disabled ? undefined : loadPreview}
       openDelay={180}
       hoverOnly
-      side='right'
+      side={previewSide}
       align='start'
       triggerClassName={triggerClassName}
     >

@@ -40,6 +40,7 @@ export type ContentViewProps = {
   streaming?: boolean
   emptyText?: string
   className?: string
+  markdownClassName?: string
   uploadRules?: ResourceUploadRule[]
   mediaLayout?: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
@@ -76,6 +77,7 @@ export function ContentView({
   streaming = false,
   emptyText = '暂无内容。',
   className,
+  markdownClassName,
   uploadRules,
   mediaLayout = 'default',
   mediaPreviewLayerZIndex,
@@ -93,6 +95,7 @@ export function ContentView({
         <EnergonOutputBlock
           key={`${item.event || 'output'}-${index}`}
           output={item}
+          markdownClassName={markdownClassName}
           uploadRules={uploadRules}
           mediaLayout={mediaLayout}
           mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
@@ -159,12 +162,14 @@ function normalizeOutput(value: any): EnergonOutput {
 
 function EnergonOutputBlock({
   output,
+  markdownClassName,
   uploadRules,
   mediaLayout,
   mediaPreviewLayerZIndex,
   onMediaPreview,
 }: {
   output: EnergonOutput
+  markdownClassName?: string
   uploadRules?: ResourceUploadRule[]
   mediaLayout: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
@@ -204,7 +209,7 @@ function EnergonOutputBlock({
         <h3 className="text-base font-semibold leading-7">{valueText(output.title)}</h3>
       ) : null}
       {output.reasoning ? <ReasoningBlock text={valueText(output.reasoning)} /> : null}
-      {text ? <MarkdownBlock text={text} /> : null}
+      {text ? <MarkdownBlock text={text} className={markdownClassName} /> : null}
       {hasRich ? <RichBlock value={richDoc} /> : null}
       <ImageBlock
         urls={imageUrls}
@@ -243,12 +248,12 @@ function EnergonOutputBlock({
   )
 }
 
-function MarkdownBlock({ text }: { text: string }) {
+function MarkdownBlock({ text, className }: { text: string; className?: string }) {
   if (!text) {
     return null
   }
   return (
-    <div className={markdownClassName}>
+    <div className={cn(defaultMarkdownClassName, className)}>
       <ReactMarkdown
         skipHtml
         remarkPlugins={markdownPlugins}
@@ -433,7 +438,7 @@ function StreamingCursor() {
   return <span className="inline-block h-4 w-1 animate-pulse bg-primary align-[-2px]" />
 }
 
-const markdownClassName = cn(
+const defaultMarkdownClassName = cn(
   'min-w-0 text-sm leading-7 text-foreground',
   richTextLinkClassName,
   '[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground',
