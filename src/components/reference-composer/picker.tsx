@@ -26,15 +26,20 @@ const scopes: Array<{ id: ReferenceScope; label: string }> = [
   { id: 'current', label: '当前会话' },
   { id: 'history', label: '历史会话' },
 ]
+const defaultScopes: ReferenceScope[] = ['current', 'history']
 
 export function ReferencePicker({
   open,
+  availableScopes = defaultScopes,
+  searchPlaceholder = '搜索消息或会话',
   loadReferences,
   loadPreview,
   onSelect,
   onClose,
 }: {
   open: boolean
+  availableScopes?: ReferenceScope[]
+  searchPlaceholder?: string
   loadReferences: (request: ReferenceLoadRequest) => Promise<{
     items: ReferenceOption[]
     nextCursor?: string
@@ -57,6 +62,15 @@ export function ReferencePicker({
   const listRef = useRef<HTMLDivElement>(null)
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const loadingMoreRef = useRef(false)
+  const visibleScopes = scopes.filter((item) =>
+    availableScopes.includes(item.id)
+  )
+
+  useEffect(() => {
+    if (!availableScopes.includes(scope)) {
+      setScope(availableScopes[0] || 'current')
+    }
+  }, [availableScopes, scope])
 
   useEffect(() => {
     if (!open) {
@@ -176,22 +190,24 @@ export function ReferencePicker({
 
   return (
     <div className='reference-picker' role='dialog' aria-label='选择引用内容'>
-      <div className='reference-picker-tabs'>
-        {scopes.map((item) => (
-          <button
-            key={item.id}
-            type='button'
-            data-active={scope === item.id}
-            onClick={() => {
-              setScope(item.id)
-              setParent(undefined)
-              setQuery('')
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      {visibleScopes.length > 1 ? (
+        <div className='reference-picker-tabs'>
+          {visibleScopes.map((item) => (
+            <button
+              key={item.id}
+              type='button'
+              data-active={scope === item.id}
+              onClick={() => {
+                setScope(item.id)
+                setParent(undefined)
+                setQuery('')
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className='reference-picker-search'>
         {parent ? (
           <button
@@ -208,7 +224,7 @@ export function ReferencePicker({
         <input
           ref={inputRef}
           value={query}
-          placeholder={parent ? parent.label : '搜索消息或会话'}
+          placeholder={parent ? parent.label : searchPlaceholder}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
@@ -233,10 +249,7 @@ export function ReferencePicker({
           }}
         />
       </div>
-      <div
-        ref={listRef}
-        className='reference-picker-list'
-      >
+      <div ref={listRef} className='reference-picker-list'>
         {loading ? (
           <div className='reference-picker-state'>
             <Loader2 className='animate-spin' />

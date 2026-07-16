@@ -79,6 +79,7 @@ import {
 import { normalizeUploadItem } from '@/lib/resource'
 import type { UploadFileItem } from '@/lib/upload'
 import { importRemoteFileByRuleStream, uploadFileByRule } from '@/lib/upload'
+import { clipboardImageFiles } from '@/lib/clipboard'
 import { cn } from '@/lib/utils'
 import {
   buildEditorMediaInsertContent,
@@ -1259,22 +1260,6 @@ function resolveArticleImportMessage(
     return '文章已导入。'
   }
   return `文章已导入，检测到 ${formatRemoteAssetCounts(assets)} 来自外部链接。`
-}
-
-function clipboardImageFiles(data: DataTransfer | null) {
-  if (!data) {
-    return []
-  }
-
-  const files = Array.from(data.files || []).filter((file) => file.type.startsWith('image/'))
-  if (files.length > 0) {
-    return files
-  }
-
-  return Array.from(data.items || [])
-    .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
-    .map((item) => item.getAsFile())
-    .filter((file): file is File => file != null)
 }
 
 function RemoteAssetTransferBanner({

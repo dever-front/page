@@ -31,6 +31,7 @@ type InteractionStepperProps = {
   files: ParamFileMap
   uploadRuleMetas: Map<number, UploadRuleMeta>
   disabled?: boolean
+  allowCustomChoice?: boolean
   error?: string
   onValueChange: (param: PowerParam, value: unknown) => void
   onFilesChange: (param: PowerParam, files: ParamUploadedFile[]) => void
@@ -43,6 +44,7 @@ export function AgentInteractionStepper({
   files,
   uploadRuleMetas,
   disabled,
+  allowCustomChoice = true,
   error,
   onValueChange,
   onFilesChange,
@@ -145,6 +147,7 @@ export function AgentInteractionStepper({
               param={currentParam}
               value={values[currentKey]}
               disabled={disabled}
+              allowCustom={allowCustomChoice}
               customOpen={Boolean(customOpen[currentKey])}
               customValue={customValues[currentKey] || ''}
               onChange={updateValue}

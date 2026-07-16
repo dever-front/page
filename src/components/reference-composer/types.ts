@@ -1,6 +1,11 @@
 import type { PowerParam } from '@/components/agent/stream-request-params'
 
-export type ReferenceType = 'message' | 'artifact' | 'upload_file' | 'session'
+export type ReferenceType =
+  | 'message'
+  | 'artifact'
+  | 'upload_file'
+  | 'session'
+  | 'canvas_node'
 
 export type ReferencePreviewHint = {
   text?: string
@@ -100,6 +105,7 @@ export type ReferenceComposerProps = {
   cancelable?: boolean
   className?: string
   layerZIndex?: number
+  clipboardImageUploadRuleId?: number
   parameters?: ReferenceComposerParam[]
   loadReferences: (
     request: ReferenceLoadRequest
@@ -107,4 +113,23 @@ export type ReferenceComposerProps = {
   loadPreview: ReferencePreviewLoader
   onSubmit: (input: ReferenceInput) => void | Promise<void>
   onCancel?: () => void | Promise<void>
+}
+
+export type ReferenceEditorProps = {
+  value: string
+  content?: ReferenceContent
+  references: ReferenceOption[]
+  placeholder?: string
+  disabled?: boolean
+  autoFocus?: boolean
+  className?: string
+  layerZIndex?: number
+  pickerScopes?: ReferenceScope[]
+  pickerSearchPlaceholder?: string
+  loadReferences: (
+    request: ReferenceLoadRequest
+  ) => Promise<ReferenceLoadResult>
+  loadPreview: ReferencePreviewLoader
+  onChange: (value: string, content: ReferenceContent) => void
+  onSubmit?: () => void
 }

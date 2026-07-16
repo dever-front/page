@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -10,8 +11,14 @@ import Placeholder from '@tiptap/extension-placeholder'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { ArrowUp, AtSign, Loader2, Square } from 'lucide-react'
-import type { UploadFileItem } from '@/lib/upload'
+import { createPortal } from 'react-dom'
+import {
+  clipboardImageFiles,
+  clipboardRemoteImageUrl,
+} from '@/lib/clipboard'
+import { uploadFileByRule, type UploadFileItem } from '@/lib/upload'
 import { cn } from '@/lib/utils'
+import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
 import {
   buildDefaultParamValues,
   buildRequestInput,
@@ -29,18 +36,24 @@ import { ReferencePicker } from './picker'
 import { ReferenceNode } from './reference-node'
 import { ReferenceTag } from './reference-tag'
 import { serializeReferenceDocument } from './serialize'
+import { referenceDocumentFromContent, referenceDocumentFromText } from './text'
+import { uploadFileReferenceOptions } from './upload-reference'
 import type {
   ReferenceComposerProps,
+  ReferenceEditorProps,
   ReferenceContent,
   ReferenceOption,
   ReferencePreviewLoader,
+  ReferenceScope,
 } from './types'
 
 const EMPTY_PARAM_FILES: UploadFileItem[] = []
+const CURRENT_REFERENCE_SCOPES: ReferenceScope[] = ['current']
 
 export type {
   ReferenceComposerParam,
   ReferenceComposerProps,
+  ReferenceEditorProps,
   ReferenceContent,
   ReferenceInput,
   ReferenceLoadRequest,
@@ -55,6 +68,7 @@ export type {
   ReferenceScope,
   ReferenceType,
 } from './types'
+export { referenceContentFromText } from './text'
 
 export function ReferenceComposer({
   placeholder = '发消息',
@@ -64,6 +78,7 @@ export function ReferenceComposer({
   cancelable = false,
   className,
   layerZIndex,
+  clipboardImageUploadRuleId,
   parameters = [],
   loadReferences,
   loadPreview,
@@ -90,8 +105,19 @@ export function ReferenceComposer({
       }),
     [normalizedParams]
   )
+  const clipboardImageRuleIds = useMemo(() => {
+    const ruleId = Number(clipboardImageUploadRuleId || 0)
+    return Number.isFinite(ruleId) && ruleId > 0 ? [Math.floor(ruleId)] : []
+  }, [clipboardImageUploadRuleId])
+  const clipboardImageRuleId = clipboardImageRuleIds[0] || 0
+  const clipboardImageRuleMetas = useUploadRuleMetas(clipboardImageRuleIds)
+  const clipboardImageRuleMeta = clipboardImageRuleMetas.get(
+    clipboardImageRuleId
+  )
   const [pickerOpen, setPickerOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [uploadingClipboardImages, setUploadingClipboardImages] =
+    useState(false)
   const [message, setMessage] = useState('')
   const [paramValues, setParamValues] = useState<ParamValueMap>({})
   const [attachmentFiles, setAttachmentFiles] = useState<ParamFileMap>({})
@@ -99,28 +125,23 @@ export function ReferenceComposer({
     Record<string, number>
   >({})
   const submitRef = useRef<() => void>(() => undefined)
+  const pasteClipboardImagesRef = useRef<(files: File[]) => boolean>(
+    () => false
+  )
+  const clipboardUploadActiveRef = useRef(false)
+  const clipboardPasteDisabledRef = useRef(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const pickerOpenRef = useRef(false)
   const loadPreviewRef = useRef(loadPreview)
   pickerOpenRef.current = pickerOpen
   loadPreviewRef.current = loadPreview
+  clipboardPasteDisabledRef.current =
+    disabled || running || submitting || uploadingClipboardImages
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [
-      StarterKit.configure({
-        blockquote: false,
-        bulletList: false,
-        code: false,
-        codeBlock: false,
-        heading: false,
-        horizontalRule: false,
-        orderedList: false,
-      }),
-      Placeholder.configure({ placeholder }),
-      ReferenceNode.configure({
-        loadPreview: (request) => loadPreviewRef.current(request),
-      }),
-    ],
+    extensions: referenceEditorExtensions(placeholder, (request) =>
+      loadPreviewRef.current(request)
+    ),
     editorProps: {
       attributes: {
         class: 'reference-composer-editor',
@@ -131,6 +152,27 @@ export function ReferenceComposer({
           return false
         }
         setPickerOpen(true)
+        return true
+      },
+      handlePaste(view, event) {
+        if (clipboardPasteDisabledRef.current) {
+          return false
+        }
+        const remoteImageUrl = clipboardRemoteImageUrl(event.clipboardData)
+        if (remoteImageUrl) {
+          event.preventDefault()
+          view.dispatch(view.state.tr.insertText(remoteImageUrl))
+          setMessage('')
+          return true
+        }
+        const imageFiles = clipboardImageFiles(event.clipboardData)
+        if (
+          imageFiles.length === 0 ||
+          !pasteClipboardImagesRef.current(imageFiles)
+        ) {
+          return false
+        }
+        event.preventDefault()
         return true
       },
       handleKeyDown(_view, event) {
@@ -160,8 +202,10 @@ export function ReferenceComposer({
   }, [normalizedParams])
 
   useEffect(() => {
-    editor?.setEditable(!disabled && !running && !submitting)
-  }, [disabled, editor, running, submitting])
+    editor?.setEditable(
+      !disabled && !running && !submitting && !uploadingClipboardImages
+    )
+  }, [disabled, editor, running, submitting, uploadingClipboardImages])
 
   useEffect(() => {
     if (!pickerOpen) {
@@ -178,7 +222,13 @@ export function ReferenceComposer({
   }, [pickerOpen])
 
   const submit = useCallback(async () => {
-    if (!editor || disabled || running || submitting) {
+    if (
+      !editor ||
+      disabled ||
+      running ||
+      submitting ||
+      uploadingClipboardImages
+    ) {
       return
     }
     const input = serializeReferenceDocument(editor.getJSON())
@@ -239,6 +289,7 @@ export function ReferenceComposer({
     paramValues,
     running,
     submitting,
+    uploadingClipboardImages,
   ])
   submitRef.current = () => void submit()
 
@@ -297,7 +348,66 @@ export function ReferenceComposer({
     [editor]
   )
 
-  const composerDisabled = disabled || submitting
+  const uploadClipboardImages = useCallback(
+    async (files: File[]) => {
+      if (!editor || files.length === 0) {
+        return
+      }
+      if (!clipboardImageRuleId) {
+        setMessage('当前聊天未配置剪贴板图片上传规则。')
+        return
+      }
+
+      clipboardUploadActiveRef.current = true
+      setUploadingClipboardImages(true)
+      setMessage('')
+      try {
+        const uploadedFiles: UploadFileItem[] = []
+        for (const file of files) {
+          uploadedFiles.push(
+            await uploadFileByRule(clipboardImageRuleId, file, {
+              kind: 'image',
+              transport: clipboardImageRuleMeta?.transport,
+            })
+          )
+        }
+        if (editor.isDestroyed) {
+          return
+        }
+        const options = uploadFileReferenceOptions(uploadedFiles, {
+          fallbackKind: 'image',
+        })
+        if (options.length === 0) {
+          throw new Error('图片上传完成，但未返回可引用的文件。')
+        }
+        editor
+          .chain()
+          .focus()
+          .insertContent(referenceInsertionContent(options))
+          .run()
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : '图片上传失败。')
+      } finally {
+        clipboardUploadActiveRef.current = false
+        setUploadingClipboardImages(false)
+      }
+    },
+    [clipboardImageRuleId, clipboardImageRuleMeta?.transport, editor]
+  )
+  pasteClipboardImagesRef.current = (files) => {
+    if (!editor || disabled || running || submitting) {
+      return false
+    }
+    if (clipboardUploadActiveRef.current) {
+      setMessage('图片正在上传，请稍后再粘贴。')
+      return true
+    }
+    void uploadClipboardImages(files)
+    return true
+  }
+
+  const composerDisabled =
+    disabled || submitting || uploadingClipboardImages
   return (
     <div ref={rootRef} className={cn('reference-composer', className)}>
       {pickerOpen ? (
@@ -373,17 +483,331 @@ export function ReferenceComposer({
           <button
             type='button'
             className='reference-composer-action'
-            title='发送'
+            title={uploadingClipboardImages ? '正在上传图片' : '发送'}
             disabled={composerDisabled}
             onClick={() => void submit()}
           >
-            {submitting ? <Loader2 className='animate-spin' /> : <ArrowUp />}
+            {submitting || uploadingClipboardImages ? (
+              <Loader2 className='animate-spin' />
+            ) : (
+              <ArrowUp />
+            )}
           </button>
         )}
       </div>
       <style>{referenceComposerStyles}</style>
     </div>
   )
+}
+
+export function ReferenceEditor({
+  value,
+  content,
+  references,
+  placeholder = '输入内容，使用 @ 引用',
+  disabled = false,
+  autoFocus = false,
+  className,
+  layerZIndex = 2200,
+  pickerScopes = CURRENT_REFERENCE_SCOPES,
+  pickerSearchPlaceholder = '搜索可引用内容',
+  loadReferences,
+  loadPreview,
+  onChange,
+  onSubmit,
+}: ReferenceEditorProps) {
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerPosition, setPickerPosition] = useState<{
+    top?: number
+    bottom?: number
+    left: number
+    width: number
+  }>()
+  const rootRef = useRef<HTMLDivElement>(null)
+  const pickerLayerRef = useRef<HTMLDivElement>(null)
+  const pickerOpenRef = useRef(false)
+  const synchronizingRef = useRef(false)
+  const valueRef = useRef(value)
+  const contentRef = useRef(content)
+  const onChangeRef = useRef(onChange)
+  const onSubmitRef = useRef(onSubmit)
+  const loadPreviewRef = useRef(loadPreview)
+  pickerOpenRef.current = pickerOpen
+  valueRef.current = value
+  contentRef.current = content
+  onChangeRef.current = onChange
+  onSubmitRef.current = onSubmit
+  loadPreviewRef.current = loadPreview
+  const referenceSignature = useMemo(
+    () =>
+      references
+        .map((item) =>
+          [
+            item.key,
+            item.refType,
+            item.refId,
+            item.label,
+            item.preview?.kind,
+            item.preview?.url,
+            item.preview?.text,
+          ].join(':')
+        )
+        .join('|'),
+    [references]
+  )
+  const appliedReferenceSignatureRef = useRef('')
+  const controlledContentSignature = referenceContentSignature(content)
+  const editor = useEditor({
+    immediatelyRender: false,
+    content: referenceEditorDocument(value, content, references),
+    extensions: referenceEditorExtensions(placeholder, (request) =>
+      loadPreviewRef.current(request)
+    ),
+    editorProps: {
+      attributes: {
+        class: 'reference-composer-editor reference-text-editor-input',
+        'aria-label': placeholder,
+      },
+      handleTextInput(_view, _from, _to, text) {
+        if (text !== '@') {
+          return false
+        }
+        setPickerOpen(true)
+        return true
+      },
+      handleKeyDown(_view, event) {
+        if (event.key === 'Escape' && pickerOpenRef.current) {
+          event.preventDefault()
+          setPickerOpen(false)
+          return true
+        }
+        if (
+          event.key === 'Enter' &&
+          (event.metaKey || event.ctrlKey) &&
+          !event.isComposing &&
+          !pickerOpenRef.current &&
+          onSubmitRef.current
+        ) {
+          event.preventDefault()
+          onSubmitRef.current()
+          return true
+        }
+        return false
+      },
+    },
+    onUpdate({ editor: currentEditor }) {
+      if (synchronizingRef.current) {
+        return
+      }
+      const input = serializeReferenceDocument(currentEditor.getJSON(), {
+        trimBoundary: false,
+      })
+      if (
+        input.text === valueRef.current &&
+        referenceContentSignature(input.content) ===
+          referenceContentSignature(contentRef.current)
+      ) {
+        return
+      }
+      valueRef.current = input.text
+      contentRef.current = input.content
+      onChangeRef.current(input.text, input.content)
+    },
+  })
+
+  useEffect(() => {
+    editor?.setEditable(!disabled)
+  }, [disabled, editor])
+
+  useEffect(() => {
+    if (!editor) {
+      return
+    }
+    const currentInput = serializeReferenceDocument(editor.getJSON(), {
+      trimBoundary: false,
+    })
+    if (
+      currentInput.text === value &&
+      referenceContentSignature(currentInput.content) ===
+        controlledContentSignature &&
+      appliedReferenceSignatureRef.current === referenceSignature
+    ) {
+      return
+    }
+    synchronizingRef.current = true
+    editor.commands.setContent(
+      referenceEditorDocument(value, content, references),
+      { emitUpdate: false }
+    )
+    synchronizingRef.current = false
+    valueRef.current = value
+    contentRef.current = content
+    appliedReferenceSignatureRef.current = referenceSignature
+  }, [
+    content,
+    controlledContentSignature,
+    editor,
+    referenceSignature,
+    references,
+    value,
+  ])
+
+  useEffect(() => {
+    if (autoFocus && editor && !disabled) {
+      editor.commands.focus('end')
+    }
+  }, [autoFocus, disabled, editor])
+
+  useEffect(() => {
+    if (!pickerOpen) {
+      return
+    }
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (
+        !rootRef.current?.contains(target) &&
+        !pickerLayerRef.current?.contains(target)
+      ) {
+        setPickerOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    return () =>
+      document.removeEventListener('pointerdown', closeOnOutsidePointer)
+  }, [pickerOpen])
+
+  useLayoutEffect(() => {
+    if (!pickerOpen) {
+      setPickerPosition(undefined)
+      return
+    }
+    const updatePosition = () => {
+      const rect = rootRef.current?.getBoundingClientRect()
+      if (!rect) {
+        return
+      }
+      const viewportPadding = 12
+      const width = Math.min(
+        560,
+        Math.max(320, rect.width),
+        window.innerWidth - viewportPadding * 2
+      )
+      const left = Math.min(
+        Math.max(viewportPadding, rect.left),
+        window.innerWidth - width - viewportPadding
+      )
+      const openAbove = window.innerHeight - rect.bottom < 340 && rect.top > 340
+      setPickerPosition({
+        left,
+        width,
+        ...(openAbove
+          ? { bottom: window.innerHeight - rect.top + 8 }
+          : { top: rect.bottom + 8 }),
+      })
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [pickerOpen])
+
+  const insertReference = useCallback(
+    (option: ReferenceOption) => {
+      if (!editor || option.selectable === false) {
+        return
+      }
+      editor
+        .chain()
+        .focus()
+        .insertContent(referenceInsertionContent([option], '', false))
+        .run()
+      setPickerOpen(false)
+    },
+    [editor]
+  )
+
+  return (
+    <div
+      ref={rootRef}
+      className={cn('reference-text-editor', className)}
+      data-disabled={disabled || undefined}
+    >
+      <EditorContent
+        editor={editor}
+        className='reference-text-editor-content'
+      />
+      {pickerOpen && pickerPosition && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              ref={pickerLayerRef}
+              className='reference-editor-picker-layer'
+              style={{
+                position: 'fixed',
+                zIndex: layerZIndex,
+                ...pickerPosition,
+              }}
+            >
+              <ReferencePicker
+                open
+                availableScopes={pickerScopes}
+                searchPlaceholder={pickerSearchPlaceholder}
+                loadReferences={loadReferences}
+                loadPreview={loadPreview}
+                onSelect={insertReference}
+                onClose={() => setPickerOpen(false)}
+              />
+            </div>,
+            document.body
+          )
+        : null}
+      <style>{referenceComposerStyles}</style>
+    </div>
+  )
+}
+
+function referenceEditorDocument(
+  value: string,
+  content: ReferenceContent | undefined,
+  references: ReferenceOption[]
+) {
+  return content?.version === 1
+    ? referenceDocumentFromContent(content, references)
+    : referenceDocumentFromText(value, references)
+}
+
+function referenceContentSignature(content: ReferenceContent | undefined) {
+  if (!content?.parts?.length) {
+    return ''
+  }
+  return content.parts
+    .map((part) =>
+      part.type === 'text'
+        ? `text:${part.text}`
+        : `${part.ref_type}:${part.ref_id}:${part.usage || ''}`
+    )
+    .join('|')
+}
+
+function referenceEditorExtensions(
+  placeholder: string,
+  loadPreview: ReferencePreviewLoader
+) {
+  return [
+    StarterKit.configure({
+      blockquote: false,
+      bulletList: false,
+      code: false,
+      codeBlock: false,
+      heading: false,
+      horizontalRule: false,
+      orderedList: false,
+    }),
+    Placeholder.configure({ placeholder }),
+    ReferenceNode.configure({ loadPreview }),
+  ]
 }
 
 function appendUniqueFiles(
@@ -405,12 +829,15 @@ function appendUniqueFiles(
 
 function referenceInsertionContent(
   options: ReferenceOption[],
-  defaultUsage = ''
+  defaultUsage = '',
+  leadingSpace = true
 ) {
   if (options.length === 0) {
     return []
   }
-  const content: import('@tiptap/core').JSONContent[] = [textNode(' ')]
+  const content: import('@tiptap/core').JSONContent[] = leadingSpace
+    ? [textNode(' ')]
+    : []
   options.forEach((option, index) => {
     if (index > 0) {
       content.push(textNode(' '))
@@ -529,6 +956,13 @@ const referenceComposerStyles = `
 .reference-composer-editor p.is-editor-empty:first-child::before { float: left; height: 0; color: var(--muted-foreground); content: attr(data-placeholder); pointer-events: none; }
 .reference-composer-editor .reference-node-view { display: inline-flex; margin: 3px 4px; vertical-align: middle; }
 .reference-composer-editor .reference-node-view.ProseMirror-selectednode { outline: none; }
+.reference-text-editor { position: relative; width: 100%; min-width: 0; min-height: 100%; }
+.reference-text-editor-content { min-height: 100%; }
+.reference-text-editor-input { box-sizing: border-box; width: 100%; min-height: 100%; max-height: 240px; padding: 8px 10px; border: 1px solid transparent; border-radius: 6px; background: transparent; font-size: inherit; line-height: inherit; }
+.reference-text-editor-input:focus { border-color: color-mix(in oklab, var(--foreground) 22%, var(--border)); background: var(--background); box-shadow: 0 0 0 2px color-mix(in oklab, var(--foreground) 8%, transparent); }
+.reference-text-editor-input .reference-node-view { display: inline-flex; margin: 1px 2px; vertical-align: middle; }
+.reference-text-editor[data-disabled='true'] { opacity: .62; }
+.reference-editor-picker-layer .reference-picker { position: relative; bottom: auto; left: auto; width: 100%; }
 .reference-composer-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 0 14px 12px; }
 .reference-composer-tools { display: flex; min-width: 0; flex: 1; flex-wrap: wrap; align-items: center; gap: 6px; }
 .reference-composer-message { padding: 0 22px 6px; color: var(--destructive); font-size: 13px; line-height: 1.5; }

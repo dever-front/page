@@ -50,6 +50,7 @@ type AgentInteractionPanelProps = {
   layout?: 'inline' | 'dialog'
   initialData?: Record<string, unknown>
   autoSubmitValid?: boolean
+  allowCustomChoice?: boolean
   onSubmit?: (result: AgentInteractionSubmitResult) => void
 }
 
@@ -62,6 +63,7 @@ export function AgentInteractionPanel({
   layout = 'inline',
   initialData,
   autoSubmitValid,
+  allowCustomChoice = true,
   onSubmit,
 }: AgentInteractionPanelProps) {
   const [loading, setLoading] = useState(false)
@@ -175,6 +177,7 @@ export function AgentInteractionPanel({
         initialValues={interactionValues}
         autoSubmitValid={autoSubmitValid && isPowerParams}
         stepper={isStepper}
+        allowCustomChoice={allowCustomChoice}
         extraData={
           isPowerParams && powerSourceTargetID
             ? { source_target_id: powerSourceTargetID }
@@ -198,6 +201,7 @@ function AgentInteractionParamForm({
   initialValues,
   autoSubmitValid,
   stepper,
+  allowCustomChoice,
   extraData,
   onSubmit,
 }: {
@@ -212,6 +216,7 @@ function AgentInteractionParamForm({
   initialValues?: Record<string, unknown>
   autoSubmitValid?: boolean
   stepper?: boolean
+  allowCustomChoice?: boolean
   extraData?: Record<string, unknown>
   onSubmit?: (result: AgentInteractionSubmitResult) => void
 }) {
@@ -359,6 +364,7 @@ function AgentInteractionParamForm({
         files={paramFiles}
         uploadRuleMetas={uploadRuleMetas}
         disabled={disabled || loading}
+        allowCustomChoice={allowCustomChoice}
         error={loadError || error}
         onValueChange={setParamValue}
         onFilesChange={setParamFileValue}

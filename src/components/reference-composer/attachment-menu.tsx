@@ -7,7 +7,6 @@ import {
 } from 'react'
 import { FolderOpen, Loader2, Paperclip, Upload } from 'lucide-react'
 import { findFloatingLayerContainer } from '@/lib/floating-layer'
-import { resolveAssetUrl } from '@/lib/request'
 import { uploadFileByRule, type UploadFileItem } from '@/lib/upload'
 import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
 import {
@@ -28,6 +27,7 @@ import {
 } from '@/components/agent/stream-request-params'
 import { ResourcePickerDialogLazy } from '@/components/resource/lazy-dialogs'
 import type { ReferenceOption } from './types'
+import { uploadFileReferenceOptions } from './upload-reference'
 
 const EMPTY_RESOURCE_SELECTION: UploadFileItem[] = []
 
@@ -300,25 +300,9 @@ function referenceOptions(
   fallbackKind = 'file'
 ): ReferenceOption[] {
   const usage = String(param.key || '').trim()
-  return files
-    .map((file) => {
-      const refID = Number(file.id || 0)
-      if (!refID) {
-        return null
-      }
-      const kind = String(file.kind || fallbackKind || 'file').trim()
-      const url = resolveAssetUrl(
-        String(file.thumbnail || file.url || file.open_url || '').trim()
-      )
-      return {
-        key: `upload_file:${refID}:${usage}`,
-        refType: 'upload_file' as const,
-        refId: refID,
-        label: String(file.name || `文件 ${refID}`).trim(),
-        description: param.name,
-        usage,
-        preview: { kind, url },
-      }
-    })
-    .filter((option): option is NonNullable<typeof option> => Boolean(option))
+  return uploadFileReferenceOptions(files, {
+    usage,
+    description: param.name,
+    fallbackKind,
+  })
 }

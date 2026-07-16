@@ -41,7 +41,8 @@ function referenceType(value: unknown): ReferenceType {
     current === 'message' ||
     current === 'artifact' ||
     current === 'upload_file' ||
-    current === 'session'
+    current === 'session' ||
+    current === 'canvas_node'
   ) {
     return current
   }

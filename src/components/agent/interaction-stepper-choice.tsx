@@ -19,6 +19,7 @@ export function InteractionStepperChoice({
   param,
   value,
   disabled,
+  allowCustom = true,
   customOpen,
   customValue,
   onChange,
@@ -28,6 +29,7 @@ export function InteractionStepperChoice({
   param: InteractionStepperParam
   value: unknown
   disabled?: boolean
+  allowCustom?: boolean
   customOpen: boolean
   customValue: string
   onChange: (value: unknown) => void
@@ -127,7 +129,7 @@ export function InteractionStepperChoice({
         ))}
       </div>
 
-      {customOpen ? (
+      {!allowCustom ? null : customOpen ? (
         <div className='flex items-center gap-2 rounded-md border border-dashed p-2'>
           <Input
             autoFocus

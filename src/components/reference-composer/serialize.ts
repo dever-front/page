@@ -1,8 +1,10 @@
 import type { JSONContent } from '@tiptap/core'
+import { referenceMentionLabel } from './text'
 import type { ReferenceInput, ReferencePart, ReferenceType } from './types'
 
 export function serializeReferenceDocument(
-  document: JSONContent
+  document: JSONContent,
+  options: { trimBoundary?: boolean } = {}
 ): ReferenceInput {
   const parts: ReferencePart[] = []
   const blocks = document.content || []
@@ -12,12 +14,14 @@ export function serializeReferenceDocument(
       appendText(parts, '\n')
     }
   })
-  const normalized = trimBoundaryWhitespace(parts)
+  const normalized =
+    options.trimBoundary === false ? parts : trimBoundaryWhitespace(parts)
   return {
     text: normalized
-      .map((part) => (part.type === 'text' ? part.text : `@${part.label}`))
-      .join('')
-      .trim(),
+      .map((part) =>
+        part.type === 'text' ? part.text : referenceMentionLabel(part.label)
+      )
+      .join(''),
     content: { version: 1, parts: normalized },
   }
 }
@@ -75,7 +79,13 @@ function appendNodes(parts: ReferencePart[], nodes: JSONContent[]) {
 }
 
 function isReferenceType(value: string): value is ReferenceType {
-  return ['message', 'artifact', 'upload_file', 'session'].includes(value)
+  return [
+    'message',
+    'artifact',
+    'upload_file',
+    'session',
+    'canvas_node',
+  ].includes(value)
 }
 
 function appendText(parts: ReferencePart[], text: string) {
