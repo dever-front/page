@@ -64,6 +64,7 @@ type ActionButtonMeta = {
   routeKey?: string
   searchField?: string
   searchParam?: string
+  searchParams?: Record<string, string>
   showCondition?: unknown
   showWhen?: unknown
   size?: ButtonSize
@@ -222,13 +223,7 @@ async function runButtonAction(
   }
 
   if (buttonMeta?.to) {
-    const searchParam = String(buttonMeta?.searchParam || 'id').trim() || 'id'
-    const searchValue = resolveRecordSearchValue(
-      record,
-      buttonMeta?.searchField
-    )
-    const search =
-      searchValue == null ? undefined : { [searchParam]: String(searchValue) }
+    const search = resolveRecordSearchParams(record, buttonMeta)
 
     navigate({
       to: stripRouterBasePath(buttonMeta.to),
@@ -265,6 +260,33 @@ async function runButtonAction(
   }
 
   return true
+}
+
+function resolveRecordSearchParams(
+  record: ActionButtonRecord | undefined,
+  buttonMeta: ActionButtonMeta
+) {
+  if (!record) {
+    return undefined
+  }
+
+  const configuredParams = buttonMeta.searchParams
+  if (configuredParams && Object.keys(configuredParams).length > 0) {
+    const search = Object.fromEntries(
+      Object.entries(configuredParams).flatMap(([param, field]) => {
+        const key = String(param || '').trim()
+        const value = resolveRecordSearchValue(record, field)
+        return key && value != null ? [[key, String(value)]] : []
+      })
+    )
+    return Object.keys(search).length > 0 ? search : undefined
+  }
+
+  const searchParam = String(buttonMeta.searchParam || 'id').trim() || 'id'
+  const searchValue = resolveRecordSearchValue(record, buttonMeta.searchField)
+  return searchValue == null
+    ? undefined
+    : { [searchParam]: String(searchValue) }
 }
 
 function resolveActionButtonConfirm(buttonMeta: ActionButtonMeta) {

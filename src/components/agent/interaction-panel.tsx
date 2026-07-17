@@ -14,6 +14,7 @@ import {
   buildRequestInput,
   inputKeyForParam,
   isHiddenParam,
+  isPromptParam,
   normalizePowerParamConfig,
   normalizePowerParams,
   paramFilesRequestValue,
@@ -573,7 +574,7 @@ function initialParamAliases(param: PowerParam) {
   const name = String(param.name || '').trim()
   const aliases: string[] = []
 
-  if (key === 'text' || name === '提示词') {
+  if (isPromptParam(param)) {
     aliases.push('prompt', 'message')
   }
   if (key === 'aspectRatio' || name === '比例') {
@@ -583,11 +584,6 @@ function initialParamAliases(param: PowerParam) {
     aliases.push('resolution')
   }
   return aliases
-}
-
-function isPromptParam(param: PowerParam) {
-  const key = inputKeyForParam(param)
-  return key === 'text' || String(param.name || '').trim() === '提示词'
 }
 
 function isInitialValueMissing(value: unknown) {
@@ -889,6 +885,8 @@ function normalizeInteractionFieldType(field: Record<string, unknown>) {
     case 'images':
     case 'files':
       return 'files'
+    case 'prompt':
+      return 'prompt'
     case 'textarea':
     case 'long_text':
     case 'text':

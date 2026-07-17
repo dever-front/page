@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { PowerParam } from '@/components/agent/stream-request-params'
 
 export type ReferenceType =
@@ -6,6 +7,7 @@ export type ReferenceType =
   | 'upload_file'
   | 'session'
   | 'canvas_node'
+  | 'asset'
 
 export type ReferencePreviewHint = {
   text?: string
@@ -39,6 +41,8 @@ export type ReferencePreviewRequest = {
   refType: ReferenceType
   refId: number
   label: string
+  trigger?: string
+  versionId?: number
 }
 
 export type ReferencePreviewLoader = (
@@ -53,6 +57,8 @@ export type ReferencePart =
       ref_id: number
       label: string
       usage?: string
+      ref_trigger?: string
+      ref_version_id?: number
     }
 
 export type ReferenceContent = {
@@ -83,6 +89,8 @@ export type ReferenceOption = {
   selectable?: boolean
   hasChildren?: boolean
   usage?: string
+  trigger?: string
+  versionID?: number
 }
 
 export type ReferenceLoadRequest = {
@@ -97,6 +105,24 @@ export type ReferenceLoadResult = {
   nextCursor?: string
 }
 
+export type ReferenceProviderPickerProps = {
+  open: boolean
+  onSelect: (option: ReferenceOption) => void
+  onClose: () => void
+}
+
+export type ReferenceProvider = {
+  trigger: string
+  referenceTypes: ReferenceType[]
+  loadReferences?: (
+    request: ReferenceLoadRequest
+  ) => Promise<ReferenceLoadResult>
+  loadPreview?: ReferencePreviewLoader
+  availableScopes?: ReferenceScope[]
+  searchPlaceholder?: string
+  renderPicker?: (props: ReferenceProviderPickerProps) => ReactNode
+}
+
 export type ReferenceComposerProps = {
   placeholder?: string
   disabled?: boolean
@@ -107,10 +133,11 @@ export type ReferenceComposerProps = {
   layerZIndex?: number
   clipboardImageUploadRuleId?: number
   parameters?: ReferenceComposerParam[]
-  loadReferences: (
+  providers?: ReferenceProvider[]
+  loadReferences?: (
     request: ReferenceLoadRequest
   ) => Promise<ReferenceLoadResult>
-  loadPreview: ReferencePreviewLoader
+  loadPreview?: ReferencePreviewLoader
   onSubmit: (input: ReferenceInput) => void | Promise<void>
   onCancel?: () => void | Promise<void>
 }
@@ -126,10 +153,11 @@ export type ReferenceEditorProps = {
   layerZIndex?: number
   pickerScopes?: ReferenceScope[]
   pickerSearchPlaceholder?: string
-  loadReferences: (
+  providers?: ReferenceProvider[]
+  loadReferences?: (
     request: ReferenceLoadRequest
   ) => Promise<ReferenceLoadResult>
-  loadPreview: ReferencePreviewLoader
+  loadPreview?: ReferencePreviewLoader
   onChange: (value: string, content: ReferenceContent) => void
   onSubmit?: () => void
 }

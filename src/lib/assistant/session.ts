@@ -198,7 +198,6 @@ export async function saveAssistantMessage(input: {
   output?: Record<string, unknown>
   requestID?: string
   status?: number
-  memoryEnabled?: boolean
 }) {
   if (!input.sessionID) {
     return null
@@ -214,7 +213,6 @@ export async function saveAssistantMessage(input: {
     output: input.output || {},
     request_id: input.requestID || '',
     status: input.status || 1,
-    memory_enabled: Boolean(input.memoryEnabled),
   })
   return result
 }

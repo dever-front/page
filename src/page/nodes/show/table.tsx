@@ -16,6 +16,7 @@ import { ChevronRight, GripVertical, X } from 'lucide-react'
 import { useStore } from 'zustand'
 import { runActions } from '@/lib/action'
 import { moveArrayItem } from '@/lib/array'
+import { isItemCurrentlyReadOnly } from '@/lib/condition'
 import { resolveLucideIcon } from '@/lib/icon'
 import {
   buildStoreBackNavigationHref,
@@ -104,11 +105,25 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
     useTableStoreValue(store, item.meta?.totalPath) ?? data.length
   )
   const treeMode = item.meta?.tree === true
+  const readOnly = useStore(store, (state) =>
+    isItemCurrentlyReadOnly(
+      item,
+      state.data,
+      state.state,
+      state.parentStore
+        ? {
+            data: state.parentStore.getState().data,
+            state: state.parentStore.getState().state,
+          }
+        : null
+    )
+  )
   const treeParentKey = String(item.meta?.parentKey || 'parent_id')
   const treeLabelField = String(item.meta?.treeLabelField || 'name')
   const selectable = !!item.meta?.selectable
   const dragEnabled =
     dragField === 'sort' &&
+    !readOnly &&
     !isRemote &&
     !treeMode &&
     tableValuePath !== '' &&
@@ -476,6 +491,7 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
                                   : undefined
                               }
                               tableMeta={item.meta}
+                              tableReadOnly={readOnly}
                               onAction={handleAction}
                               store={store}
                               onNavigate={(to, search, options) =>
@@ -671,6 +687,7 @@ function CellRenderer({
   tableValuePath,
   treeMeta,
   tableMeta,
+  tableReadOnly,
   onAction,
   store,
   onNavigate,
@@ -688,6 +705,7 @@ function CellRenderer({
     onToggle: () => void
   }
   tableMeta?: Record<string, any>
+  tableReadOnly?: boolean
   onAction: (name: string) => Promise<void>
   store: NodeItemProps['store']
   onNavigate: (
@@ -717,8 +735,10 @@ function CellRenderer({
     [column, rowKey, store, tableMeta]
   )
   const canInlineEdit = useMemo(
-    () => canUseInlineEdit(store.getState(), row, rowKey, inlineAction),
-    [inlineAction, row, rowKey, store]
+    () =>
+      !tableReadOnly &&
+      canUseInlineEdit(store.getState(), row, rowKey, inlineAction),
+    [inlineAction, row, rowKey, store, tableReadOnly]
   )
 
   const renderActionButton = (buttonMeta: any, key: string | number) => {
@@ -947,6 +967,23 @@ function CellRenderer({
     case 'form-select':
     case 'form-switch':
       if (!canInlineEdit) {
+        if (type === 'form-switch') {
+          return (
+            <ShowTag
+              item={{
+                type: 'show-tag',
+                value: column.value,
+                meta: column.meta,
+              }}
+              value={displayValue}
+              option={resolveColumnOptionList(store, column)}
+              setValue={() => {}}
+              runAction={onAction}
+              store={store}
+              layoutId=''
+            />
+          )
+        }
         return <span className='text-sm'>{formatCellText(formattedValue)}</span>
       }
 

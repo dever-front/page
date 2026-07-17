@@ -26,6 +26,8 @@ type ReferencePreviewPopoverProps = {
   label: string
   refType: ReferenceType
   refId: number
+  trigger?: string
+  versionId?: number
   hint?: ReferencePreviewHint
   loadPreview?: ReferencePreviewLoader
   openDelay?: number
@@ -41,6 +43,8 @@ export function ReferencePreviewPopover({
   label,
   refType,
   refId,
+  trigger,
+  versionId,
   hint,
   loadPreview,
   openDelay = 0,
@@ -66,7 +70,7 @@ export function ReferencePreviewPopover({
     setPreview(undefined)
     setLoading(false)
     setError('')
-  }, [refId, refType])
+  }, [refId, refType, versionId])
 
   useEffect(
     () => () => {
@@ -82,7 +86,7 @@ export function ReferencePreviewPopover({
     }
     setLoading(true)
     setError('')
-    const pending = loadPreview({ refType, refId, label })
+    const pending = loadPreview({ refType, refId, label, trigger, versionId })
     previewRequest.current = pending
     void pending
       .then(setPreview)

@@ -180,6 +180,28 @@ export function isItemCurrentlyHidden(
   return evaluateConditions(generatedHiddenWhen, 'any', data, state, parent)
 }
 
+export function isItemCurrentlyReadOnly(
+  item: Item,
+  data: Record<string, any>,
+  state: Record<string, any>,
+  parent?: ParentScopeSnapshot | null
+) {
+  if (item.meta?.readOnly === true) {
+    return true
+  }
+
+  const readOnlyWhen = Array.isArray(item.meta?.readOnlyWhen)
+    ? item.meta.readOnlyWhen
+    : []
+  return evaluateConditions(
+    readOnlyWhen,
+    item.meta?.readOnlyCondition === 'any' ? 'any' : 'all',
+    data,
+    state,
+    parent
+  )
+}
+
 export function shouldDisplayRequiredRule(
   rule: ValidateRule,
   data: Record<string, any>,

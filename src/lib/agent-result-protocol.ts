@@ -81,6 +81,13 @@ function normalizeAgentResultValue(value: unknown, seen: Set<unknown>): unknown 
   }
   seen.add(value)
 
+  // Tiptap documents also carry a `content` field. Preserve them before the
+  // agent-result protocol check so they are rendered as rich content instead
+  // of being reduced to an empty result object.
+  if (isRichTextDocument(value)) {
+    return value
+  }
+
   const textProtocol = extractAgentResultPayload(firstText(value.text))
   if (textProtocol) {
     return normalizeAgentResultPayload(textProtocol.payload, textProtocol.cleanText, seen)
@@ -250,6 +257,14 @@ function isAgentResultPayload(value: unknown): value is Record<string, unknown> 
     'suggestions' in value ||
     resultOutputKeys.some((key) => hasResultDisplayValue(value[key])) ||
     (content != null && resultOutputKeys.some((key) => hasResultDisplayValue(content[key])))
+  )
+}
+
+function isRichTextDocument(value: unknown): value is Record<string, unknown> {
+  return (
+    isPlainRecord(value) &&
+    value.type === 'doc' &&
+    (value.content == null || Array.isArray(value.content))
   )
 }
 

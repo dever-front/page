@@ -20,6 +20,8 @@ type ReferenceTagProps = {
   label: string
   refType: ReferenceType
   refId: number
+  trigger?: string
+  versionId?: number
   hint?: ReferencePreviewHint
   loadPreview?: ReferencePreviewLoader
   selected?: boolean
@@ -31,6 +33,8 @@ export function ReferenceTag({
   label,
   refType,
   refId,
+  trigger,
+  versionId,
   hint,
   loadPreview,
   selected = false,
@@ -42,6 +46,8 @@ export function ReferenceTag({
       label={label}
       refType={refType}
       refId={refId}
+      trigger={trigger}
+      versionId={versionId}
       hint={hint}
       loadPreview={loadPreview}
       onDelete={onDelete}

@@ -63,6 +63,7 @@ export type PowerParam = {
   required?: boolean
   upload_rule_id?: string | number
   max_files?: number
+  asset_kinds?: string[]
   sort?: number
   options?: PowerParamOption[]
 }
@@ -373,6 +374,7 @@ function renderParamControl({
   switch (normalizeParamType(param.type)) {
     case 'description':
       return <PowerParamDescription param={param} surface={surface} />
+    case 'prompt':
     case 'textarea':
       return (
         <Textarea
@@ -1093,6 +1095,7 @@ function normalizePowerParam(row: unknown): PowerParam | null {
     required: normalizeRequiredFlag(row.required),
     upload_rule_id: row.upload_rule_id,
     max_files: Number(row.max_files || 0),
+    asset_kinds: normalizeStringArray(row.asset_kinds),
     sort: Number(row.sort || 0),
     options,
   }
@@ -1356,6 +1359,7 @@ function normalizeParamType(value: unknown) {
     case 'bool':
     case 'boolean':
       return 'switch'
+    case 'prompt':
     case 'textarea':
     case 'switch':
     case 'option':
@@ -1388,6 +1392,10 @@ function normalizeValueType(value: unknown) {
 export function isFileParam(param: PowerParam) {
   const type = normalizeParamType(param.type)
   return type === 'file' || type === 'files'
+}
+
+export function isPromptParam(param: PowerParam) {
+  return normalizeParamType(param.type) === 'prompt'
 }
 
 export function isFilesParam(param: PowerParam) {

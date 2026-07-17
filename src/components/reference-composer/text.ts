@@ -6,9 +6,21 @@ type ReferenceMatch = {
   option: ReferenceOption
 }
 
-export function referenceMentionLabel(label: string) {
-  const value = String(label || '').trim()
-  return value.startsWith('@') ? value : `@${value}`
+export function referenceMentionLabel(label: string, trigger = '@') {
+  const normalizedTrigger = referenceTrigger(trigger)
+  const value = referenceLabel(label)
+  return `${normalizedTrigger}${value}`
+}
+
+export function referenceTrigger(value: string | undefined) {
+  const trigger = String(value || '').trim()
+  return trigger.length === 1 ? trigger : '@'
+}
+
+export function referenceLabel(value: string) {
+  return String(value || '')
+    .trim()
+    .replace(/^[@#]/, '')
 }
 
 export function referenceContentFromText(
@@ -39,8 +51,10 @@ export function referenceContentFromText(
       type: 'reference',
       ref_type: match.item.option.refType,
       ref_id: match.item.option.refId,
-      label: match.item.mention,
+      label: referenceLabel(match.item.option.label),
       usage: match.item.option.usage,
+      ref_trigger: referenceTrigger(match.item.option.trigger),
+      ref_version_id: match.item.option.versionID,
     })
     cursor = match.index + match.item.mention.length
   }
@@ -66,14 +80,18 @@ export function referenceDocumentFromContent(
 
   for (const part of content.parts) {
     if (part.type === 'reference') {
-      const option = options.get(`${part.ref_type}:${part.ref_id}`)
+      const option = options.get(
+        `${part.ref_type}:${part.ref_id}:${part.ref_version_id || 0}`
+      )
       paragraphs[paragraphs.length - 1].push({
         type: 'reference',
         attrs: {
           refType: part.ref_type,
           refId: part.ref_id,
-          label: option?.label || part.label,
+          label: referenceLabel(option?.label || part.label),
           usage: part.usage || '',
+          trigger: referenceTrigger(option?.trigger || part.ref_trigger),
+          versionId: option?.versionID || part.ref_version_id || 0,
           previewText: option?.preview?.text || option?.description || '',
           previewKind: option?.preview?.kind || '',
           previewUrl: option?.preview?.url || '',
@@ -104,8 +122,8 @@ export function referenceDocumentFromContent(
 function referenceMatches(references: ReferenceOption[]) {
   const matches = new Map<string, ReferenceMatch>()
   for (const option of references) {
-    const mention = referenceMentionLabel(option.label)
-    if (mention !== '@' && !matches.has(mention)) {
+    const mention = referenceMentionLabel(option.label, option.trigger)
+    if (mention.length > 1 && !matches.has(mention)) {
       matches.set(mention, { mention, option })
     }
   }
@@ -143,7 +161,7 @@ function nextReferenceMatch(
 }
 
 function referenceTargetKey(option: ReferenceOption) {
-  return `${option.refType}:${option.refId}`
+  return `${option.refType}:${option.refId}:${option.versionID || 0}`
 }
 
 function appendText(parts: ReferencePart[], text: string) {

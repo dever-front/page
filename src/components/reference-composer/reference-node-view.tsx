@@ -2,6 +2,7 @@ import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import type { ReferenceNodeOptions } from './reference-node'
 import { ReferenceTag } from './reference-tag'
 import type { ReferencePreviewHint, ReferenceType } from './types'
+import { referenceMentionLabel, referenceTrigger } from './text'
 
 export function ReferenceNodeView({
   node,
@@ -12,6 +13,8 @@ export function ReferenceNodeView({
   const refType = referenceType(node.attrs.refType)
   const refId = Number(node.attrs.refId || 0)
   const label = String(node.attrs.label || '').trim()
+  const trigger = referenceTrigger(String(node.attrs.trigger || ''))
+  const versionId = Number(node.attrs.versionId || 0)
   const hint = referencePreviewHint(node.attrs)
   const loadPreview = (extension.options as ReferenceNodeOptions).loadPreview
 
@@ -22,9 +25,11 @@ export function ReferenceNodeView({
       contentEditable={false}
     >
       <ReferenceTag
-        label={label}
+        label={referenceMentionLabel(label, trigger)}
         refType={refType}
         refId={refId}
+        trigger={trigger}
+        versionId={versionId}
         hint={hint}
         loadPreview={loadPreview}
         selected={selected}
@@ -42,7 +47,8 @@ function referenceType(value: unknown): ReferenceType {
     current === 'artifact' ||
     current === 'upload_file' ||
     current === 'session' ||
-    current === 'canvas_node'
+    current === 'canvas_node' ||
+    current === 'asset'
   ) {
     return current
   }

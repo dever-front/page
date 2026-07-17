@@ -1,5 +1,9 @@
 import type { JSONContent } from '@tiptap/core'
-import { referenceMentionLabel } from './text'
+import {
+  referenceLabel,
+  referenceMentionLabel,
+  referenceTrigger,
+} from './text'
 import type { ReferenceInput, ReferencePart, ReferenceType } from './types'
 
 export function serializeReferenceDocument(
@@ -19,7 +23,9 @@ export function serializeReferenceDocument(
   return {
     text: normalized
       .map((part) =>
-        part.type === 'text' ? part.text : referenceMentionLabel(part.label)
+        part.type === 'text'
+          ? part.text
+          : referenceMentionLabel(part.label, part.ref_trigger)
       )
       .join(''),
     content: { version: 1, parts: normalized },
@@ -60,7 +66,9 @@ function appendNodes(parts: ReferencePart[], nodes: JSONContent[]) {
     if (node.type === 'reference') {
       const refType = String(node.attrs?.refType || '')
       const refId = Number(node.attrs?.refId || 0)
-      const label = String(node.attrs?.label || '').trim()
+      const label = referenceLabel(String(node.attrs?.label || ''))
+      const trigger = referenceTrigger(String(node.attrs?.trigger || ''))
+      const versionID = Number(node.attrs?.versionId || 0)
       if (isReferenceType(refType) && refId > 0 && label) {
         parts.push({
           type: 'reference',
@@ -68,6 +76,8 @@ function appendNodes(parts: ReferencePart[], nodes: JSONContent[]) {
           ref_id: refId,
           label,
           usage: String(node.attrs?.usage || '').trim() || undefined,
+          ref_trigger: trigger,
+          ref_version_id: versionID > 0 ? versionID : undefined,
         })
       }
       continue
@@ -85,6 +95,7 @@ function isReferenceType(value: string): value is ReferenceType {
     'upload_file',
     'session',
     'canvas_node',
+    'asset',
   ].includes(value)
 }
 

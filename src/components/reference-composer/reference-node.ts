@@ -24,6 +24,8 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
       refId: { default: 0 },
       label: { default: '' },
       usage: { default: '' },
+      trigger: { default: '@' },
+      versionId: { default: 0 },
       previewText: { default: '' },
       previewKind: { default: '' },
       previewUrl: { default: '' },
@@ -47,7 +49,9 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
   },
 
   renderText({ node }) {
-    return String(node.attrs.label || '').trim()
+    const trigger = String(node.attrs.trigger || '@').trim() || '@'
+    const label = String(node.attrs.label || '').trim().replace(/^[@#]/, '')
+    return `${trigger}${label}`
   },
 
   addNodeView() {

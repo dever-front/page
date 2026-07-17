@@ -10,7 +10,7 @@ import {
 import Placeholder from '@tiptap/extension-placeholder'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { ArrowUp, AtSign, Loader2, Square } from 'lucide-react'
+import { ArrowUp, AtSign, Hash, Loader2, Square } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import {
   clipboardImageFiles,
@@ -23,6 +23,7 @@ import {
   buildDefaultParamValues,
   buildRequestInput,
   isFileParam,
+  isPromptParam,
   normalizePowerParams,
   paramFilesRequestValue,
   PowerParamPopover,
@@ -36,13 +37,19 @@ import { ReferencePicker } from './picker'
 import { ReferenceNode } from './reference-node'
 import { ReferenceTag } from './reference-tag'
 import { serializeReferenceDocument } from './serialize'
-import { referenceDocumentFromContent, referenceDocumentFromText } from './text'
+import {
+  referenceDocumentFromContent,
+  referenceDocumentFromText,
+  referenceLabel,
+  referenceTrigger,
+} from './text'
 import { uploadFileReferenceOptions } from './upload-reference'
 import type {
   ReferenceComposerProps,
   ReferenceEditorProps,
   ReferenceContent,
   ReferenceOption,
+  ReferenceProvider,
   ReferencePreviewLoader,
   ReferenceScope,
 } from './types'
@@ -65,6 +72,8 @@ export type {
   ReferencePreviewLoader,
   ReferencePreviewMedia,
   ReferencePreviewRequest,
+  ReferenceProvider,
+  ReferenceProviderPickerProps,
   ReferenceScope,
   ReferenceType,
 } from './types'
@@ -80,11 +89,16 @@ export function ReferenceComposer({
   layerZIndex,
   clipboardImageUploadRuleId,
   parameters = [],
+  providers,
   loadReferences,
   loadPreview,
   onSubmit,
   onCancel,
 }: ReferenceComposerProps) {
+  const referenceProviders = useMemo(
+    () => normalizeReferenceProviders(providers, loadReferences, loadPreview),
+    [loadPreview, loadReferences, providers]
+  )
   const normalizedParams = useMemo(
     () => normalizePowerParams(parameters),
     [parameters]
@@ -100,7 +114,10 @@ export function ReferenceComposer({
           .trim()
           .toLowerCase()
         return (
-          !isFileParam(param) && type !== 'hidden' && type !== 'description'
+          !isFileParam(param) &&
+          !isPromptParam(param) &&
+          type !== 'hidden' &&
+          type !== 'description'
         )
       }),
     [normalizedParams]
@@ -115,6 +132,7 @@ export function ReferenceComposer({
     clipboardImageRuleId
   )
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerTrigger, setPickerTrigger] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [uploadingClipboardImages, setUploadingClipboardImages] =
     useState(false)
@@ -132,9 +150,15 @@ export function ReferenceComposer({
   const clipboardPasteDisabledRef = useRef(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const pickerOpenRef = useRef(false)
-  const loadPreviewRef = useRef(loadPreview)
+  const loadPreviewRef = useRef<ReferencePreviewLoader>(async (request) => ({
+    refType: request.refType,
+    refId: request.refId,
+    title: request.label,
+    text: '',
+    media: [],
+  }))
   pickerOpenRef.current = pickerOpen
-  loadPreviewRef.current = loadPreview
+  loadPreviewRef.current = referencePreviewDispatcher(referenceProviders)
   clipboardPasteDisabledRef.current =
     disabled || running || submitting || uploadingClipboardImages
   const editor = useEditor({
@@ -148,9 +172,11 @@ export function ReferenceComposer({
         'aria-label': placeholder,
       },
       handleTextInput(_view, _from, _to, text) {
-        if (text !== '@') {
+        const provider = referenceProviderForTrigger(referenceProviders, text)
+        if (!provider) {
           return false
         }
+        setPickerTrigger(provider.trigger)
         setPickerOpen(true)
         return true
       },
@@ -211,6 +237,12 @@ export function ReferenceComposer({
     if (!pickerOpen) {
       return
     }
+    if (
+      referenceProviderForTrigger(referenceProviders, pickerTrigger)
+        ?.renderPicker
+    ) {
+      return
+    }
     const closeOnOutsidePointer = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) {
         setPickerOpen(false)
@@ -219,7 +251,7 @@ export function ReferenceComposer({
     document.addEventListener('pointerdown', closeOnOutsidePointer)
     return () =>
       document.removeEventListener('pointerdown', closeOnOutsidePointer)
-  }, [pickerOpen])
+  }, [pickerOpen, pickerTrigger, referenceProviders])
 
   const submit = useCallback(async () => {
     if (
@@ -266,6 +298,7 @@ export function ReferenceComposer({
       const pending = onSubmit(input)
       editor.commands.clearContent(true)
       setPickerOpen(false)
+      setPickerTrigger('')
       setParamValues(buildDefaultParamValues(normalizedParams))
       setAttachmentFiles({})
       setAttachmentCounts({})
@@ -298,14 +331,23 @@ export function ReferenceComposer({
       if (!editor || option.selectable === false) {
         return
       }
+      const provider = referenceProviderForTrigger(
+        referenceProviders,
+        pickerTrigger
+      )
       editor
         .chain()
         .focus()
-        .insertContent(referenceInsertionContent([option]))
+        .insertContent(
+          referenceInsertionContent([
+            { ...option, trigger: option.trigger || provider?.trigger || '@' },
+          ])
+        )
         .run()
       setPickerOpen(false)
+      setPickerTrigger('')
     },
-    [editor]
+    [editor, pickerTrigger, referenceProviders]
   )
 
   const insertAttachments = useCallback(
@@ -339,13 +381,18 @@ export function ReferenceComposer({
           files.filter((file) => nextIDs.has(String(file.id)))
         ),
       }))
-      const content = referenceInsertionContent(nextOptions, key)
+      const content = referenceInsertionContent(
+        nextOptions.map((option) =>
+          referenceOptionWithProviderTrigger(option, referenceProviders)
+        ),
+        key
+      )
       if (content.length > 0) {
         editor.chain().focus().insertContent(content).run()
       }
       setMessage('')
     },
-    [editor]
+    [editor, referenceProviders]
   )
 
   const uploadClipboardImages = useCallback(
@@ -383,7 +430,13 @@ export function ReferenceComposer({
         editor
           .chain()
           .focus()
-          .insertContent(referenceInsertionContent(options))
+          .insertContent(
+            referenceInsertionContent(
+              options.map((option) =>
+                referenceOptionWithProviderTrigger(option, referenceProviders)
+              )
+            )
+          )
           .run()
       } catch (error) {
         setMessage(error instanceof Error ? error.message : '图片上传失败。')
@@ -392,7 +445,12 @@ export function ReferenceComposer({
         setUploadingClipboardImages(false)
       }
     },
-    [clipboardImageRuleId, clipboardImageRuleMeta?.transport, editor]
+    [
+      clipboardImageRuleId,
+      clipboardImageRuleMeta?.transport,
+      editor,
+      referenceProviders,
+    ]
   )
   pasteClipboardImagesRef.current = (files) => {
     if (!editor || disabled || running || submitting) {
@@ -408,23 +466,26 @@ export function ReferenceComposer({
 
   const composerDisabled =
     disabled || submitting || uploadingClipboardImages
+  const activeProvider = referenceProviderForTrigger(
+    referenceProviders,
+    pickerTrigger
+  )
   return (
     <div ref={rootRef} className={cn('reference-composer', className)}>
-      {pickerOpen ? (
-        <ReferencePicker
-          open={pickerOpen}
-          loadReferences={loadReferences}
-          loadPreview={loadPreview}
-          onSelect={insertReference}
-          onClose={() => setPickerOpen(false)}
-        />
-      ) : null}
+      {pickerOpen && activeProvider
+        ? renderReferenceProviderPicker(activeProvider, {
+            open: pickerOpen,
+            onSelect: insertReference,
+            onClose: () => setPickerOpen(false),
+          })
+        : null}
       <EditorContent
         editor={editor}
         className='reference-composer-content'
         onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
           if (event.key === 'Escape') {
             setPickerOpen(false)
+            setPickerTrigger('')
           }
         }}
       />
@@ -441,15 +502,24 @@ export function ReferenceComposer({
             onInsert={insertAttachments}
             onMessage={setMessage}
           />
-          <button
-            type='button'
-            className='reference-composer-tool'
-            title='引用消息或素材'
-            disabled={composerDisabled || running}
-            onClick={() => setPickerOpen((open) => !open)}
-          >
-            <AtSign />
-          </button>
+          {referenceProviders.map((provider) => (
+            <button
+              key={provider.trigger}
+              type='button'
+              className='reference-composer-tool'
+              title={
+                provider.trigger === '#' ? '引用会话信息' : '引用资产'
+              }
+              disabled={composerDisabled || running}
+              onClick={() => {
+                const sameProvider = pickerTrigger === provider.trigger
+                setPickerTrigger(provider.trigger)
+                setPickerOpen((open) => (sameProvider ? !open : true))
+              }}
+            >
+              {provider.trigger === '#' ? <Hash /> : <AtSign />}
+            </button>
+          ))}
           {toolbarParams.map((param) => {
             const key = String(param.key || '').trim()
             return (
@@ -511,12 +581,28 @@ export function ReferenceEditor({
   layerZIndex = 2200,
   pickerScopes = CURRENT_REFERENCE_SCOPES,
   pickerSearchPlaceholder = '搜索可引用内容',
+  providers,
   loadReferences,
   loadPreview,
   onChange,
   onSubmit,
 }: ReferenceEditorProps) {
+  const referenceProviders = useMemo(
+    () =>
+      normalizeReferenceProviders(providers, loadReferences, loadPreview, {
+        availableScopes: pickerScopes,
+        searchPlaceholder: pickerSearchPlaceholder,
+      }),
+    [
+      loadPreview,
+      loadReferences,
+      pickerScopes,
+      pickerSearchPlaceholder,
+      providers,
+    ]
+  )
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerTrigger, setPickerTrigger] = useState('')
   const [pickerPosition, setPickerPosition] = useState<{
     top?: number
     bottom?: number
@@ -531,13 +617,19 @@ export function ReferenceEditor({
   const contentRef = useRef(content)
   const onChangeRef = useRef(onChange)
   const onSubmitRef = useRef(onSubmit)
-  const loadPreviewRef = useRef(loadPreview)
+  const loadPreviewRef = useRef<ReferencePreviewLoader>(async (request) => ({
+    refType: request.refType,
+    refId: request.refId,
+    title: request.label,
+    text: '',
+    media: [],
+  }))
   pickerOpenRef.current = pickerOpen
   valueRef.current = value
   contentRef.current = content
   onChangeRef.current = onChange
   onSubmitRef.current = onSubmit
-  loadPreviewRef.current = loadPreview
+  loadPreviewRef.current = referencePreviewDispatcher(referenceProviders)
   const referenceSignature = useMemo(
     () =>
       references
@@ -569,9 +661,11 @@ export function ReferenceEditor({
         'aria-label': placeholder,
       },
       handleTextInput(_view, _from, _to, text) {
-        if (text !== '@') {
+        const provider = referenceProviderForTrigger(referenceProviders, text)
+        if (!provider) {
           return false
         }
+        setPickerTrigger(provider.trigger)
         setPickerOpen(true)
         return true
       },
@@ -662,6 +756,12 @@ export function ReferenceEditor({
     if (!pickerOpen) {
       return
     }
+    if (
+      referenceProviderForTrigger(referenceProviders, pickerTrigger)
+        ?.renderPicker
+    ) {
+      return
+    }
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target as Node
       if (
@@ -674,7 +774,7 @@ export function ReferenceEditor({
     document.addEventListener('pointerdown', closeOnOutsidePointer)
     return () =>
       document.removeEventListener('pointerdown', closeOnOutsidePointer)
-  }, [pickerOpen])
+  }, [pickerOpen, pickerTrigger, referenceProviders])
 
   useLayoutEffect(() => {
     if (!pickerOpen) {
@@ -719,14 +819,30 @@ export function ReferenceEditor({
       if (!editor || option.selectable === false) {
         return
       }
+      const provider = referenceProviderForTrigger(
+        referenceProviders,
+        pickerTrigger
+      )
       editor
         .chain()
         .focus()
-        .insertContent(referenceInsertionContent([option], '', false))
+        .insertContent(
+          referenceInsertionContent(
+            [{ ...option, trigger: option.trigger || provider?.trigger || '@' }],
+            '',
+            false
+          )
+        )
         .run()
       setPickerOpen(false)
+      setPickerTrigger('')
     },
-    [editor]
+    [editor, pickerTrigger, referenceProviders]
+  )
+
+  const activeProvider = referenceProviderForTrigger(
+    referenceProviders,
+    pickerTrigger
   )
 
   return (
@@ -739,7 +855,18 @@ export function ReferenceEditor({
         editor={editor}
         className='reference-text-editor-content'
       />
-      {pickerOpen && pickerPosition && typeof document !== 'undefined'
+      {pickerOpen && activeProvider?.renderPicker
+        ? activeProvider.renderPicker({
+            open: true,
+            onSelect: insertReference,
+            onClose: () => setPickerOpen(false),
+          })
+        : null}
+      {pickerOpen &&
+      activeProvider &&
+      !activeProvider.renderPicker &&
+      pickerPosition &&
+      typeof document !== 'undefined'
         ? createPortal(
             <div
               ref={pickerLayerRef}
@@ -752,10 +879,17 @@ export function ReferenceEditor({
             >
               <ReferencePicker
                 open
-                availableScopes={pickerScopes}
-                searchPlaceholder={pickerSearchPlaceholder}
-                loadReferences={loadReferences}
-                loadPreview={loadPreview}
+                availableScopes={
+                  activeProvider.availableScopes || CURRENT_REFERENCE_SCOPES
+                }
+                searchPlaceholder={
+                  activeProvider.searchPlaceholder || '搜索可引用内容'
+                }
+                loadReferences={requiredReferenceLoader(activeProvider)}
+                loadPreview={
+                  activeProvider.loadPreview ||
+                  referencePreviewDispatcher(referenceProviders)
+                }
                 onSelect={insertReference}
                 onClose={() => setPickerOpen(false)}
               />
@@ -786,7 +920,9 @@ function referenceContentSignature(content: ReferenceContent | undefined) {
     .map((part) =>
       part.type === 'text'
         ? `text:${part.text}`
-        : `${part.ref_type}:${part.ref_id}:${part.usage || ''}`
+        : `${part.ref_type}:${part.ref_id}:${part.usage || ''}:${
+            part.ref_trigger || '@'
+          }:${part.ref_version_id || 0}`
     )
     .join('|')
 }
@@ -847,8 +983,10 @@ function referenceInsertionContent(
       attrs: {
         refType: option.refType,
         refId: option.refId,
-        label: option.label,
+        label: referenceLabel(option.label),
         usage: option.usage || defaultUsage,
+        trigger: referenceTrigger(option.trigger),
+        versionId: Number(option.versionID || 0),
         previewText: option.preview?.text || option.description || '',
         previewKind: option.preview?.kind || '',
         previewUrl: option.preview?.url || '',
@@ -935,9 +1073,11 @@ export function ReferenceContentView({
         part.type === 'reference' ? (
           <ReferenceTag
             key={`ref-${part.ref_type}-${part.ref_id}-${index}`}
-            label={part.label}
+            label={`${referenceTrigger(part.ref_trigger)}${referenceLabel(part.label)}`}
             refType={part.ref_type}
             refId={part.ref_id}
+            trigger={referenceTrigger(part.ref_trigger)}
+            versionId={part.ref_version_id}
             loadPreview={loadPreview}
           />
         ) : (
@@ -945,6 +1085,115 @@ export function ReferenceContentView({
         )
       )}
     </>
+  )
+}
+
+function normalizeReferenceProviders(
+  providers: ReferenceProvider[] | undefined,
+  loadReferences: ReferenceComposerProps['loadReferences'],
+  loadPreview: ReferenceComposerProps['loadPreview'],
+  defaults: Pick<
+    ReferenceProvider,
+    'availableScopes' | 'searchPlaceholder'
+  > = {}
+): ReferenceProvider[] {
+  const normalized = (providers || [])
+    .map((provider) => ({
+      ...provider,
+      trigger: referenceTrigger(provider.trigger),
+      referenceTypes: [...new Set(provider.referenceTypes || [])],
+    }))
+    .filter(
+      (provider, index, rows) =>
+        provider.referenceTypes.length > 0 &&
+        rows.findIndex((current) => current.trigger === provider.trigger) ===
+          index
+    )
+  if (normalized.length > 0) {
+    return normalized
+  }
+  if (!loadReferences) {
+    return []
+  }
+  return [
+    {
+      trigger: '@',
+      referenceTypes: [
+        'message',
+        'artifact',
+        'upload_file',
+        'session',
+        'canvas_node',
+        'asset',
+      ],
+      loadReferences,
+      loadPreview,
+      ...defaults,
+    } satisfies ReferenceProvider,
+  ]
+}
+
+function referenceProviderForTrigger(
+  providers: ReferenceProvider[],
+  trigger: string
+) {
+  return providers.find((provider) => provider.trigger === trigger)
+}
+
+function referenceOptionWithProviderTrigger(
+  option: ReferenceOption,
+  providers: ReferenceProvider[]
+) {
+  if (option.trigger) {
+    return option
+  }
+  const provider = providers.find((current) =>
+    current.referenceTypes.includes(option.refType)
+  )
+  return { ...option, trigger: provider?.trigger || '@' }
+}
+
+function referencePreviewDispatcher(
+  providers: ReferenceProvider[]
+): ReferencePreviewLoader {
+  return async (request) => {
+    const provider = providers.find((current) =>
+      current.referenceTypes.includes(request.refType)
+    )
+    if (provider?.loadPreview) {
+      return provider.loadPreview(request)
+    }
+    return {
+      refType: request.refType,
+      refId: request.refId,
+      title: request.label,
+      text: '',
+      media: [],
+    }
+  }
+}
+
+function requiredReferenceLoader(provider: ReferenceProvider) {
+  return provider.loadReferences || (async () => ({ items: [] }))
+}
+
+function renderReferenceProviderPicker(
+  provider: ReferenceProvider,
+  props: import('./types').ReferenceProviderPickerProps
+) {
+  if (provider.renderPicker) {
+    return provider.renderPicker(props)
+  }
+  return (
+    <ReferencePicker
+      open={props.open}
+      availableScopes={provider.availableScopes}
+      searchPlaceholder={provider.searchPlaceholder}
+      loadReferences={requiredReferenceLoader(provider)}
+      loadPreview={provider.loadPreview || referencePreviewDispatcher([provider])}
+      onSelect={props.onSelect}
+      onClose={props.onClose}
+    />
   )
 }
 

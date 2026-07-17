@@ -511,7 +511,6 @@ export function AssistantDrawer({ open, onOpenChange }: AssistantDrawerProps) {
           interaction_answered: false,
         },
         output: buildAssistantMessageOutput(finalOutput, visibleText) || finalOutput,
-        memoryEnabled: true,
       })
       const savedMessage = isRecord(savedAssistant?.message)
         ? savedAssistant.message
