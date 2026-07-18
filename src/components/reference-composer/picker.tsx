@@ -13,6 +13,7 @@ import {
   Video,
   Volume2,
 } from 'lucide-react'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { ReferencePreviewPopover } from './reference-preview-popover'
 import { groupReferenceRows, type ReferenceTurn } from './turns'
 import type {
@@ -62,6 +63,7 @@ export function ReferencePicker({
   const listRef = useRef<HTMLDivElement>(null)
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const loadingMoreRef = useRef(false)
+  const isMobile = useIsMobile()
   const visibleScopes = scopes.filter((item) =>
     availableScopes.includes(item.id)
   )
@@ -266,6 +268,7 @@ export function ReferencePicker({
                 turn={row.turn}
                 activeKey={items[activeIndex]?.key}
                 loadPreview={loadPreview}
+                avoidPreviewCollisions={isMobile}
                 onActivate={activateOption}
                 onSelect={chooseOption}
               />
@@ -335,12 +338,14 @@ function ReferencePickerTurn({
   turn,
   activeKey,
   loadPreview,
+  avoidPreviewCollisions,
   onActivate,
   onSelect,
 }: {
   turn: ReferenceTurn
   activeKey?: string
   loadPreview: ReferencePreviewLoader
+  avoidPreviewCollisions: boolean
   onActivate: (option: ReferenceOption) => void
   onSelect: (option: ReferenceOption) => void
 }) {
@@ -355,6 +360,7 @@ function ReferencePickerTurn({
             active={activeKey === assistant.key}
             variant='turn'
             loadPreview={loadPreview}
+            avoidPreviewCollisions={avoidPreviewCollisions}
             onActivate={() => onActivate(assistant)}
             onSelect={onSelect}
           />
@@ -367,6 +373,7 @@ function ReferencePickerTurn({
             active={activeKey === user.key}
             variant='turn'
             loadPreview={loadPreview}
+            avoidPreviewCollisions={avoidPreviewCollisions}
             onActivate={() => onActivate(user)}
             onSelect={onSelect}
           />
@@ -390,6 +397,7 @@ function ReferenceOptionButton({
   active,
   variant = 'list',
   loadPreview,
+  avoidPreviewCollisions = true,
   onActivate,
   onSelect,
 }: {
@@ -397,6 +405,7 @@ function ReferenceOptionButton({
   active: boolean
   variant?: 'list' | 'turn'
   loadPreview: ReferencePreviewLoader
+  avoidPreviewCollisions?: boolean
   onActivate: () => void
   onSelect: (option: ReferenceOption) => void
 }) {
@@ -423,6 +432,7 @@ function ReferenceOptionButton({
       hoverOnly
       side={previewSide}
       align='start'
+      avoidCollisions={variant !== 'turn' || avoidPreviewCollisions}
       triggerClassName={triggerClassName}
     >
       <button

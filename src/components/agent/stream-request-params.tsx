@@ -95,6 +95,10 @@ type ParamControlProps = {
   files: ParamUploadedFile[]
   uploadRuleMeta?: UploadRuleMeta
   disabled?: boolean
+  uploadBizKey?: string
+  uploadBizName?: string
+  allowResourceLibrary?: boolean
+  onUploadedFiles?: (files: ParamUploadedFile[]) => void | Promise<void>
   surface: ParamControlSurface
   onChange: (nextValue: unknown) => void
   onFilesChange: (nextFiles: ParamUploadedFile[]) => void
@@ -208,6 +212,10 @@ function PowerParamControl({
   files,
   uploadRuleMeta,
   disabled,
+  uploadBizKey,
+  uploadBizName,
+  allowResourceLibrary = true,
+  onUploadedFiles,
   surface,
   onChange,
   onFilesChange,
@@ -257,11 +265,14 @@ function PowerParamControl({
         : selected.slice(0, 1)) {
         const uploaded = await uploadFileByRule(ruleId, file, {
           kind: resourceRule?.kind || resolveFileResourceKind(file),
+          bizKey: uploadBizKey,
+          bizName: uploadBizName,
           transport: resourceRule?.transport,
         })
+        await onUploadedFiles?.([uploaded])
         nextFiles = multiple ? [...nextFiles, uploaded] : [uploaded]
+        onFilesChange(nextFiles)
       }
-      onFilesChange(nextFiles)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '上传失败。')
     } finally {
@@ -305,7 +316,7 @@ function PowerParamControl({
           onFilesChange(
             files.filter((file) => String(file.id) !== String(targetID))
           ),
-        canPickResources: !!resourceRule,
+        canPickResources: allowResourceLibrary && !!resourceRule,
       })}
 
       {isFileParam(param) ? (
@@ -320,7 +331,7 @@ function PowerParamControl({
       ) : null}
 
       {message ? <p className='text-xs text-destructive'>{message}</p> : null}
-      {resourceRule ? (
+      {allowResourceLibrary && resourceRule ? (
         <ResourcePickerDialogLazy
           open={pickerOpen}
           title={`${label}资源库`}

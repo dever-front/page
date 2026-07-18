@@ -26,6 +26,7 @@ import {
   type PowerParam,
 } from '@/components/agent/stream-request-params'
 import { ResourcePickerDialogLazy } from '@/components/resource/lazy-dialogs'
+import { ReferenceComposerControlTooltip } from './tooltip'
 import type { ReferenceOption } from './types'
 import { uploadFileReferenceOptions } from './upload-reference'
 
@@ -36,6 +37,10 @@ export function ReferenceAttachmentMenu({
   disabled,
   counts,
   layerZIndex,
+  uploadBizKey,
+  uploadBizName,
+  allowResourceLibrary = true,
+  onUploadedFiles,
   onInsert,
   onMessage,
 }: {
@@ -43,6 +48,10 @@ export function ReferenceAttachmentMenu({
   disabled?: boolean
   counts: Record<string, number>
   layerZIndex?: number
+  uploadBizKey?: string
+  uploadBizName?: string
+  allowResourceLibrary?: boolean
+  onUploadedFiles?: (files: UploadFileItem[]) => void | Promise<void>
   onInsert: (
     param: PowerParam,
     files: UploadFileItem[],
@@ -117,16 +126,20 @@ export function ReferenceAttachmentMenu({
     setUploading(true)
     onMessage('')
     try {
-      const files: UploadFileItem[] = []
       for (const file of selected.slice(0, remaining)) {
-        files.push(
-          await uploadFileByRule(ruleID, file, {
-            kind: rule?.kind,
-            transport: rule?.transport,
-          })
+        const uploaded = await uploadFileByRule(ruleID, file, {
+          kind: rule?.kind,
+          bizKey: uploadBizKey,
+          bizName: uploadBizName,
+          transport: rule?.transport,
+        })
+        await onUploadedFiles?.([uploaded])
+        onInsert(
+          param,
+          [uploaded],
+          referenceOptions(param, [uploaded], rule?.kind)
         )
       }
-      onInsert(param, files, referenceOptions(param, files, rule?.kind))
     } catch (error) {
       onMessage(error instanceof Error ? error.message : '上传失败。')
     } finally {
@@ -155,17 +168,22 @@ export function ReferenceAttachmentMenu({
           setMenuOpen(open)
         }}
       >
-        <DropdownMenuTrigger asChild>
-          <button
-            ref={triggerRef}
-            type='button'
-            className='reference-composer-tool'
-            title='添加附件'
-            disabled={disabled || uploading}
-          >
-            {uploading ? <Loader2 className='animate-spin' /> : <Paperclip />}
-          </button>
-        </DropdownMenuTrigger>
+        <ReferenceComposerControlTooltip
+          label='添加附件'
+          layerZIndex={layerZIndex}
+        >
+          <DropdownMenuTrigger asChild>
+            <button
+              ref={triggerRef}
+              type='button'
+              className='reference-composer-tool'
+              aria-label='添加附件'
+              disabled={disabled || uploading}
+            >
+              {uploading ? <Loader2 className='animate-spin' /> : <Paperclip />}
+            </button>
+          </DropdownMenuTrigger>
+        </ReferenceComposerControlTooltip>
         <DropdownMenuContent
           align='start'
           side='top'
@@ -181,13 +199,15 @@ export function ReferenceAttachmentMenu({
                 <Upload />
                 上传
               </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={remainingFiles(fileParams[0], counts) <= 0}
-                onSelect={() => openResource(fileParams[0])}
-              >
-                <FolderOpen />
-                从资源库选择
-              </DropdownMenuItem>
+              {allowResourceLibrary ? (
+                <DropdownMenuItem
+                  disabled={remainingFiles(fileParams[0], counts) <= 0}
+                  onSelect={() => openResource(fileParams[0])}
+                >
+                  <FolderOpen />
+                  从资源库选择
+                </DropdownMenuItem>
+              ) : null}
             </>
           ) : (
             <>
@@ -198,13 +218,15 @@ export function ReferenceAttachmentMenu({
                 counts={counts}
                 onSelect={openUpload}
               />
-              <ParamSubMenu
-                icon={<FolderOpen />}
-                label='从资源库选择'
-                params={fileParams}
-                counts={counts}
-                onSelect={openResource}
-              />
+              {allowResourceLibrary ? (
+                <ParamSubMenu
+                  icon={<FolderOpen />}
+                  label='从资源库选择'
+                  params={fileParams}
+                  counts={counts}
+                  onSelect={openResource}
+                />
+              ) : null}
             </>
           )}
         </DropdownMenuContent>
@@ -219,38 +241,40 @@ export function ReferenceAttachmentMenu({
         multiple={Boolean(uploadParam && isFilesParam(uploadParam))}
         onChange={handleUpload}
       />
-      <ResourcePickerDialogLazy
-        open={Boolean(resourceParam)}
-        title={`选择${resourceParam?.name || '资源'}`}
-        description='所选资源只用于本轮消息。'
-        defaultKind={resourceRule?.kind}
-        fixedKind={Boolean(resourceRule?.kind)}
-        value={EMPTY_RESOURCE_SELECTION}
-        multiple={Boolean(resourceParam && isFilesParam(resourceParam))}
-        maxSelection={Math.max(1, resourceRemaining)}
-        uploadRules={resourceRule ? [resourceRule] : []}
-        allowUpload={false}
-        assistantLayer
-        layerZIndex={layerZIndex}
-        onOpenChange={(open) => {
-          if (!open) {
+      {allowResourceLibrary ? (
+        <ResourcePickerDialogLazy
+          open={Boolean(resourceParam)}
+          title={`选择${resourceParam?.name || '资源'}`}
+          description='所选资源只用于本轮消息。'
+          defaultKind={resourceRule?.kind}
+          fixedKind={Boolean(resourceRule?.kind)}
+          value={EMPTY_RESOURCE_SELECTION}
+          multiple={Boolean(resourceParam && isFilesParam(resourceParam))}
+          maxSelection={Math.max(1, resourceRemaining)}
+          uploadRules={resourceRule ? [resourceRule] : []}
+          allowUpload={false}
+          assistantLayer
+          layerZIndex={layerZIndex}
+          onOpenChange={(open) => {
+            if (!open) {
+              setResourceParam(null)
+            }
+          }}
+          onConfirm={(files) => {
+            const param = resourceParam
+            if (!param) {
+              return
+            }
+            const selected = files.slice(0, resourceRemaining)
+            onInsert(
+              param,
+              selected,
+              referenceOptions(param, selected, resourceRule?.kind)
+            )
             setResourceParam(null)
-          }
-        }}
-        onConfirm={(files) => {
-          const param = resourceParam
-          if (!param) {
-            return
-          }
-          const selected = files.slice(0, resourceRemaining)
-          onInsert(
-            param,
-            selected,
-            referenceOptions(param, selected, resourceRule?.kind)
-          )
-          setResourceParam(null)
-        }}
-      />
+          }}
+        />
+      ) : null}
     </>
   )
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import {
   CheckCircle2,
   Eye,
@@ -38,11 +38,23 @@ export type EnergonMediaPreviewRequest = {
   items: EnergonMediaPreviewItem[]
   initialItemId?: string | number
   download: (itemId: string | number) => Promise<void>
+  context?: unknown
 }
 
 export type EnergonMediaPreviewHandler = (
   request: EnergonMediaPreviewRequest
 ) => void
+
+export type EnergonMediaActionContext = {
+  kind: EnergonMediaKind
+  item: EnergonMediaPreviewItem
+  index: number
+  layout: EnergonMediaLayout
+}
+
+export type EnergonMediaActionRenderer = (
+  context: EnergonMediaActionContext
+) => ReactNode
 
 type EnergonMediaViewProps = {
   kind: EnergonMediaKind
@@ -52,6 +64,7 @@ type EnergonMediaViewProps = {
   layout?: EnergonMediaLayout
   previewLayerZIndex?: number
   onMediaPreview?: EnergonMediaPreviewHandler
+  renderMediaActions?: EnergonMediaActionRenderer
 }
 
 type UploadState = {
@@ -68,6 +81,7 @@ export function EnergonMediaView({
   layout = 'default',
   previewLayerZIndex,
   onMediaPreview,
+  renderMediaActions,
 }: EnergonMediaViewProps) {
   const baseItems = useMemo(
     () => normalizeUploadUrlItems(urls, { kind }),
@@ -189,6 +203,7 @@ export function EnergonMediaView({
           layout={layout}
           onPreview={openPreview}
           onUpload={saveResource}
+          renderMediaActions={renderMediaActions}
         />
       ) : (
         <MediaList
@@ -202,6 +217,7 @@ export function EnergonMediaView({
           layout={layout}
           onPreview={openPreview}
           onUpload={saveResource}
+          renderMediaActions={renderMediaActions}
         />
       )}
 
@@ -253,6 +269,7 @@ function ImageGrid({
   layout,
   onPreview,
   onUpload,
+  renderMediaActions,
 }: {
   items: UploadFileItem[]
   sourceItems: UploadFileItem[]
@@ -263,6 +280,7 @@ function ImageGrid({
   layout: EnergonMediaLayout
   onPreview: (item: UploadFileItem) => void
   onUpload: (item: UploadFileItem) => void
+  renderMediaActions?: EnergonMediaActionRenderer
 }) {
   const width = Number(meta?.width || 0)
   const height = Number(meta?.height || 0)
@@ -281,10 +299,17 @@ function ImageGrid({
         const sourceItem = sourceItems[index] || item
         const url = resourceURL(item)
         const chatLayout = layout === 'chat'
+        const mediaActions = renderMediaActions?.({
+          kind: 'image',
+          item: mediaPreviewItem(item),
+          index,
+          layout,
+        })
         return (
           <div
             key={String(sourceItem.id)}
             className={cn(
+              'group relative',
               chatLayout
                 ? 'min-w-0'
                 : 'rounded-xl border bg-background p-2'
@@ -314,6 +339,11 @@ function ImageGrid({
                 )}
               />
             </button>
+            {mediaActions ? (
+              <div className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                {mediaActions}
+              </div>
+            ) : null}
             {!chatLayout ? (
               <div className="mt-2 flex items-center justify-between gap-2">
                 <div className="min-w-0 text-xs text-muted-foreground">
@@ -375,6 +405,7 @@ function MediaList({
   layout,
   onPreview,
   onUpload,
+  renderMediaActions,
 }: {
   kind: EnergonMediaKind
   items: UploadFileItem[]
@@ -386,6 +417,7 @@ function MediaList({
   layout: EnergonMediaLayout
   onPreview: (item: UploadFileItem) => void
   onUpload: (item: UploadFileItem) => void
+  renderMediaActions?: EnergonMediaActionRenderer
 }) {
   return (
     <div
@@ -394,11 +426,17 @@ function MediaList({
     >
       {items.map((item, index) => {
         const sourceItem = sourceItems[index] || item
+        const mediaActions = renderMediaActions?.({
+          kind,
+          item: mediaPreviewItem(item),
+          index,
+          layout,
+        })
         return (
           <div
             key={String(sourceItem.id)}
             className={cn(
-              'min-w-0 border bg-background p-3',
+              'group relative min-w-0 border bg-background p-3',
               layout === 'chat' ? 'rounded-lg' : 'rounded-xl'
             )}
           >
@@ -407,8 +445,14 @@ function MediaList({
               item={item}
               meta={meta}
               layout={layout}
+              hasOverlayAction={kind === 'video' && Boolean(mediaActions)}
               onPreview={() => onPreview(sourceItem)}
             />
+            {kind === 'video' && mediaActions ? (
+              <div className="absolute right-3 top-3 z-10 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                {mediaActions}
+              </div>
+            ) : null}
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0 flex items-center gap-2 text-sm">
                 {kind === 'audio' ? <Music4 className="size-4 text-muted-foreground" /> : null}
@@ -416,6 +460,7 @@ function MediaList({
                 <span className="truncate">{item.name}</span>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {kind !== 'video' ? mediaActions : null}
                 <Button type="button" size="sm" variant="outline" onClick={() => onPreview(sourceItem)}>
                   <Eye className="size-4" />
                   预览
@@ -442,12 +487,14 @@ function MediaPreviewInline({
   item,
   meta,
   layout,
+  hasOverlayAction,
   onPreview,
 }: {
   kind: EnergonMediaKind
   item: UploadFileItem
   meta?: Record<string, any>
   layout: EnergonMediaLayout
+  hasOverlayAction?: boolean
   onPreview: () => void
 }) {
   const url = resourceURL(item)
@@ -471,7 +518,10 @@ function MediaPreviewInline({
           type="button"
           size="sm"
           variant="secondary"
-          className="absolute right-3 top-3 opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
+          className={cn(
+            'absolute top-3 opacity-0 shadow-sm transition-opacity group-hover:opacity-100',
+            hasOverlayAction ? 'right-14' : 'right-3'
+          )}
           onClick={onPreview}
         >
           <Eye className="size-4" />
@@ -613,6 +663,15 @@ function resolveMediaUploadRule(rules: ResourceUploadRule[], kind: EnergonMediaK
 
 function resourceURL(item: UploadFileItem) {
   return String(item.url || item.open_url || item.download || '').trim()
+}
+
+function mediaPreviewItem(item: UploadFileItem): EnergonMediaPreviewItem {
+  return {
+    id: item.id,
+    name: item.name,
+    url: resourceURL(item),
+    thumbnail: String(item.thumbnail || '').trim() || undefined,
+  }
 }
 
 function mediaKindLabel(kind: EnergonMediaKind) {

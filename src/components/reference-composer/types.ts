@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { PowerParam } from '@/components/agent/stream-request-params'
+import type { UploadFileItem } from '@/lib/upload'
 
 export type ReferenceType =
   | 'message'
@@ -132,6 +133,10 @@ export type ReferenceComposerProps = {
   className?: string
   layerZIndex?: number
   clipboardImageUploadRuleId?: number
+  uploadBizKey?: string
+  uploadBizName?: string
+  allowResourceLibrary?: boolean
+  onUploadedFiles?: (files: UploadFileItem[]) => void | Promise<void>
   parameters?: ReferenceComposerParam[]
   providers?: ReferenceProvider[]
   loadReferences?: (

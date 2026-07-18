@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   EnergonMediaView,
   type EnergonMediaLayout,
+  type EnergonMediaActionRenderer,
   type EnergonMediaPreviewHandler,
 } from '@/components/energon/media-view'
 import { EnergonProgressBlock, normalizeEnergonPercent } from '@/components/energon/progress'
@@ -45,9 +46,12 @@ export type ContentViewProps = {
   mediaLayout?: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
   onMediaPreview?: EnergonMediaPreviewHandler
+  renderMediaActions?: EnergonMediaActionRenderer
 }
 
 export type {
+  EnergonMediaActionContext,
+  EnergonMediaActionRenderer,
   EnergonMediaKind,
   EnergonMediaPreviewHandler,
   EnergonMediaPreviewItem,
@@ -82,6 +86,7 @@ export function ContentView({
   mediaLayout = 'default',
   mediaPreviewLayerZIndex,
   onMediaPreview,
+  renderMediaActions,
 }: ContentViewProps) {
   const items = normalizeEnergonOutput(output)
 
@@ -100,6 +105,7 @@ export function ContentView({
           mediaLayout={mediaLayout}
           mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
           onMediaPreview={onMediaPreview}
+          renderMediaActions={renderMediaActions}
         />
       ))}
       {streaming ? <StreamingCursor /> : null}
@@ -167,6 +173,7 @@ function EnergonOutputBlock({
   mediaLayout,
   mediaPreviewLayerZIndex,
   onMediaPreview,
+  renderMediaActions,
 }: {
   output: EnergonOutput
   markdownClassName?: string
@@ -174,6 +181,7 @@ function EnergonOutputBlock({
   mediaLayout: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
   onMediaPreview?: EnergonMediaPreviewHandler
+  renderMediaActions?: EnergonMediaActionRenderer
 }) {
   const event = valueText(output.event).toLowerCase()
   const isProgressEvent = event === 'start' || event === 'progress'
@@ -218,6 +226,7 @@ function EnergonOutputBlock({
         mediaLayout={mediaLayout}
         mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
         onMediaPreview={onMediaPreview}
+        renderMediaActions={renderMediaActions}
       />
       <VideoBlock
         urls={videoUrls}
@@ -226,6 +235,7 @@ function EnergonOutputBlock({
         mediaLayout={mediaLayout}
         mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
         onMediaPreview={onMediaPreview}
+        renderMediaActions={renderMediaActions}
       />
       <AudioBlock
         urls={audioUrls}
@@ -234,6 +244,7 @@ function EnergonOutputBlock({
         mediaLayout={mediaLayout}
         mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
         onMediaPreview={onMediaPreview}
+        renderMediaActions={renderMediaActions}
       />
       <FileBlock
         urls={normalizeStringList(output.files)}
@@ -242,6 +253,7 @@ function EnergonOutputBlock({
         mediaLayout={mediaLayout}
         mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
         onMediaPreview={onMediaPreview}
+        renderMediaActions={renderMediaActions}
       />
       {output.json != null ? <JsonFallback value={output.json} event={event} /> : null}
     </div>
@@ -297,6 +309,7 @@ function ImageBlock({
   mediaLayout,
   mediaPreviewLayerZIndex,
   onMediaPreview,
+  renderMediaActions,
 }: {
   urls: string[]
   meta?: Record<string, any>
@@ -304,6 +317,7 @@ function ImageBlock({
   mediaLayout: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
   onMediaPreview?: EnergonMediaPreviewHandler
+  renderMediaActions?: EnergonMediaActionRenderer
 }) {
   if (urls.length === 0) {
     return null
@@ -317,6 +331,7 @@ function ImageBlock({
       layout={mediaLayout}
       previewLayerZIndex={mediaPreviewLayerZIndex}
       onMediaPreview={onMediaPreview}
+      renderMediaActions={renderMediaActions}
     />
   )
 }
@@ -328,6 +343,7 @@ function VideoBlock({
   mediaLayout,
   mediaPreviewLayerZIndex,
   onMediaPreview,
+  renderMediaActions,
 }: {
   urls: string[]
   meta?: Record<string, any>
@@ -335,6 +351,7 @@ function VideoBlock({
   mediaLayout: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
   onMediaPreview?: EnergonMediaPreviewHandler
+  renderMediaActions?: EnergonMediaActionRenderer
 }) {
   if (urls.length === 0) {
     return null
@@ -348,6 +365,7 @@ function VideoBlock({
       layout={mediaLayout}
       previewLayerZIndex={mediaPreviewLayerZIndex}
       onMediaPreview={onMediaPreview}
+      renderMediaActions={renderMediaActions}
     />
   )
 }
@@ -359,6 +377,7 @@ function AudioBlock({
   mediaLayout,
   mediaPreviewLayerZIndex,
   onMediaPreview,
+  renderMediaActions,
 }: {
   urls: string[]
   meta?: Record<string, any>
@@ -366,6 +385,7 @@ function AudioBlock({
   mediaLayout: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
   onMediaPreview?: EnergonMediaPreviewHandler
+  renderMediaActions?: EnergonMediaActionRenderer
 }) {
   if (urls.length === 0) {
     return null
@@ -379,6 +399,7 @@ function AudioBlock({
       layout={mediaLayout}
       previewLayerZIndex={mediaPreviewLayerZIndex}
       onMediaPreview={onMediaPreview}
+      renderMediaActions={renderMediaActions}
     />
   )
 }
@@ -390,6 +411,7 @@ function FileBlock({
   mediaLayout,
   mediaPreviewLayerZIndex,
   onMediaPreview,
+  renderMediaActions,
 }: {
   urls: string[]
   meta?: Record<string, any>
@@ -397,6 +419,7 @@ function FileBlock({
   mediaLayout: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
   onMediaPreview?: EnergonMediaPreviewHandler
+  renderMediaActions?: EnergonMediaActionRenderer
 }) {
   if (urls.length === 0) {
     return null
@@ -410,6 +433,7 @@ function FileBlock({
       layout={mediaLayout}
       previewLayerZIndex={mediaPreviewLayerZIndex}
       onMediaPreview={onMediaPreview}
+      renderMediaActions={renderMediaActions}
     />
   )
 }

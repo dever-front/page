@@ -2,7 +2,7 @@ import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import type { ReferenceNodeOptions } from './reference-node'
 import { ReferenceTag } from './reference-tag'
 import type { ReferencePreviewHint, ReferenceType } from './types'
-import { referenceMentionLabel, referenceTrigger } from './text'
+import { referenceTrigger } from './text'
 
 export function ReferenceNodeView({
   node,
@@ -25,7 +25,7 @@ export function ReferenceNodeView({
       contentEditable={false}
     >
       <ReferenceTag
-        label={referenceMentionLabel(label, trigger)}
+        label={label}
         refType={refType}
         refId={refId}
         trigger={trigger}

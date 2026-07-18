@@ -10,6 +10,7 @@ import {
   ReferencePreviewPopover,
   referencePreviewKind,
 } from './reference-preview-popover'
+import { referenceLabel } from './text'
 import type {
   ReferencePreviewHint,
   ReferencePreviewLoader,
@@ -41,9 +42,10 @@ export function ReferenceTag({
   className,
   onDelete,
 }: ReferenceTagProps) {
+  const displayLabel = referenceLabel(label)
   return (
     <ReferencePreviewPopover
-      label={label}
+      label={displayLabel}
       refType={refType}
       refId={refId}
       trigger={trigger}
@@ -64,7 +66,7 @@ export function ReferenceTag({
             data-reference-id={refId}
             data-selected={selected || undefined}
             tabIndex={0}
-            aria-label={`引用：${label}`}
+            aria-label={`引用：${displayLabel}`}
             className={cn(
               'mx-1 inline-flex max-w-[min(22rem,78vw)] cursor-default items-center gap-1.5 rounded-md border border-slate-300/80 bg-slate-100/90 px-2 py-0.5 align-baseline text-[0.9em] leading-6 text-slate-800 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors select-none hover:border-slate-400 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-slate-400/45 focus-visible:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-700',
               selected && 'border-slate-500 ring-2 ring-slate-400/35',
@@ -72,7 +74,7 @@ export function ReferenceTag({
             )}
           >
             <ReferenceTagIcon kind={kind} url={thumbnail} />
-            <span className='truncate'>{label}</span>
+            <span className='truncate'>{displayLabel}</span>
           </span>
         )
       }}

@@ -33,6 +33,7 @@ type ReferencePreviewPopoverProps = {
   openDelay?: number
   side?: 'top' | 'right' | 'bottom' | 'left'
   align?: 'start' | 'center' | 'end'
+  avoidCollisions?: boolean
   triggerClassName?: string
   hoverOnly?: boolean
   onDelete?: () => void
@@ -50,6 +51,7 @@ export function ReferencePreviewPopover({
   openDelay = 0,
   side = 'top',
   align = 'start',
+  avoidCollisions = true,
   triggerClassName,
   hoverOnly = false,
   onDelete,
@@ -171,6 +173,7 @@ export function ReferencePreviewPopover({
         side={side}
         align={align}
         sideOffset={8}
+        avoidCollisions={avoidCollisions}
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
         onPointerEnter={() => {

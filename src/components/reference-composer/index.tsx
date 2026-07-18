@@ -37,6 +37,7 @@ import { ReferencePicker } from './picker'
 import { ReferenceNode } from './reference-node'
 import { ReferenceTag } from './reference-tag'
 import { serializeReferenceDocument } from './serialize'
+import { ReferenceComposerControlTooltip } from './tooltip'
 import {
   referenceDocumentFromContent,
   referenceDocumentFromText,
@@ -88,6 +89,10 @@ export function ReferenceComposer({
   className,
   layerZIndex,
   clipboardImageUploadRuleId,
+  uploadBizKey,
+  uploadBizName,
+  allowResourceLibrary = true,
+  onUploadedFiles,
   parameters = [],
   providers,
   loadReferences,
@@ -409,35 +414,38 @@ export function ReferenceComposer({
       setUploadingClipboardImages(true)
       setMessage('')
       try {
-        const uploadedFiles: UploadFileItem[] = []
         for (const file of files) {
-          uploadedFiles.push(
-            await uploadFileByRule(clipboardImageRuleId, file, {
-              kind: 'image',
-              transport: clipboardImageRuleMeta?.transport,
-            })
-          )
-        }
-        if (editor.isDestroyed) {
-          return
-        }
-        const options = uploadFileReferenceOptions(uploadedFiles, {
-          fallbackKind: 'image',
-        })
-        if (options.length === 0) {
-          throw new Error('图片上传完成，但未返回可引用的文件。')
-        }
-        editor
-          .chain()
-          .focus()
-          .insertContent(
-            referenceInsertionContent(
-              options.map((option) =>
-                referenceOptionWithProviderTrigger(option, referenceProviders)
+          const uploaded = await uploadFileByRule(clipboardImageRuleId, file, {
+            kind: 'image',
+            bizKey: uploadBizKey,
+            bizName: uploadBizName,
+            transport: clipboardImageRuleMeta?.transport,
+          })
+          await onUploadedFiles?.([uploaded])
+          if (editor.isDestroyed) {
+            return
+          }
+          const options = uploadFileReferenceOptions([uploaded], {
+            fallbackKind: 'image',
+          })
+          if (options.length === 0) {
+            throw new Error('图片上传完成，但未返回可引用的文件。')
+          }
+          editor
+            .chain()
+            .focus()
+            .insertContent(
+              referenceInsertionContent(
+                options.map((option) =>
+                  referenceOptionWithProviderTrigger(
+                    option,
+                    referenceProviders
+                  )
+                )
               )
             )
-          )
-          .run()
+            .run()
+        }
       } catch (error) {
         setMessage(error instanceof Error ? error.message : '图片上传失败。')
       } finally {
@@ -449,7 +457,10 @@ export function ReferenceComposer({
       clipboardImageRuleId,
       clipboardImageRuleMeta?.transport,
       editor,
+      onUploadedFiles,
       referenceProviders,
+      uploadBizKey,
+      uploadBizName,
     ]
   )
   pasteClipboardImagesRef.current = (files) => {
@@ -470,6 +481,13 @@ export function ReferenceComposer({
     referenceProviders,
     pickerTrigger
   )
+  const actionLabel = running
+    ? cancelable
+      ? '停止生成'
+      : '当前任务暂不可停止'
+    : uploadingClipboardImages
+      ? '正在上传图片'
+      : '发送'
   return (
     <div ref={rootRef} className={cn('reference-composer', className)}>
       {pickerOpen && activeProvider
@@ -499,27 +517,38 @@ export function ReferenceComposer({
             counts={attachmentCounts}
             layerZIndex={layerZIndex}
             disabled={composerDisabled || running}
+            uploadBizKey={uploadBizKey}
+            uploadBizName={uploadBizName}
+            allowResourceLibrary={allowResourceLibrary}
+            onUploadedFiles={onUploadedFiles}
             onInsert={insertAttachments}
             onMessage={setMessage}
           />
-          {referenceProviders.map((provider) => (
-            <button
-              key={provider.trigger}
-              type='button'
-              className='reference-composer-tool'
-              title={
-                provider.trigger === '#' ? '引用会话信息' : '引用资产'
-              }
-              disabled={composerDisabled || running}
-              onClick={() => {
-                const sameProvider = pickerTrigger === provider.trigger
-                setPickerTrigger(provider.trigger)
-                setPickerOpen((open) => (sameProvider ? !open : true))
-              }}
-            >
-              {provider.trigger === '#' ? <Hash /> : <AtSign />}
-            </button>
-          ))}
+          {referenceProviders.map((provider) => {
+            const label =
+              provider.trigger === '#' ? '引用会话信息' : '引用资产'
+            return (
+              <ReferenceComposerControlTooltip
+                key={provider.trigger}
+                label={label}
+                layerZIndex={layerZIndex}
+              >
+                <button
+                  type='button'
+                  className='reference-composer-tool'
+                  aria-label={label}
+                  disabled={composerDisabled || running}
+                  onClick={() => {
+                    const sameProvider = pickerTrigger === provider.trigger
+                    setPickerTrigger(provider.trigger)
+                    setPickerOpen((open) => (sameProvider ? !open : true))
+                  }}
+                >
+                  {provider.trigger === '#' ? <Hash /> : <AtSign />}
+                </button>
+              </ReferenceComposerControlTooltip>
+            )
+          })}
           {toolbarParams.map((param) => {
             const key = String(param.key || '').trim()
             return (
@@ -539,31 +568,30 @@ export function ReferenceComposer({
             )
           })}
         </div>
-        {running ? (
+        <ReferenceComposerControlTooltip
+          label={actionLabel}
+          layerZIndex={layerZIndex}
+        >
           <button
             type='button'
             className='reference-composer-action'
-            title={cancelable ? '停止生成' : '当前任务暂不可停止'}
-            disabled={!cancelable || stopping}
-            onClick={() => void onCancel?.()}
+            aria-label={actionLabel}
+            disabled={running ? !cancelable || stopping : composerDisabled}
+            onClick={() => void (running ? onCancel?.() : submit())}
           >
-            {stopping ? <Loader2 className='animate-spin' /> : <Square />}
-          </button>
-        ) : (
-          <button
-            type='button'
-            className='reference-composer-action'
-            title={uploadingClipboardImages ? '正在上传图片' : '发送'}
-            disabled={composerDisabled}
-            onClick={() => void submit()}
-          >
-            {submitting || uploadingClipboardImages ? (
+            {running ? (
+              stopping ? (
+                <Loader2 className='animate-spin' />
+              ) : (
+                <Square />
+              )
+            ) : submitting || uploadingClipboardImages ? (
               <Loader2 className='animate-spin' />
             ) : (
               <ArrowUp />
             )}
           </button>
-        )}
+        </ReferenceComposerControlTooltip>
       </div>
       <style>{referenceComposerStyles}</style>
     </div>
@@ -1073,7 +1101,7 @@ export function ReferenceContentView({
         part.type === 'reference' ? (
           <ReferenceTag
             key={`ref-${part.ref_type}-${part.ref_id}-${index}`}
-            label={`${referenceTrigger(part.ref_trigger)}${referenceLabel(part.label)}`}
+            label={referenceLabel(part.label)}
             refType={part.ref_type}
             refId={part.ref_id}
             trigger={referenceTrigger(part.ref_trigger)}
