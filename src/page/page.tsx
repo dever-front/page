@@ -6,6 +6,7 @@
  */
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { getSiteConfig } from '@/config/app-config'
+import { FrontLoadingState } from '@/components/layout/front-loading-state'
 import { runAction } from '@/lib/action'
 import {
   activateAssistantPage,
@@ -199,11 +200,7 @@ export function Page({
   }
 
   if (loading || isStalePage) {
-    return (
-      <div className='flex h-full items-center justify-center p-8'>
-        <div className='text-muted-foreground'>加载中...</div>
-      </div>
-    )
+    return <FrontLoadingState />
   }
 
   if (!pageSchema) return null

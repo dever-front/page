@@ -8,7 +8,9 @@ type HoverTipProps = {
   content?: string
   children: ReactNode
   className?: string
+  side?: 'top' | 'right' | 'bottom' | 'left'
   sideOffset?: number
+  layerZIndex?: number
 }
 
 type InlineTipProps = {
@@ -17,7 +19,14 @@ type InlineTipProps = {
   iconClassName?: string
 }
 
-export function HoverTip({ content, children, className, sideOffset = 8 }: HoverTipProps) {
+export function HoverTip({
+  content,
+  children,
+  className,
+  side = 'top',
+  sideOffset = 8,
+  layerZIndex,
+}: HoverTipProps) {
   const text = String(content || '').trim()
 
   if (!text) {
@@ -27,7 +36,12 @@ export function HoverTip({ content, children, className, sideOffset = 8 }: Hover
   return (
     <Tooltip>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent sideOffset={sideOffset} className={className}>
+      <TooltipContent
+        side={side}
+        sideOffset={sideOffset}
+        className={className}
+        style={layerZIndex === undefined ? undefined : { zIndex: layerZIndex }}
+      >
         {text}
       </TooltipContent>
     </Tooltip>

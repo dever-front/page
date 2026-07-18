@@ -1,6 +1,7 @@
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { getSiteConfig } from '@/config/app-config'
 import * as authStoreModule from '@/stores/auth-store'
+import * as themeProviderModule from '@/context/theme-provider'
 import * as agentResultProtocolModule from '@/lib/agent-result-protocol'
 import * as agentRunnerModule from '@/lib/agent/runner'
 import * as assistantContextModule from '@/lib/assistant/context'
@@ -27,6 +28,7 @@ import * as radioGroupModule from '@/components/ui/radio-group'
 import * as selectModule from '@/components/ui/select'
 import * as sheetModule from '@/components/ui/sheet'
 import * as textareaModule from '@/components/ui/textarea'
+import * as formDateModule from '@/page/nodes/form/date'
 import * as showTooltipModule from '@/page/nodes/show/tooltip'
 import * as agentInteractionPanelModule from '@/components/agent/interaction-panel'
 import * as agentStreamRequestParamsModule from '@/components/agent/stream-request-params'
@@ -97,6 +99,7 @@ function createCompatModules(): Record<string, Record<string, any>> {
     '@/components/ui/sheet': sheetModule,
     '@/components/ui/textarea': textareaModule,
     '@/config/app-config': { getSiteConfig },
+    '@/context/theme-provider': themeProviderModule,
     '@/hooks/use-upload-rule-metas': uploadRuleMetasModule,
     '@/lib/agent-result-protocol': agentResultProtocolModule,
     '@/lib/agent/runner': agentRunnerModule,
@@ -120,6 +123,7 @@ function createCompatModules(): Record<string, Record<string, any>> {
     '@/lib/stream': streamModule,
     '@/lib/upload': uploadModule,
     '@/lib/utils': utilsModule,
+    '@/page/nodes/form/date': formDateModule,
     '@/page/nodes/show/tooltip': showTooltipModule,
     '@/page/nodes': {},
     '@/stores/auth-store': authStoreModule,

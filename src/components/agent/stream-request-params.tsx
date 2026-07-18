@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent } from 'react'
+import { useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import {
   Check,
   FolderOpen,
@@ -72,6 +72,21 @@ export type ParamValueMap = Record<string, unknown>
 export type ParamUploadedFile = UploadFileItem
 export type ParamFileMap = Record<string, ParamUploadedFile[]>
 
+export type ParamFileLibraryRenderProps = {
+  open: boolean
+  param: PowerParam
+  files: ParamUploadedFile[]
+  resourceKind?: string
+  multiple: boolean
+  maxSelection: number
+  onOpenChange: (open: boolean) => void
+  onConfirm: (files: ParamUploadedFile[]) => void
+}
+
+export type ParamFileLibraryRenderer = (
+  props: ParamFileLibraryRenderProps
+) => ReactNode
+
 export type PowerParamSource = {
   id: string
   target_id?: string
@@ -98,6 +113,8 @@ type ParamControlProps = {
   uploadBizKey?: string
   uploadBizName?: string
   allowResourceLibrary?: boolean
+  fileLibraryLabel?: string
+  renderFileLibrary?: ParamFileLibraryRenderer
   onUploadedFiles?: (files: ParamUploadedFile[]) => void | Promise<void>
   surface: ParamControlSurface
   onChange: (nextValue: unknown) => void
@@ -215,6 +232,8 @@ function PowerParamControl({
   uploadBizKey,
   uploadBizName,
   allowResourceLibrary = true,
+  fileLibraryLabel = '资源库',
+  renderFileLibrary,
   onUploadedFiles,
   surface,
   onChange,
@@ -227,6 +246,9 @@ function PowerParamControl({
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const label = paramLabel(param)
   const resourceRule = resolveParamResourceRule(param, uploadRuleMeta)
+  const canPickFileLibrary =
+    isFileParam(param) &&
+    (Boolean(renderFileLibrary) || (allowResourceLibrary && Boolean(resourceRule)))
   const { openPreview, previewDialog, hasItems } = useResourcePreviewDialog(
     files,
     {
@@ -285,7 +307,7 @@ function PowerParamControl({
     openPreview(targetID)
   }
 
-  const handlePickResources = (selectedFiles: ParamUploadedFile[]) => {
+  const handlePickFileLibrary = (selectedFiles: ParamUploadedFile[]) => {
     const maxFiles = resolveMaxFiles(param)
     const nextFiles = (
       isFilesParam(param) ? selectedFiles : selectedFiles.slice(0, 1)
@@ -310,13 +332,14 @@ function PowerParamControl({
         onChange,
         onClose,
         onPickFiles: () => fileInputRef.current?.click(),
-        onPickResources: () => setPickerOpen(true),
+        onPickFileLibrary: () => setPickerOpen(true),
         onPreviewFile: handlePreviewFile,
         onRemoveFile: (targetID) =>
           onFilesChange(
             files.filter((file) => String(file.id) !== String(targetID))
           ),
-        canPickResources: allowResourceLibrary && !!resourceRule,
+        canPickFileLibrary,
+        fileLibraryLabel,
       })}
 
       {isFileParam(param) ? (
@@ -331,7 +354,19 @@ function PowerParamControl({
       ) : null}
 
       {message ? <p className='text-xs text-destructive'>{message}</p> : null}
-      {allowResourceLibrary && resourceRule ? (
+      {renderFileLibrary && isFileParam(param)
+        ? renderFileLibrary({
+            open: pickerOpen,
+            param,
+            files,
+            resourceKind: resourceRule?.kind,
+            multiple: isFilesParam(param),
+            maxSelection: resolveMaxFiles(param),
+            onOpenChange: setPickerOpen,
+            onConfirm: handlePickFileLibrary,
+          })
+        : null}
+      {!renderFileLibrary && allowResourceLibrary && resourceRule ? (
         <ResourcePickerDialogLazy
           open={pickerOpen}
           title={`${label}资源库`}
@@ -345,7 +380,7 @@ function PowerParamControl({
           emptyText='暂无匹配资源。'
           uploadRules={[resourceRule]}
           onOpenChange={setPickerOpen}
-          onConfirm={handlePickResources}
+          onConfirm={handlePickFileLibrary}
         />
       ) : null}
       {isFileParam(param) && hasItems ? previewDialog : null}
@@ -363,10 +398,11 @@ function renderParamControl({
   onChange,
   onClose,
   onPickFiles,
-  onPickResources,
+  onPickFileLibrary,
   onPreviewFile,
   onRemoveFile,
-  canPickResources,
+  canPickFileLibrary,
+  fileLibraryLabel,
 }: {
   param: PowerParam
   value: unknown
@@ -377,10 +413,11 @@ function renderParamControl({
   onChange: (nextValue: unknown) => void
   onClose?: () => void
   onPickFiles: () => void
-  onPickResources: () => void
+  onPickFileLibrary: () => void
   onPreviewFile: (targetID?: ParamUploadedFile['id']) => void
   onRemoveFile: (targetID: ParamUploadedFile['id']) => void
-  canPickResources?: boolean
+  canPickFileLibrary?: boolean
+  fileLibraryLabel: string
 }) {
   switch (normalizeParamType(param.type)) {
     case 'description':
@@ -440,9 +477,10 @@ function renderParamControl({
           files={files}
           uploading={uploading}
           disabled={disabled}
-          canPickResources={!!canPickResources}
+          canPickFileLibrary={!!canPickFileLibrary}
+          fileLibraryLabel={fileLibraryLabel}
           onPickFiles={onPickFiles}
-          onPickResources={onPickResources}
+          onPickFileLibrary={onPickFileLibrary}
           onPreviewFile={onPreviewFile}
           onRemoveFile={onRemoveFile}
         />
@@ -650,9 +688,10 @@ function FileParamControl({
   files,
   uploading,
   disabled,
-  canPickResources,
+  canPickFileLibrary,
+  fileLibraryLabel,
   onPickFiles,
-  onPickResources,
+  onPickFileLibrary,
   onPreviewFile,
   onRemoveFile,
 }: {
@@ -660,9 +699,10 @@ function FileParamControl({
   files: ParamUploadedFile[]
   uploading: boolean
   disabled: boolean
-  canPickResources: boolean
+  canPickFileLibrary: boolean
+  fileLibraryLabel: string
   onPickFiles: () => void
-  onPickResources: () => void
+  onPickFileLibrary: () => void
   onPreviewFile: (targetID?: ParamUploadedFile['id']) => void
   onRemoveFile: (targetID: ParamUploadedFile['id']) => void
 }) {
@@ -685,16 +725,16 @@ function FileParamControl({
             )}
             {uploading ? '上传中...' : '选择文件'}
           </Button>
-          {canPickResources ? (
+          {canPickFileLibrary ? (
             <Button
               type='button'
               variant='outline'
               size='sm'
               disabled={disabled || uploading}
-              onClick={onPickResources}
+              onClick={onPickFileLibrary}
             >
               <FolderOpen className='size-4' />
-              资源库
+              {fileLibraryLabel}
             </Button>
           ) : null}
         </div>

@@ -115,7 +115,7 @@
   }
 }
 
-@keyframes dialogLoadingBar {
+@keyframes frontLoadingBar {
   0% {
     transform: translateX(-120%);
   }
@@ -124,8 +124,9 @@
   }
 }
 
+.front-loading-bar,
 .dialog-loading-bar {
-  animation: dialogLoadingBar 1.1s ease-in-out infinite;
+  animation: frontLoadingBar 1.1s ease-in-out infinite;
 }
 
 .front-two-pane-layout {
