@@ -2,6 +2,7 @@ import { useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import {
   Check,
   FolderOpen,
+  LayoutGrid,
   Loader2,
   Paperclip,
   X,
@@ -35,6 +36,19 @@ import { ResourcePickerDialogLazy } from '@/components/resource/lazy-dialogs'
 import { useResourcePreviewDialog } from '@/components/resource/use-resource-preview'
 import { SearchableOptionPicker } from '@/components/searchable-option-picker'
 import { PowerParamIcon } from './power-param-icon'
+import {
+  PowerParamOptionDialog,
+  isParamOptionSelected,
+  normalizeParamPreviewType,
+  paramOptionRequestValue,
+} from './power-param-option-dialog'
+
+export {
+  PowerParamOptionDialog,
+  isParamOptionSelected,
+  normalizeParamPreviewType,
+  paramOptionRequestValue,
+} from './power-param-option-dialog'
 
 const PARAM_USAGE_MAIN = 1
 const PARAM_USAGE_TOOLBAR = 2
@@ -46,6 +60,7 @@ export type PowerParamOption = {
   name?: string
   value: string
   native_value?: string
+  preview_url?: string
   sort?: number
 }
 
@@ -56,6 +71,7 @@ export type PowerParam = {
   key?: string
   icon?: string
   type: string
+  preview_type?: string
   usage: number
   value_type: string
   default_value?: string
@@ -169,6 +185,19 @@ export function PowerParamPopover({
 
   if (isDescriptionParam(param)) {
     return <PowerParamDescription param={param} surface='toolbar' />
+  }
+
+  if (isRichOptionParam(param)) {
+    return (
+      <RichOptionControl
+        param={param}
+        value={currentValue}
+        disabled={!!disabled}
+        surface='toolbar'
+        triggerClassName={triggerClassName}
+        onChange={props.onChange}
+      />
+    )
   }
 
   return (
@@ -449,6 +478,18 @@ function renderParamControl({
         </div>
       )
     case 'option':
+      if (isRichOptionParam(param)) {
+        return (
+          <RichOptionControl
+            param={param}
+            value={value}
+            disabled={disabled}
+            surface={surface}
+            onChange={onChange}
+            onClose={onClose}
+          />
+        )
+      }
       return (
         <SingleOptionControl
           param={param}
@@ -495,6 +536,89 @@ function renderParamControl({
         />
       )
   }
+}
+
+function RichOptionControl({
+  param,
+  value,
+  disabled,
+  surface,
+  triggerClassName,
+  onChange,
+  onClose,
+}: {
+  param: PowerParam
+  value: unknown
+  disabled: boolean
+  surface: ParamControlSurface
+  triggerClassName?: string
+  onChange: (nextValue: unknown) => void
+  onClose?: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const label = paramLabel(param)
+  const selectedLabel = optionDisplayLabels(
+    param.options || [],
+    normalizeStringArray(value)
+  )[0]
+  const trigger =
+    surface === 'toolbar' ? (
+      <Button
+        type='button'
+        variant='outline'
+        size='sm'
+        disabled={disabled}
+        className={cn(
+          'w-[10.5rem] justify-start gap-1.5 px-2.5',
+          triggerClassName
+        )}
+        title={`${label}${selectedLabel ? `：${selectedLabel}` : ''}`}
+        onClick={() => setOpen(true)}
+      >
+        <PowerParamIcon name={param.icon} className='size-3.5 shrink-0' />
+        <span className='truncate'>{label}</span>
+        {isRequiredParam(param) ? (
+          <span className='-ml-1 text-destructive'>*</span>
+        ) : null}
+        {selectedLabel ? (
+          <span className='max-w-[5rem] truncate text-xs text-muted-foreground'>
+            {selectedLabel}
+          </span>
+        ) : null}
+      </Button>
+    ) : (
+      <Button
+        type='button'
+        variant='outline'
+        disabled={disabled}
+        className='min-h-10 w-full justify-between gap-3 px-3'
+        onClick={() => setOpen(true)}
+      >
+        <span className='min-w-0 truncate'>
+          {selectedLabel || '请选择'}
+        </span>
+        <LayoutGrid className='size-4 shrink-0 text-muted-foreground' />
+      </Button>
+    )
+
+  return (
+    <>
+      {trigger}
+      <PowerParamOptionDialog
+        open={open}
+        title={label}
+        previewType={normalizeParamPreviewType(param.preview_type)}
+        options={param.options || []}
+        value={value}
+        disabled={disabled}
+        onOpenChange={setOpen}
+        onConfirm={(nextValue) => {
+          onChange(nextValue)
+          onClose?.()
+        }}
+      />
+    </>
+  )
 }
 
 function SingleOptionControl({
@@ -1107,6 +1231,13 @@ function isDescriptionParam(param: PowerParam) {
   return normalizeParamType(param.type) === 'description'
 }
 
+function isRichOptionParam(param: PowerParam) {
+  return (
+    normalizeParamType(param.type) === 'option' &&
+    normalizeParamPreviewType(param.preview_type) !== 'none'
+  )
+}
+
 function isDisplayOnlyParam(param: PowerParam) {
   return isDescriptionParam(param)
 }
@@ -1122,15 +1253,21 @@ function normalizePowerParam(row: unknown): PowerParam | null {
   const options = Array.isArray(row.options)
     ? row.options
         .filter(isPlainObject)
-        .map((option) => ({
-          id: option.id,
-          name: valueText(option.name),
-          value: valueText(option.value || option.name || option.id),
-          native_value: valueText(option.native_value),
-          sort: Number(option.sort || 0),
-        }))
+        .map((option) => {
+          const previewURL = valueText(option.preview_url)
+          return {
+            id: option.id,
+            name: valueText(option.name),
+            value: valueText(option.value || option.name || option.id),
+            native_value: valueText(option.native_value),
+            preview_url: resolveAssetUrl(previewURL) || previewURL,
+            sort: Number(option.sort || 0),
+          }
+        })
         .filter((option) => option.id != null && option.id !== '')
     : []
+
+  const paramType = normalizeParamType(row.type)
 
   return {
     id,
@@ -1138,7 +1275,11 @@ function normalizePowerParam(row: unknown): PowerParam | null {
     name: valueText(row.name),
     key: valueText(row.key),
     icon: valueText(row.icon),
-    type: normalizeParamType(row.type),
+    type: paramType,
+    preview_type:
+      paramType === 'option'
+        ? normalizeParamPreviewType(row.preview_type)
+        : 'none',
     usage: normalizeParamUsage(row.usage),
     value_type: normalizeValueType(row.value_type),
     default_value: valueText(row.default_value),
@@ -1358,12 +1499,7 @@ function optionRequestValues(param: PowerParam, value: unknown) {
 }
 
 export function optionRequestValue(option: PowerParamOption) {
-  return (
-    String(option.native_value || '').trim() ||
-    String(option.value || '').trim() ||
-    String(option.name || '').trim() ||
-    String(option.id)
-  )
+  return paramOptionRequestValue(option)
 }
 
 function optionPickerOptions(options: PowerParamOption[]) {
@@ -1377,13 +1513,7 @@ export function isSelectedOptionValue(
   option: PowerParamOption,
   values: string[]
 ) {
-  const candidates = [
-    String(option.id),
-    String(option.native_value || '').trim(),
-    String(option.value || '').trim(),
-    String(option.name || '').trim(),
-  ].filter(Boolean)
-  return values.some((value) => candidates.includes(String(value).trim()))
+  return isParamOptionSelected(option, values)
 }
 
 function paramLabel(param: PowerParam) {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
+import { useStore } from 'zustand'
 import { GripVertical, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -20,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+import { isItemCurrentlyHidden } from '@/lib/condition'
 import { loadPageSchema, request } from '@/lib/request'
 import { moveArrayItem } from '@/lib/array'
 import { getByPath, setByPath } from '@/lib/path'
@@ -55,6 +57,7 @@ import { FormCheckbox } from './checkbox'
 import { FormCascader } from './cascader'
 import { FormTextarea } from './textarea'
 import { FormEditor } from './editor'
+import { FormUpload } from './upload'
 import { InlineTip } from '../show/tooltip'
 import type { NodeItemProps } from '../../nodes'
 
@@ -69,6 +72,7 @@ const arrayEditorRegistry = {
   'form-cascader': FormCascader,
   'form-textarea': FormTextarea,
   'form-editor': FormEditor,
+  'form-upload': FormUpload,
 } as const
 
 type ArrayRowSchema = {
@@ -237,6 +241,24 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
   )
 
   const rowItems = rowSchema?.items ?? []
+  const conditionData = useStore(store, (state) => state.data)
+  const conditionState = useStore(store, (state) => state.state)
+  const visibleRowItems = useMemo(
+    () =>
+      rowItems.filter(
+        (rowItem) =>
+          !isItemCurrentlyHidden(
+            rowItem,
+            { form: rowSchema?.template ?? {} },
+            {},
+            {
+              data: conditionData,
+              state: conditionState,
+            }
+          )
+      ),
+    [conditionData, conditionState, rowItems, rowSchema?.template]
+  )
   const rowKeys = useMemo(() => {
     ensureArrayClientRowKeys(clientRowKeysRef.current, rows.length)
     return buildArrayRowKeys(rows, sortField, clientRowKeysRef.current)
@@ -289,7 +311,7 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
         </div>
       </div>
 
-      <div className="w-full min-w-0 overflow-hidden rounded-xl border border-border/70 bg-muted/15 shadow-xs">
+      <div className="w-full min-w-0 overflow-x-auto rounded-xl border border-border/70 bg-muted/15 shadow-xs">
         <Table>
           <TableHeader className="bg-muted/40">
             <TableRow className="border-border/70 hover:bg-transparent">
@@ -298,7 +320,7 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
                   拖动排序
                 </TableHead>
               ) : null}
-              {rowItems.map((column) => (
+              {visibleRowItems.map((column) => (
                 <TableHead
                   key={column.id}
                   className="h-10 px-4 text-xs font-semibold tracking-wide text-muted-foreground"
@@ -318,7 +340,10 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
             {rows.length === 0 ? (
               <TableRow className="hover:bg-transparent">
                 <TableCell
-                  colSpan={Math.max(1, rowItems.length + 1 + (dragEnabled ? 1 : 0))}
+                  colSpan={Math.max(
+                    1,
+                    visibleRowItems.length + 1 + (dragEnabled ? 1 : 0)
+                  )}
                   className="px-4 py-7 text-center text-sm text-muted-foreground"
                 >
                   {emptyText}
@@ -333,7 +358,7 @@ export function FormArray({ item, value, setValue, store }: NodeItemProps) {
                     rowKey={rowKey}
                     row={row}
                     sortField={sortField}
-                    items={rowItems}
+                    items={visibleRowItems}
                     store={store}
                     onChange={(nextRow) => {
                       const nextRows = [...rows]
@@ -470,7 +495,13 @@ function ArrayFormRow({
         </TableCell>
       ) : null}
       {items.map((currentItem) => (
-        <TableCell key={`${currentItem.id}-${rowKey}`} className="px-4 py-3">
+        <TableCell
+          key={`${currentItem.id}-${rowKey}`}
+          className={cn(
+            'px-4 py-3',
+            currentItem.type === 'form-upload' && 'min-w-[32rem]'
+          )}
+        >
           <ArrayFormCell
             item={currentItem}
             row={row}
