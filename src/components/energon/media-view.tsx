@@ -1,12 +1,20 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import {
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from 'react'
 import {
   CheckCircle2,
   Eye,
   FileText,
   Loader2,
   Music4,
+  Play,
   UploadCloud,
 } from 'lucide-react'
+import { EnergonAudioPlayer } from '@/components/energon/audio-player'
 import { Button } from '@/components/ui/button'
 import { ResourcePreviewDialogLazy } from '@/components/resource/lazy-dialogs'
 import { EnergonProgressBlock } from '@/components/energon/progress'
@@ -24,7 +32,7 @@ import {
 import { cn } from '@/lib/utils'
 
 export type EnergonMediaKind = 'image' | 'video' | 'audio' | 'file'
-export type EnergonMediaLayout = 'default' | 'chat'
+export type EnergonMediaLayout = 'default' | 'chat' | 'detail'
 
 export type EnergonMediaPreviewItem = {
   id: string | number
@@ -285,13 +293,15 @@ function ImageGrid({
   const width = Number(meta?.width || 0)
   const height = Number(meta?.height || 0)
   const chatAspectRatio = layout === 'chat' ? mediaAspectRatio(meta) : ''
+  const detailLayout = layout === 'detail'
 
   return (
     <div
       className={cn(
         'grid',
-        layout === 'chat' ? 'agent-chat-media-grid' : 'gap-3',
-        layout !== 'chat' && 'sm:grid-cols-2'
+        layout === 'chat' && 'agent-chat-media-grid',
+        layout === 'default' && 'gap-3 sm:grid-cols-2',
+        detailLayout && 'gap-6'
       )}
       data-count={layout === 'chat' ? items.length : undefined}
     >
@@ -309,17 +319,17 @@ function ImageGrid({
           <div
             key={String(sourceItem.id)}
             className={cn(
-              'group relative',
-              chatLayout
-                ? 'min-w-0'
-                : 'rounded-xl border bg-background p-2'
+              'group relative min-w-0',
+              layout === 'default' && 'rounded-xl border bg-background p-2'
             )}
           >
             <button
               type="button"
               className={cn(
-                'block w-full overflow-hidden rounded-lg',
-                !chatLayout && 'bg-muted/30'
+                'block w-full overflow-hidden',
+                layout !== 'detail' && 'rounded-lg',
+                layout === 'default' && 'bg-muted/30',
+                detailLayout && 'mx-auto max-w-6xl bg-transparent'
               )}
               style={
                 chatAspectRatio ? { aspectRatio: chatAspectRatio } : undefined
@@ -330,12 +340,15 @@ function ImageGrid({
                 src={url}
                 alt={item.name}
                 className={cn(
-                  'block w-full object-contain transition-transform hover:scale-[1.01]',
+                  'block w-full object-contain',
+                  !detailLayout && 'transition-transform hover:scale-[1.01]',
                   chatLayout
                     ? chatAspectRatio
                       ? 'h-full rounded-lg object-cover'
                       : 'h-auto rounded-lg'
-                    : 'max-h-80'
+                    : detailLayout
+                      ? 'mx-auto h-auto max-h-[calc(100dvh-9rem)]'
+                      : 'max-h-80'
                 )}
               />
             </button>
@@ -344,7 +357,7 @@ function ImageGrid({
                 {mediaActions}
               </div>
             ) : null}
-            {!chatLayout ? (
+            {layout === 'default' ? (
               <div className="mt-2 flex items-center justify-between gap-2">
                 <div className="min-w-0 text-xs text-muted-foreground">
                   <div className="truncate">{item.name}</div>
@@ -419,10 +432,19 @@ function MediaList({
   onUpload: (item: UploadFileItem) => void
   renderMediaActions?: EnergonMediaActionRenderer
 }) {
+  const bareAudio = kind === 'audio' && layout !== 'detail'
+  const bareChatVideo = layout === 'chat' && kind === 'video'
+  const compactRows = kind === 'file'
+
   return (
     <div
-      className={layout === 'chat' ? 'agent-chat-media-grid' : 'space-y-3'}
+      className={cn(
+        layout === 'chat' ? 'agent-chat-media-grid' : 'space-y-3',
+        layout === 'detail' && 'space-y-6',
+        bareAudio && 'w-full max-w-[35rem]'
+      )}
       data-count={layout === 'chat' ? items.length : undefined}
+      data-kind={kind}
     >
       {items.map((item, index) => {
         const sourceItem = sourceItems[index] || item
@@ -436,45 +458,68 @@ function MediaList({
           <div
             key={String(sourceItem.id)}
             className={cn(
-              'group relative min-w-0 border bg-background p-3',
-              layout === 'chat' ? 'rounded-lg' : 'rounded-xl'
+              'group relative min-w-0',
+              layout !== 'detail' &&
+                !compactRows &&
+                !bareAudio &&
+                !bareChatVideo &&
+                'border bg-background p-3',
+              layout === 'chat' &&
+                !compactRows &&
+                !bareAudio &&
+                !bareChatVideo &&
+                'rounded-lg',
+              layout === 'default' &&
+                !compactRows &&
+                !bareAudio &&
+                'rounded-xl'
             )}
           >
-            <MediaPreviewInline
-              kind={kind}
-              item={item}
-              meta={meta}
-              layout={layout}
-              hasOverlayAction={kind === 'video' && Boolean(mediaActions)}
-              onPreview={() => onPreview(sourceItem)}
-            />
+            {!compactRows || layout === 'detail' ? (
+              <MediaPreviewInline
+                kind={kind}
+                item={item}
+                meta={meta}
+                layout={layout}
+                hasOverlayAction={kind === 'video' && Boolean(mediaActions)}
+                onPreview={() => onPreview(sourceItem)}
+              />
+            ) : null}
             {kind === 'video' && mediaActions ? (
               <div className="absolute right-3 top-3 z-10 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                 {mediaActions}
               </div>
             ) : null}
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <div className="min-w-0 flex items-center gap-2 text-sm">
-                {kind === 'audio' ? <Music4 className="size-4 text-muted-foreground" /> : null}
-                {kind === 'file' ? <FileText className="size-4 text-muted-foreground" /> : null}
-                <span className="truncate">{item.name}</span>
+            {layout !== 'detail' && !(layout === 'chat' && kind === 'video') ? (
+              <div
+                className={cn(
+                  'flex flex-wrap items-center justify-between gap-2',
+                  !compactRows && !bareAudio && !bareChatVideo && 'mt-3',
+                  bareAudio && 'mt-2'
+                )}
+              >
+                <div className="min-w-0 flex items-center gap-2 text-sm">
+                  {kind === 'audio' ? <Music4 className="size-4 text-muted-foreground" /> : null}
+                  {kind === 'file' ? <FileText className="size-4 text-muted-foreground" /> : null}
+                  <span className="truncate">{item.name}</span>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {kind !== 'video' ? mediaActions : null}
+                  <Button type="button" size="sm" variant="outline" onClick={() => onPreview(sourceItem)}>
+                    <Eye className="size-4" />
+                    预览
+                  </Button>
+                  <MediaUploadButton
+                    item={sourceItem}
+                    kind={kind}
+                    uploadRule={uploadRule}
+                    uploadState={uploadState}
+                    uploadedByURL={uploadedByURL}
+                    onUpload={onUpload}
+                  />
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {kind !== 'video' ? mediaActions : null}
-                <Button type="button" size="sm" variant="outline" onClick={() => onPreview(sourceItem)}>
-                  <Eye className="size-4" />
-                  预览
-                </Button>
-                <MediaUploadButton
-                  item={sourceItem}
-                  kind={kind}
-                  uploadRule={uploadRule}
-                  uploadState={uploadState}
-                  uploadedByURL={uploadedByURL}
-                  onUpload={onUpload}
-                />
-              </div>
-            </div>
+            ) : null}
           </div>
         )
       })}
@@ -498,20 +543,87 @@ function MediaPreviewInline({
   onPreview: () => void
 }) {
   const url = resourceURL(item)
+  const detailLayout = layout === 'detail'
   if (kind === 'video') {
-    const aspectRatio =
-      layout === 'chat' ? mediaAspectRatio(meta) || '16 / 9' : ''
+    return (
+      <InlineVideoPreview
+        item={item}
+        meta={meta}
+        layout={layout}
+        hasOverlayAction={hasOverlayAction}
+        onPreview={onPreview}
+      />
+    )
+  }
+  if (kind === 'audio') {
+    const streaming = mediaMetaFlag(meta, 'streaming_audio')
+    return (
+      <EnergonAudioPlayer
+        src={url}
+        detailed={detailLayout}
+        autoPlay={streaming}
+        className={cn(detailLayout && 'mx-auto max-w-3xl')}
+      />
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={onPreview}
+      className={cn(
+        'flex w-full items-center gap-2 px-3 py-2 text-left text-sm',
+        detailLayout
+          ? 'mx-auto max-w-3xl bg-transparent hover:text-primary'
+          : 'rounded-lg bg-muted/40 hover:bg-muted/60'
+      )}
+    >
+      <FileText className="size-4 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate">{url}</span>
+      <Eye className="size-4 text-muted-foreground" />
+    </button>
+  )
+}
+
+function InlineVideoPreview({
+  item,
+  meta,
+  layout,
+  hasOverlayAction,
+  onPreview,
+}: {
+  item: UploadFileItem
+  meta?: Record<string, any>
+  layout: EnergonMediaLayout
+  hasOverlayAction?: boolean
+  onPreview: () => void
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [playing, setPlaying] = useState(false)
+  const url = resourceURL(item)
+  const poster = String(item.thumbnail || '').trim() || undefined
+  const detailLayout = layout === 'detail'
+
+  if (layout !== 'chat') {
     return (
       <div
-        className="group relative overflow-hidden rounded-lg border bg-black"
-        style={aspectRatio ? { aspectRatio } : undefined}
+        className={cn(
+          'group relative overflow-hidden',
+          detailLayout
+            ? 'mx-auto w-full max-w-6xl bg-transparent'
+            : 'rounded-lg border bg-black'
+        )}
       >
         <video
           src={url}
+          poster={poster}
           controls
+          playsInline
+          preload="metadata"
           className={cn(
-            'w-full bg-black',
-            aspectRatio ? 'h-full object-cover' : 'max-h-96'
+            'w-full',
+            detailLayout
+              ? 'mx-auto block max-h-[calc(100dvh-9rem)] bg-transparent object-contain'
+              : 'max-h-96 bg-black'
           )}
         />
         <Button
@@ -530,33 +642,58 @@ function MediaPreviewInline({
       </div>
     )
   }
-  if (kind === 'audio') {
-    return (
-      <div className="rounded-lg border bg-muted/20 p-3">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <div className="min-w-0 flex items-center gap-2 text-sm text-muted-foreground">
-            <Music4 className="size-4 shrink-0" />
-            <span className="truncate">{item.name}</span>
-          </div>
-          <Button type="button" size="sm" variant="outline" onClick={onPreview}>
-            <Eye className="size-4" />
-            预览
-          </Button>
-        </div>
-        <audio src={url} controls className="w-full" />
-      </div>
-    )
+
+  const aspectRatio = mediaAspectRatio(meta) || '16 / 9'
+  const playInline = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    const video = videoRef.current
+    if (!video) {
+      return
+    }
+    void video.play().catch(() => setPlaying(false))
   }
+
   return (
-    <button
-      type="button"
-      onClick={onPreview}
-      className="flex w-full items-center gap-2 rounded-lg bg-muted/40 px-3 py-2 text-left text-sm hover:bg-muted/60"
+    <div
+      className="group relative w-full overflow-hidden rounded-lg bg-black"
+      style={{ aspectRatio }}
     >
-      <FileText className="size-4 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate">{url}</span>
-      <Eye className="size-4 text-muted-foreground" />
-    </button>
+      <video
+        ref={videoRef}
+        src={url}
+        poster={poster}
+        controls={playing}
+        playsInline
+        preload="metadata"
+        className="block size-full bg-black object-cover"
+        onClick={(event) => {
+          if (playing) {
+            event.stopPropagation()
+          }
+        }}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+      />
+      {!playing ? (
+        <>
+          <button
+            type="button"
+            className="absolute inset-0 z-[1] cursor-zoom-in border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white/70"
+            onClick={onPreview}
+            aria-label={`预览视频 ${item.name}`}
+          />
+          <button
+            type="button"
+            className="absolute left-1/2 top-1/2 z-[2] inline-flex size-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-0 bg-black/60 text-white shadow-lg backdrop-blur-sm transition-transform hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70"
+            onClick={playInline}
+            aria-label={`播放视频 ${item.name}`}
+          >
+            <Play aria-hidden="true" className="size-5 translate-x-px fill-current" />
+          </button>
+        </>
+      ) : null}
+    </div>
   )
 }
 
@@ -685,4 +822,14 @@ function mediaKindLabel(kind: EnergonMediaKind) {
     default:
       return '文件'
   }
+}
+
+function mediaMetaFlag(meta: Record<string, any> | undefined, key: string) {
+  const value = meta?.[key]
+  if (typeof value === 'boolean') {
+    return value
+  }
+  return ['1', 'true', 'yes', 'y', 'on'].includes(
+    String(value || '').trim().toLowerCase()
+  )
 }

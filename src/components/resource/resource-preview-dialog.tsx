@@ -8,6 +8,7 @@ import {
   Music4,
   Video,
 } from 'lucide-react'
+import { EnergonAudioPlayer } from '@/components/energon/audio-player'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -29,6 +30,7 @@ import {
   formatUploadSize,
   resolveResourcePreviewKind,
 } from '@/lib/resource'
+import { cn } from '@/lib/utils'
 
 export type ResourcePreviewDialogProps = {
   open: boolean
@@ -66,6 +68,8 @@ export function ResourcePreviewDialog({
   const currentItem = previewItems[activeIndex]
   const previewKind = resolveResourcePreviewKind(currentItem)
   const previewUrl = open ? resolvePreviewUrl(currentItem, previewKind) : ''
+  const compactPreview =
+    presentation === 'dialog' && (previewKind === 'audio' || previewKind === 'file')
 
   useEffect(() => {
     if (!open) {
@@ -112,6 +116,7 @@ export function ResourcePreviewDialog({
       previewKind={previewKind}
       previewUrl={previewUrl}
       presentation={presentation}
+      compact={compactPreview}
       footerExtra={footerExtra}
       renderActions={renderActions}
       showDownload={showDownload}
@@ -147,7 +152,12 @@ export function ResourcePreviewDialog({
         data-assistant-layer={assistantLayer ? 'true' : undefined}
         layerClassName={layerClassName}
         layerZIndex={layerZIndex}
-        className="flex h-[88vh] max-h-[88vh] max-w-5xl flex-col gap-0 overflow-hidden p-0"
+        className={cn(
+          'flex flex-col gap-0 overflow-hidden p-0',
+          compactPreview
+            ? 'max-h-[80vh] sm:max-w-3xl'
+            : 'h-[88vh] max-h-[88vh] max-w-5xl'
+        )}
       >
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>{title}</DialogTitle>
@@ -166,6 +176,7 @@ function ResourcePreviewPanel({
   previewKind,
   previewUrl,
   presentation,
+  compact,
   footerExtra,
   renderActions,
   showDownload,
@@ -178,6 +189,7 @@ function ResourcePreviewPanel({
   previewKind: string
   previewUrl: string
   presentation: 'dialog' | 'drawer'
+  compact: boolean
   footerExtra?: ReactNode
   renderActions?: (item?: UploadFileItem) => ReactNode
   showDownload: boolean
@@ -188,9 +200,14 @@ function ResourcePreviewPanel({
   const drawer = presentation === 'drawer'
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1">
-        <div className="relative flex min-w-0 flex-1 items-center justify-center overflow-hidden bg-muted/20 px-6 py-6 sm:px-12">
+    <div className={cn('flex min-h-0 flex-col', compact ? 'flex-none' : 'flex-1')}>
+      <div className={cn('flex min-h-0', compact ? 'flex-none' : 'flex-1')}>
+        <div
+          className={cn(
+            'relative flex w-full min-w-0 items-center justify-center overflow-hidden bg-muted/20 px-6 py-6 sm:px-12',
+            compact ? 'min-h-64 flex-none' : 'flex-1'
+          )}
+        >
           {hasMultiple && !drawer ? (
             <PreviewSwitchButton direction="left" onClick={() => onJump(-1)} />
           ) : null}
@@ -405,13 +422,11 @@ function ResourcePreviewBody({
 
   if (previewKind === 'audio') {
     return (
-      <div className="flex w-full max-w-2xl flex-col items-center gap-6 rounded-2xl border bg-background px-6 py-8 shadow-sm">
-        <div className="flex size-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          <Music4 className="size-8" />
-        </div>
-        <div className="text-center text-sm font-medium text-foreground">{item.name}</div>
-        <audio src={previewUrl} controls preload="metadata" className="w-full" />
-      </div>
+      <EnergonAudioPlayer
+        src={previewUrl}
+        detailed
+        className="max-w-3xl"
+      />
     )
   }
 

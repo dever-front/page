@@ -15,6 +15,7 @@ import {
   inputKeyForParam,
   isHiddenParam,
   isPromptParam,
+  normalizeParamPreviewType,
   normalizePowerParamConfig,
   normalizePowerParams,
   paramFilesRequestValue,
@@ -658,6 +659,9 @@ function normalizeInteractionField(
     key,
     type: controlType,
     usage: 1,
+    preview_type: normalizeParamPreviewType(
+      field.preview_type ?? field.previewType
+    ),
     value_type: normalizeInteractionValueType(field),
     default_value: defaultValue,
     placeholder: normalizeText(field.placeholder),
@@ -802,6 +806,7 @@ function normalizeInteractionOptions(options: unknown): PowerParamOption[] {
         native_value: stringifyNativeValue(
           optionRow.native_value == null ? value : optionRow.native_value
         ),
+        preview_url: normalizeText(optionRow.preview_url),
         sort: Number(optionRow.sort || index + 1),
       }
       return row
@@ -833,6 +838,7 @@ function normalizeOptionRow(option: unknown, index: number) {
       label: label || String(index + 1),
       value: option.value == null ? label : option.value,
       native_value: option.native_value ?? option.nativeValue,
+      preview_url: option.preview_url ?? option.previewUrl,
       sort: option.sort,
     }
   }
@@ -897,6 +903,8 @@ function normalizeInteractionFieldType(field: Record<string, unknown>) {
       return 'switch'
     case 'description':
       return 'description'
+    case 'hidden':
+      return 'hidden'
     default:
       return 'input'
   }

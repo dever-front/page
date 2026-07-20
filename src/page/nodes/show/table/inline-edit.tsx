@@ -56,6 +56,7 @@ export function EditableFormCell({
       }
 
       setSaving(true)
+      let saved = false
       try {
         const result = await runActionsWithResult(store, inlineAction, {
           row,
@@ -63,6 +64,7 @@ export function EditableFormCell({
           value: nextValue,
           field,
         })
+        saved = result.success
         if (result.success) {
           onValueSaved?.(nextValue)
         }
@@ -70,6 +72,9 @@ export function EditableFormCell({
           toastActionResult(result, buildInlineToastOptions(column))
         }
       } finally {
+        if (!saved) {
+          setDraftValue(value ?? '')
+        }
         setSaving(false)
       }
     },
@@ -213,6 +218,7 @@ export function EditableShowCell({
       }
 
       setSaving(true)
+      let saved = false
       try {
         const result = await runActionsWithResult(store, inlineAction, {
           row,
@@ -220,6 +226,7 @@ export function EditableShowCell({
           value: nextValue,
           field,
         })
+        saved = result.success
         if (result.success) {
           onValueSaved?.(nextValue)
           setEditing(false)
@@ -228,6 +235,9 @@ export function EditableShowCell({
           toastActionResult(result, buildInlineToastOptions(column))
         }
       } finally {
+        if (!saved) {
+          setDraftValue(value ?? '')
+        }
         setSaving(false)
       }
     },

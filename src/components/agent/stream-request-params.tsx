@@ -129,6 +129,7 @@ type ParamControlProps = {
   uploadBizKey?: string
   uploadBizName?: string
   allowResourceLibrary?: boolean
+  fileLibraryOnly?: boolean
   fileLibraryLabel?: string
   renderFileLibrary?: ParamFileLibraryRenderer
   onUploadedFiles?: (files: ParamUploadedFile[]) => void | Promise<void>
@@ -215,10 +216,7 @@ export function PowerParamPopover({
           )}
           title={`${label}${summary ? `：${summary}` : ''}`}
         >
-          <PowerParamIcon
-            name={param.icon}
-            className='size-3.5 shrink-0'
-          />
+          <PowerParamIcon name={param.icon} className='size-3.5 shrink-0' />
           <span className='truncate'>{label}</span>
           {isRequiredParam(param) ? (
             <span className='-ml-1 text-destructive'>*</span>
@@ -261,6 +259,7 @@ function PowerParamControl({
   uploadBizKey,
   uploadBizName,
   allowResourceLibrary = true,
+  fileLibraryOnly = false,
   fileLibraryLabel = '资源库',
   renderFileLibrary,
   onUploadedFiles,
@@ -277,7 +276,8 @@ function PowerParamControl({
   const resourceRule = resolveParamResourceRule(param, uploadRuleMeta)
   const canPickFileLibrary =
     isFileParam(param) &&
-    (Boolean(renderFileLibrary) || (allowResourceLibrary && Boolean(resourceRule)))
+    (Boolean(renderFileLibrary) ||
+      (allowResourceLibrary && Boolean(resourceRule)))
   const { openPreview, previewDialog, hasItems } = useResourcePreviewDialog(
     files,
     {
@@ -368,10 +368,11 @@ function PowerParamControl({
             files.filter((file) => String(file.id) !== String(targetID))
           ),
         canPickFileLibrary,
+        localUploadEnabled: !fileLibraryOnly,
         fileLibraryLabel,
       })}
 
-      {isFileParam(param) ? (
+      {isFileParam(param) && !fileLibraryOnly ? (
         <input
           ref={fileInputRef}
           type='file'
@@ -431,6 +432,7 @@ function renderParamControl({
   onPreviewFile,
   onRemoveFile,
   canPickFileLibrary,
+  localUploadEnabled,
   fileLibraryLabel,
 }: {
   param: PowerParam
@@ -446,6 +448,7 @@ function renderParamControl({
   onPreviewFile: (targetID?: ParamUploadedFile['id']) => void
   onRemoveFile: (targetID: ParamUploadedFile['id']) => void
   canPickFileLibrary?: boolean
+  localUploadEnabled: boolean
   fileLibraryLabel: string
 }) {
   switch (normalizeParamType(param.type)) {
@@ -519,6 +522,7 @@ function renderParamControl({
           uploading={uploading}
           disabled={disabled}
           canPickFileLibrary={!!canPickFileLibrary}
+          localUploadEnabled={localUploadEnabled}
           fileLibraryLabel={fileLibraryLabel}
           onPickFiles={onPickFiles}
           onPickFileLibrary={onPickFileLibrary}
@@ -594,9 +598,7 @@ function RichOptionControl({
         className='min-h-10 w-full justify-between gap-3 px-3'
         onClick={() => setOpen(true)}
       >
-        <span className='min-w-0 truncate'>
-          {selectedLabel || '请选择'}
-        </span>
+        <span className='min-w-0 truncate'>{selectedLabel || '请选择'}</span>
         <LayoutGrid className='size-4 shrink-0 text-muted-foreground' />
       </Button>
     )
@@ -813,6 +815,7 @@ function FileParamControl({
   uploading,
   disabled,
   canPickFileLibrary,
+  localUploadEnabled,
   fileLibraryLabel,
   onPickFiles,
   onPickFileLibrary,
@@ -824,6 +827,7 @@ function FileParamControl({
   uploading: boolean
   disabled: boolean
   canPickFileLibrary: boolean
+  localUploadEnabled: boolean
   fileLibraryLabel: string
   onPickFiles: () => void
   onPickFileLibrary: () => void
@@ -835,20 +839,22 @@ function FileParamControl({
     <div className='space-y-2'>
       <div className='flex items-center justify-between gap-2'>
         <div className='flex flex-wrap items-center gap-2'>
-          <Button
-            type='button'
-            variant='outline'
-            size='sm'
-            disabled={disabled || uploading || files.length >= maxFiles}
-            onClick={onPickFiles}
-          >
-            {uploading ? (
-              <Loader2 className='size-4 animate-spin' />
-            ) : (
-              <Paperclip className='size-4' />
-            )}
-            {uploading ? '上传中...' : '选择文件'}
-          </Button>
+          {localUploadEnabled ? (
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              disabled={disabled || uploading || files.length >= maxFiles}
+              onClick={onPickFiles}
+            >
+              {uploading ? (
+                <Loader2 className='size-4 animate-spin' />
+              ) : (
+                <Paperclip className='size-4' />
+              )}
+              {uploading ? '上传中...' : '选择文件'}
+            </Button>
+          ) : null}
           {canPickFileLibrary ? (
             <Button
               type='button'

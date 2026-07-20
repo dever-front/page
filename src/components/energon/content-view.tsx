@@ -42,6 +42,7 @@ export type ContentViewProps = {
   emptyText?: string
   className?: string
   markdownClassName?: string
+  richClassName?: string
   uploadRules?: ResourceUploadRule[]
   mediaLayout?: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
@@ -57,6 +58,7 @@ export type {
   EnergonMediaPreviewItem,
   EnergonMediaPreviewRequest,
 } from '@/components/energon/media-view'
+export { EnergonAudioPlayer } from '@/components/energon/audio-player'
 
 const outputScalarKeys = [
   'event',
@@ -82,6 +84,7 @@ export function ContentView({
   emptyText = '暂无内容。',
   className,
   markdownClassName,
+  richClassName,
   uploadRules,
   mediaLayout = 'default',
   mediaPreviewLayerZIndex,
@@ -101,6 +104,7 @@ export function ContentView({
           key={`${item.event || 'output'}-${index}`}
           output={item}
           markdownClassName={markdownClassName}
+          richClassName={richClassName}
           uploadRules={uploadRules}
           mediaLayout={mediaLayout}
           mediaPreviewLayerZIndex={mediaPreviewLayerZIndex}
@@ -169,6 +173,7 @@ function normalizeOutput(value: any): EnergonOutput {
 function EnergonOutputBlock({
   output,
   markdownClassName,
+  richClassName,
   uploadRules,
   mediaLayout,
   mediaPreviewLayerZIndex,
@@ -177,6 +182,7 @@ function EnergonOutputBlock({
 }: {
   output: EnergonOutput
   markdownClassName?: string
+  richClassName?: string
   uploadRules?: ResourceUploadRule[]
   mediaLayout: EnergonMediaLayout
   mediaPreviewLayerZIndex?: number
@@ -200,6 +206,14 @@ function EnergonOutputBlock({
     output.audios,
     richTextMediaSources(richDoc, 'audio')
   )
+  const fileUrls = mediaOutsideRich(output.files, [
+    ...normalizeStringList(output.images),
+    ...normalizeStringList(output.videos),
+    ...normalizeStringList(output.audios),
+    ...richTextMediaSources(richDoc, 'image'),
+    ...richTextMediaSources(richDoc, 'video'),
+    ...richTextMediaSources(richDoc, 'audio'),
+  ])
 
   if (event === 'end' && !output.text && !output.error) {
     return null
@@ -218,7 +232,7 @@ function EnergonOutputBlock({
       ) : null}
       {output.reasoning ? <ReasoningBlock text={valueText(output.reasoning)} /> : null}
       {text ? <MarkdownBlock text={text} className={markdownClassName} /> : null}
-      {hasRich ? <RichBlock value={richDoc} /> : null}
+      {hasRich ? <RichBlock value={richDoc} className={richClassName} /> : null}
       <ImageBlock
         urls={imageUrls}
         meta={output.meta}
@@ -247,7 +261,7 @@ function EnergonOutputBlock({
         renderMediaActions={renderMediaActions}
       />
       <FileBlock
-        urls={normalizeStringList(output.files)}
+        urls={fileUrls}
         meta={output.meta}
         uploadRules={uploadRules}
         mediaLayout={mediaLayout}
@@ -277,11 +291,11 @@ function MarkdownBlock({ text, className }: { text: string; className?: string }
   )
 }
 
-function RichBlock({ value }: { value: any }) {
+function RichBlock({ value, className }: { value: any; className?: string }) {
   if (!value) {
     return null
   }
-  return <RichTextView value={value} />
+  return <RichTextView value={value} className={className} />
 }
 
 function ReasoningBlock({ text }: { text: string }) {

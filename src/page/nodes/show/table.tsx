@@ -194,12 +194,12 @@ export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
   )
   const filterSnapshotRef = useRef(filterSnapshot)
   const pagedData = useMemo(() => {
-    if (isRemote) {
+    if (isRemote || !item.meta?.pagePath) {
       return filteredData
     }
     const start = (safePage - 1) * pageSize
     return filteredData.slice(start, start + pageSize)
-  }, [filteredData, isRemote, pageSize, safePage])
+  }, [filteredData, isRemote, item.meta?.pagePath, pageSize, safePage])
 
   const pageRowKeys = useMemo(
     () => pagedData.map((row) => String(row[rowKey])),
