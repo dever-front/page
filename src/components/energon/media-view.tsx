@@ -10,7 +10,6 @@ import {
   Eye,
   FileText,
   Loader2,
-  Music4,
   Play,
   UploadCloud,
 } from 'lucide-react'
@@ -290,8 +289,6 @@ function ImageGrid({
   onUpload: (item: UploadFileItem) => void
   renderMediaActions?: EnergonMediaActionRenderer
 }) {
-  const width = Number(meta?.width || 0)
-  const height = Number(meta?.height || 0)
   const chatAspectRatio = layout === 'chat' ? mediaAspectRatio(meta) : ''
   const detailLayout = layout === 'detail'
 
@@ -315,13 +312,15 @@ function ImageGrid({
           index,
           layout,
         })
+        const showUploadAction = Boolean(
+          uploadRule ||
+            uploadedByURL[resourceURL(sourceItem)] ||
+            Number(sourceItem.rule_id || 0) > 0
+        )
         return (
           <div
             key={String(sourceItem.id)}
-            className={cn(
-              'group relative min-w-0',
-              layout === 'default' && 'rounded-xl border bg-background p-2'
-            )}
+            className="group relative min-w-0"
           >
             <button
               type="button"
@@ -357,12 +356,8 @@ function ImageGrid({
                 {mediaActions}
               </div>
             ) : null}
-            {layout === 'default' ? (
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <div className="min-w-0 text-xs text-muted-foreground">
-                  <div className="truncate">{item.name}</div>
-                  {width > 0 && height > 0 ? <div>{width} x {height}</div> : null}
-                </div>
+            {layout === 'default' && showUploadAction ? (
+              <div className="mt-2 flex justify-end">
                 <MediaUploadButton
                   item={sourceItem}
                   kind="image"
@@ -433,7 +428,7 @@ function MediaList({
   renderMediaActions?: EnergonMediaActionRenderer
 }) {
   const bareAudio = kind === 'audio' && layout !== 'detail'
-  const bareChatVideo = layout === 'chat' && kind === 'video'
+  const bareDefaultVideo = kind === 'video' && layout === 'default'
   const compactRows = kind === 'file'
 
   return (
@@ -457,23 +452,7 @@ function MediaList({
         return (
           <div
             key={String(sourceItem.id)}
-            className={cn(
-              'group relative min-w-0',
-              layout !== 'detail' &&
-                !compactRows &&
-                !bareAudio &&
-                !bareChatVideo &&
-                'border bg-background p-3',
-              layout === 'chat' &&
-                !compactRows &&
-                !bareAudio &&
-                !bareChatVideo &&
-                'rounded-lg',
-              layout === 'default' &&
-                !compactRows &&
-                !bareAudio &&
-                'rounded-xl'
-            )}
+            className="group relative min-w-0"
           >
             {!compactRows || layout === 'detail' ? (
               <MediaPreviewInline
@@ -494,15 +473,16 @@ function MediaList({
               <div
                 className={cn(
                   'flex flex-wrap items-center justify-between gap-2',
-                  !compactRows && !bareAudio && !bareChatVideo && 'mt-3',
-                  bareAudio && 'mt-2'
+                  kind !== 'file' && 'justify-end',
+                  (bareAudio || bareDefaultVideo) && 'mt-2'
                 )}
               >
-                <div className="min-w-0 flex items-center gap-2 text-sm">
-                  {kind === 'audio' ? <Music4 className="size-4 text-muted-foreground" /> : null}
-                  {kind === 'file' ? <FileText className="size-4 text-muted-foreground" /> : null}
-                  <span className="truncate">{item.name}</span>
-                </div>
+                {kind === 'file' ? (
+                  <div className="min-w-0 flex items-center gap-2 text-sm">
+                    <FileText className="size-4 text-muted-foreground" />
+                    <span className="truncate">{item.name}</span>
+                  </div>
+                ) : null}
                 <div className="flex shrink-0 items-center gap-2">
                   {kind !== 'video' ? mediaActions : null}
                   <Button type="button" size="sm" variant="outline" onClick={() => onPreview(sourceItem)}>
@@ -556,7 +536,7 @@ function MediaPreviewInline({
     )
   }
   if (kind === 'audio') {
-    const streaming = mediaMetaFlag(meta, 'streaming_audio')
+    const streaming = isEnergonMediaMetaFlag(meta, 'streaming_audio')
     return (
       <EnergonAudioPlayer
         src={url}
@@ -599,6 +579,7 @@ function InlineVideoPreview({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [playing, setPlaying] = useState(false)
+  const [intrinsicAspectRatio, setIntrinsicAspectRatio] = useState('')
   const url = resourceURL(item)
   const poster = String(item.thumbnail || '').trim() || undefined
   const detailLayout = layout === 'detail'
@@ -610,7 +591,7 @@ function InlineVideoPreview({
           'group relative overflow-hidden',
           detailLayout
             ? 'mx-auto w-full max-w-6xl bg-transparent'
-            : 'rounded-lg border bg-black'
+            : 'mx-auto w-fit max-w-full rounded-lg bg-transparent'
         )}
       >
         <video
@@ -620,10 +601,9 @@ function InlineVideoPreview({
           playsInline
           preload="metadata"
           className={cn(
-            'w-full',
             detailLayout
-              ? 'mx-auto block max-h-[calc(100dvh-9rem)] bg-transparent object-contain'
-              : 'max-h-96 bg-black'
+              ? 'mx-auto block w-full max-h-[calc(100dvh-9rem)] bg-transparent object-contain'
+              : 'block h-auto max-h-[32rem] max-w-full rounded-lg bg-transparent object-contain'
           )}
         />
         <Button
@@ -643,7 +623,7 @@ function InlineVideoPreview({
     )
   }
 
-  const aspectRatio = mediaAspectRatio(meta) || '16 / 9'
+  const aspectRatio = mediaAspectRatio(meta) || intrinsicAspectRatio
   const playInline = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
     const video = videoRef.current
@@ -665,7 +645,16 @@ function InlineVideoPreview({
         controls={playing}
         playsInline
         preload="metadata"
-        className="block size-full bg-black object-cover"
+        className={cn(
+          'block w-full bg-black object-cover',
+          aspectRatio && 'h-full'
+        )}
+        onLoadedMetadata={(event) => {
+          const video = event.currentTarget
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+            setIntrinsicAspectRatio(`${video.videoWidth} / ${video.videoHeight}`)
+          }
+        }}
         onClick={(event) => {
           if (playing) {
             event.stopPropagation()
@@ -824,7 +813,10 @@ function mediaKindLabel(kind: EnergonMediaKind) {
   }
 }
 
-function mediaMetaFlag(meta: Record<string, any> | undefined, key: string) {
+export function isEnergonMediaMetaFlag(
+  meta: Record<string, any> | undefined,
+  key: string
+) {
   const value = meta?.[key]
   if (typeof value === 'boolean') {
     return value

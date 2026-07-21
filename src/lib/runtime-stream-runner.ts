@@ -50,6 +50,7 @@ export type RuntimeStreamWatchOptions<TOutput = Record<string, unknown>> = {
   signal?: AbortSignal
   stopOnResult?: boolean
   recoverOnError?: boolean
+  acceptErrorResult?: boolean
   retryDelayMs?: number
   maxRetryDelayMs?: number
   onFrame?: (frame: RuntimeStreamFrame<TOutput>) => boolean | void
@@ -182,6 +183,7 @@ export async function watchRuntimeStream<TOutput = Record<string, unknown>>({
   signal,
   stopOnResult = true,
   recoverOnError = true,
+  acceptErrorResult = false,
   retryDelayMs = 1000,
   maxRetryDelayMs = 5000,
   onFrame,
@@ -199,7 +201,11 @@ export async function watchRuntimeStream<TOutput = Record<string, unknown>>({
     if (streamID) {
       cursor = streamID
     }
-    assertRuntimeStreamFrameSuccess(frame)
+    const acceptedErrorResult =
+      acceptErrorResult && frame?.type === 'result' && Number(frame?.status) === 2
+    if (!acceptedErrorResult) {
+      assertRuntimeStreamFrameSuccess(frame)
+    }
     const shouldStop = onFrame?.(frame) === false
     if (stopOnResult && frame?.type === 'result') {
       completed = true

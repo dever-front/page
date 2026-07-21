@@ -21,6 +21,12 @@ import type {
 } from './types'
 
 const CLOSE_DELAY = 140
+const GENERIC_MEDIA_DESCRIPTIONS: Record<string, string> = {
+  image: '图片内容',
+  video: '视频内容',
+  audio: '音频内容',
+  file: '文件内容',
+}
 
 type ReferencePreviewPopoverProps = {
   label: string
@@ -136,10 +142,13 @@ export function ReferencePreviewPopover({
   const previewTitle = preview?.title || label
   const previewText =
     preview?.text.trim() || (!loadPreview ? hint?.text?.trim() : '')
-  const bodyText = isRepeatedPreviewText(previewText, previewTitle, label)
-    ? ''
-    : previewText
   const previewMedia = preview?.media || []
+  const previewKind = previewMedia[0]?.kind || hint?.kind || ''
+  const bodyText =
+    isRepeatedPreviewText(previewText, previewTitle, label) ||
+    isGenericMediaDescription(previewText, previewKind)
+      ? ''
+      : previewText
   const previewContent = preview?.content
   const hasPreviewContent = hasReferencePreviewContent(previewContent)
   const kind = referencePreviewKind(refType, hint, preview)
@@ -377,6 +386,10 @@ function isRepeatedPreviewText(
     normalizedText === normalizePreviewText(title) ||
     normalizedText === normalizePreviewText(label)
   )
+}
+
+function isGenericMediaDescription(text: string | undefined, kind: string) {
+  return normalizePreviewText(text) === GENERIC_MEDIA_DESCRIPTIONS[kind]
 }
 
 function normalizePreviewText(value: string | undefined) {

@@ -10,6 +10,7 @@ import { RichTextView } from '@/components/rich-text-view'
 import { Badge } from '@/components/ui/badge'
 import {
   EnergonMediaView,
+  isEnergonMediaMetaFlag,
   type EnergonMediaLayout,
   type EnergonMediaActionRenderer,
   type EnergonMediaPreviewHandler,
@@ -103,6 +104,7 @@ export function ContentView({
         <EnergonOutputBlock
           key={`${item.event || 'output'}-${index}`}
           output={item}
+          streaming={streaming}
           markdownClassName={markdownClassName}
           richClassName={richClassName}
           uploadRules={uploadRules}
@@ -172,6 +174,7 @@ function normalizeOutput(value: any): EnergonOutput {
 
 function EnergonOutputBlock({
   output,
+  streaming,
   markdownClassName,
   richClassName,
   uploadRules,
@@ -181,6 +184,7 @@ function EnergonOutputBlock({
   renderMediaActions,
 }: {
   output: EnergonOutput
+  streaming: boolean
   markdownClassName?: string
   richClassName?: string
   uploadRules?: ResourceUploadRule[]
@@ -193,7 +197,7 @@ function EnergonOutputBlock({
   const isProgressEvent = event === 'start' || event === 'progress'
   const richDoc = parseRichTextDoc(output.rich)
   const hasRich = !isEmptyRichTextDoc(richDoc)
-  const text = isProgressEvent || hasRich ? '' : valueText(output.text)
+  const outputText = isProgressEvent || hasRich ? '' : valueText(output.text)
   const imageUrls = mediaOutsideRich(
     output.images,
     richTextMediaSources(richDoc, 'image')
@@ -206,6 +210,13 @@ function EnergonOutputBlock({
     output.audios,
     richTextMediaSources(richDoc, 'audio')
   )
+  const staleStreamingAudioText =
+    !streaming &&
+    outputText.trim() === '音频生成中' &&
+    audioUrls.length > 0 &&
+    (event === 'audio_ready' ||
+      isEnergonMediaMetaFlag(output.meta, 'streaming_audio'))
+  const text = staleStreamingAudioText ? '' : outputText
   const fileUrls = mediaOutsideRich(output.files, [
     ...normalizeStringList(output.images),
     ...normalizeStringList(output.videos),

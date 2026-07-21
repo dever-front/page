@@ -15,6 +15,7 @@ const detailWaveform = [
 type EnergonAudioPlayerProps = {
   src: string
   detailed?: boolean
+  compact?: boolean
   autoPlay?: boolean
   className?: string
 }
@@ -22,6 +23,7 @@ type EnergonAudioPlayerProps = {
 export function EnergonAudioPlayer({
   src,
   detailed = false,
+  compact = false,
   autoPlay = false,
   className,
 }: EnergonAudioPlayerProps) {
@@ -106,7 +108,9 @@ export function EnergonAudioPlayer({
         'box-border flex w-full min-w-0 flex-col justify-end bg-muted/40 text-primary',
         detailed
           ? 'min-h-52 gap-6 rounded-lg border px-5 pb-6 pt-8 shadow-sm sm:px-8'
-          : 'min-h-36 gap-4 rounded-lg border px-4 pb-4 pt-5',
+          : compact
+            ? 'min-h-0 gap-0 rounded-lg border px-2 py-1.5'
+            : 'min-h-36 gap-4 rounded-lg border px-4 pb-4 pt-5',
         unavailable && 'items-center justify-center gap-2 text-muted-foreground',
         className
       )}
@@ -119,50 +123,51 @@ export function EnergonAudioPlayer({
         </>
       ) : (
         <>
-          <div
-            className={cn(
-              'relative flex items-center rounded-md outline outline-1 outline-transparent focus-within:outline-primary/40 focus-within:outline-offset-4',
-              detailed ? 'min-h-24' : 'min-h-14'
-            )}
-          >
+          {!compact ? (
             <div
-              aria-hidden="true"
               className={cn(
-                'flex w-full items-center',
-                detailed ? 'h-[68px] gap-1' : 'h-11 gap-[3px]'
+                'relative flex items-center rounded-md outline outline-1 outline-transparent focus-within:outline-primary/40 focus-within:outline-offset-4',
+                detailed ? 'min-h-24' : 'min-h-14'
               )}
             >
-              {waveform.map((height, index) => (
-                <i
-                  key={`${height}-${index}`}
-                  className={cn(
-                    'block min-w-0.5 flex-1 rounded-full bg-border transition-colors duration-100',
-                    (index + 1) / waveform.length <= progress && 'bg-primary'
-                  )}
-                  style={{ height: `${height}%` }}
-                />
-              ))}
+              <div
+                aria-hidden="true"
+                className={cn(
+                  'flex w-full items-center',
+                  detailed ? 'h-[68px] gap-1' : 'h-11 gap-[3px]'
+                )}
+              >
+                {waveform.map((height, index) => (
+                  <i
+                    key={`${height}-${index}`}
+                    className={cn(
+                      'block min-w-0.5 flex-1 rounded-full bg-border transition-colors duration-100',
+                      (index + 1) / waveform.length <= progress && 'bg-primary'
+                    )}
+                    style={{ height: `${height}%` }}
+                  />
+                ))}
+              </div>
+              <AudioProgressControl
+                currentTime={currentTime}
+                duration={duration}
+                onSeek={seek}
+                className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-default"
+              />
             </div>
-            <input
-              type="range"
-              min="0"
-              max={Math.max(duration, 0.01)}
-              step="0.01"
-              value={Math.min(currentTime, duration || 0)}
-              disabled={duration <= 0}
-              onChange={(event) => seek(Number(event.currentTarget.value))}
-              className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-default"
-              aria-label="音频播放进度"
-              aria-valuetext={`${formatAudioTime(currentTime)} / ${formatAudioTime(duration)}`}
-            />
-          </div>
-          <div className="flex min-h-9 items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
+          ) : null}
+          <div
+            className={cn(
+              'flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground',
+              compact ? 'min-h-8' : 'min-h-9'
+            )}
+          >
             <button
               type="button"
               onClick={togglePlayback}
               className={cn(
                 'mr-1.5 inline-flex shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/40',
-                detailed ? 'size-10' : 'size-9'
+                detailed ? 'size-10' : compact ? 'size-8' : 'size-9'
               )}
               title={playing ? '暂停' : '播放'}
               aria-label={playing ? '暂停音频' : '播放音频'}
@@ -176,6 +181,14 @@ export function EnergonAudioPlayer({
             <span>{formatAudioTime(currentTime)}</span>
             <span aria-hidden="true">/</span>
             <span>{duration > 0 ? formatAudioTime(duration) : '--:--'}</span>
+            {compact ? (
+              <AudioProgressControl
+                currentTime={currentTime}
+                duration={duration}
+                onSeek={seek}
+                className="mx-2 h-1 min-w-12 flex-1 cursor-pointer accent-primary disabled:cursor-default"
+              />
+            ) : null}
             {detailed ? (
               <div className="ml-auto inline-flex items-center gap-2.5">
                 <button
@@ -231,6 +244,33 @@ export function EnergonAudioPlayer({
         }}
       />
     </div>
+  )
+}
+
+function AudioProgressControl({
+  currentTime,
+  duration,
+  onSeek,
+  className,
+}: {
+  currentTime: number
+  duration: number
+  onSeek: (time: number) => void
+  className: string
+}) {
+  return (
+    <input
+      type="range"
+      min="0"
+      max={Math.max(duration, 0.01)}
+      step="0.01"
+      value={Math.min(currentTime, duration || 0)}
+      disabled={duration <= 0}
+      onChange={(event) => onSeek(Number(event.currentTarget.value))}
+      className={className}
+      aria-label="音频播放进度"
+      aria-valuetext={`${formatAudioTime(currentTime)} / ${formatAudioTime(duration)}`}
+    />
   )
 }
 

@@ -1086,10 +1086,12 @@ function walkReferenceNodes(
 export function ReferenceContentView({
   content,
   fallback = '',
+  references = [],
   loadPreview,
 }: {
   content?: ReferenceContent
   fallback?: string
+  references?: ReferenceOption[]
   loadPreview?: ReferencePreviewLoader
 }) {
   if (!content?.parts?.length) {
@@ -1097,22 +1099,39 @@ export function ReferenceContentView({
   }
   return (
     <>
-      {content.parts.map((part, index) =>
-        part.type === 'reference' ? (
+      {content.parts.map((part, index) => {
+        if (part.type === 'text') {
+          return <span key={`text-${index}`}>{part.text}</span>
+        }
+        const option = referenceOptionForPart(part, references)
+        return (
           <ReferenceTag
             key={`ref-${part.ref_type}-${part.ref_id}-${index}`}
-            label={referenceLabel(part.label)}
+            label={referenceLabel(option?.label || part.label)}
             refType={part.ref_type}
             refId={part.ref_id}
-            trigger={referenceTrigger(part.ref_trigger)}
-            versionId={part.ref_version_id}
+            trigger={referenceTrigger(option?.trigger || part.ref_trigger)}
+            versionId={option?.versionID || part.ref_version_id}
+            hint={option?.preview}
             loadPreview={loadPreview}
           />
-        ) : (
-          <span key={`text-${index}`}>{part.text}</span>
         )
-      )}
+      })}
     </>
+  )
+}
+
+function referenceOptionForPart(
+  part: Extract<ReferenceContent['parts'][number], { type: 'reference' }>,
+  references: ReferenceOption[]
+) {
+  return references.find(
+    (option) =>
+      option.refType === part.ref_type &&
+      option.refId === part.ref_id &&
+      (!part.ref_version_id ||
+        !option.versionID ||
+        option.versionID === part.ref_version_id)
   )
 }
 
