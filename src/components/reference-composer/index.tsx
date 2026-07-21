@@ -1262,7 +1262,7 @@ const referenceComposerStyles = `
 .reference-composer-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 0 14px 12px; }
 .reference-composer-tools { display: flex; min-width: 0; flex: 1; flex-wrap: wrap; align-items: center; gap: 6px; }
 .reference-composer-message { padding: 0 22px 6px; color: var(--destructive); font-size: 13px; line-height: 1.5; }
-.reference-composer-tool, .reference-composer-action { display: inline-flex; width: 42px; height: 42px; align-items: center; justify-content: center; border: 0; border-radius: 50%; cursor: pointer; transition: background-color .16s ease, opacity .16s ease, transform .16s ease; }
+.reference-composer-tool, .reference-composer-action { display: inline-flex; width: 42px; height: 42px; appearance: none; -webkit-appearance: none; box-sizing: border-box; align-items: center; justify-content: center; margin: 0; border: 0; border-radius: 50%; padding: 0; cursor: pointer; transition: background-color .16s ease, opacity .16s ease, transform .16s ease; }
 .reference-composer-tool { background: transparent; color: var(--foreground); }
 .reference-composer-tool:hover { background: var(--muted); }
 .reference-composer-action { flex: 0 0 42px; background: #111318; color: #fff; }

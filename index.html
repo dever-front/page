@@ -62,11 +62,16 @@
         }
 
         const applyBootSite = (site) => {
+          const runtime = window.appRuntime || {}
           const siteName = String(site.name || 'Dever Front').trim()
           const logoSrc = String(site.logo || '').trim()
+          const boot = document.getElementById('front-initial-boot')
           const title = document.getElementById('front-initial-boot-title')
           const logo = document.getElementById('front-initial-boot-logo')
 
+          if (boot) {
+            boot.dataset.siteKey = String(runtime.siteKey || '').trim()
+          }
           if (title) title.textContent = siteName
           if (!logo) return
 
@@ -192,6 +197,16 @@
         object-fit: contain;
       }
 
+      .front-boot-screen[data-site-key='body'] .front-boot-logo > img,
+      .front-boot-screen[data-site-key='body']
+        .front-boot-logo
+        > .front-boot-initials {
+        transform-origin: center;
+        will-change: transform, opacity;
+        animation: deverBodyBootLogoPulse 1.6s cubic-bezier(0.4, 0, 0.2, 1)
+          infinite;
+      }
+
       .front-boot-initials {
         font-size: 32px;
         font-weight: 700;
@@ -254,8 +269,27 @@
         }
       }
 
+      @keyframes deverBodyBootLogoPulse {
+        0%,
+        100% {
+          opacity: 0.82;
+          transform: scale(0.94);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1.06);
+        }
+      }
+
       @media (prefers-reduced-motion: reduce) {
         .front-boot-panel {
+          animation: none;
+        }
+
+        .front-boot-screen[data-site-key='body'] .front-boot-logo > img,
+        .front-boot-screen[data-site-key='body']
+          .front-boot-logo
+          > .front-boot-initials {
           animation: none;
         }
       }
