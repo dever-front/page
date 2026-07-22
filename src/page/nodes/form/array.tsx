@@ -58,6 +58,7 @@ import { FormCascader } from './cascader'
 import { FormTextarea } from './textarea'
 import { FormEditor } from './editor'
 import { FormUpload } from './upload'
+import { FormIcon } from './icon'
 import { InlineTip } from '../show/tooltip'
 import type { NodeItemProps } from '../../nodes'
 
@@ -73,6 +74,7 @@ const arrayEditorRegistry = {
   'form-textarea': FormTextarea,
   'form-editor': FormEditor,
   'form-upload': FormUpload,
+  'form-icon': FormIcon,
 } as const
 
 type ArrayRowSchema = {

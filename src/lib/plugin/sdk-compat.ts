@@ -27,8 +27,13 @@ import * as inputModule from '@/components/ui/input'
 import * as radioGroupModule from '@/components/ui/radio-group'
 import * as selectModule from '@/components/ui/select'
 import * as sheetModule from '@/components/ui/sheet'
+import * as switchModule from '@/components/ui/switch'
+import * as tableModule from '@/components/ui/table'
 import * as textareaModule from '@/components/ui/textarea'
 import * as formDateModule from '@/page/nodes/form/date'
+import * as formIconModule from '@/page/nodes/form/icon'
+import * as formUploadModule from '@/page/nodes/form/upload'
+import * as tableInlineEditModule from '@/page/nodes/show/table/inline-edit'
 import * as showTooltipModule from '@/page/nodes/show/tooltip'
 import * as agentInteractionPanelModule from '@/components/agent/interaction-panel'
 import * as agentStreamRequestParamsModule from '@/components/agent/stream-request-params'
@@ -97,6 +102,8 @@ function createCompatModules(): Record<string, Record<string, any>> {
     '@/components/ui/radio-group': radioGroupModule,
     '@/components/ui/select': selectModule,
     '@/components/ui/sheet': sheetModule,
+    '@/components/ui/switch': switchModule,
+    '@/components/ui/table': tableModule,
     '@/components/ui/textarea': textareaModule,
     '@/config/app-config': { getSiteConfig },
     '@/context/theme-provider': themeProviderModule,
@@ -124,6 +131,9 @@ function createCompatModules(): Record<string, Record<string, any>> {
     '@/lib/upload': uploadModule,
     '@/lib/utils': utilsModule,
     '@/page/nodes/form/date': formDateModule,
+    '@/page/nodes/form/icon': formIconModule,
+    '@/page/nodes/form/upload': formUploadModule,
+    '@/page/nodes/show/table/inline-edit': tableInlineEditModule,
     '@/page/nodes/show/tooltip': showTooltipModule,
     '@/page/nodes': {},
     '@/stores/auth-store': authStoreModule,
