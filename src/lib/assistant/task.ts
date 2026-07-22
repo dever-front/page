@@ -58,6 +58,8 @@ export function buildAssistantFormFillTask({
   references,
   overwrite = false,
 }: AssistantFormTaskOptions) {
+  const fillCurrentForm = mode !== 'field'
+
   return withAssistantTaskReferences(
     {
       type:
@@ -70,7 +72,7 @@ export function buildAssistantFormFillTask({
       instruction: String(instruction || '').trim() || undefined,
       source_text: String(sourceText || '').trim() || undefined,
       fill_mode: overwrite ? 'overwrite' : 'empty_only',
-      allowed_action_types: ['fill_form', 'patch_form'],
+      allowed_action_types: fillCurrentForm ? ['patch_form'] : ['fill_form'],
       save: false,
     },
     references

@@ -693,9 +693,13 @@ function buildQuickFillUserText(
   if (mode === 'field' && field) {
     parts.push(`请只生成并填入字段：${field.name}（${field.path}）。`)
   } else if (mode === 'paste') {
-    parts.push(`请解析下面内容并填入当前表单：\n${String(sourceText || '').trim()}`)
+    parts.push(
+      `请解析下面内容，使用一个 patch_form 一次填入当前表单中所有可匹配字段，不要只填写第一个字段：\n${String(sourceText || '').trim()}`
+    )
   } else {
-    parts.push('请根据当前表单上下文补全当前表单。')
+    parts.push(
+      '请根据当前表单上下文，使用一个 patch_form 一次补全所有适用字段，不要只填写第一个字段。'
+    )
   }
 
   const userInstruction = String(instruction || '').trim()

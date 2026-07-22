@@ -49,6 +49,7 @@ function SheetContent({
   className,
   layerClassName,
   layerZIndex,
+  container,
   children,
   side = 'right',
   showCloseButton = true,
@@ -60,6 +61,7 @@ function SheetContent({
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   layerClassName?: string
   layerZIndex?: number
+  container?: HTMLElement | null
   side?: 'top' | 'right' | 'bottom' | 'left'
   showCloseButton?: boolean
   showOverlay?: boolean
@@ -67,7 +69,7 @@ function SheetContent({
   const assistantLayer = isAssistantLayerProp(props as Record<string, unknown>)
 
   return (
-    <SheetPortal>
+    <SheetPortal container={container ?? undefined}>
       <div
         data-slot='sheet-layer'
         data-assistant-layer={assistantLayer ? 'true' : undefined}

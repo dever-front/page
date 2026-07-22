@@ -1,4 +1,5 @@
 import type { Item, OptionItem, PageSchemaType, ValidateRule } from '@/lib/schema'
+import { isItemCurrentlyHidden, isItemCurrentlyReadOnly } from '@/lib/condition'
 import type { AssistantPageRegistration } from './registry'
 
 const MAX_FIELDS = 80
@@ -60,7 +61,18 @@ export function buildAssistantPageContext(
 
   const state = registration.store.getState()
   const schema = state.schema
-  const fields = collectAssistantFormFields(schema)
+  const parentState = state.parentStore?.getState()
+  const fields = collectAssistantFormFields(
+    schema,
+    state.data,
+    state.state,
+    parentState
+      ? {
+          data: parentState.data,
+          state: parentState.state,
+        }
+      : null
+  )
   const values = collectAssistantFormValues(fields, state.data?.form)
 
   return {
@@ -94,12 +106,26 @@ export function normalizeAssistantFormPath(path: string) {
     .replace(/^data\./, '')
 }
 
-function collectAssistantFormFields(schema: PageSchemaType): AssistantFieldContext[] {
+function collectAssistantFormFields(
+  schema: PageSchemaType,
+  data: Record<string, unknown>,
+  state: Record<string, unknown>,
+  parent: {
+    data: Record<string, unknown>
+    state: Record<string, unknown>
+  } | null
+): AssistantFieldContext[] {
   const result: AssistantFieldContext[] = []
 
   for (const item of Object.values(schema.nodes ?? {}).flat()) {
     if (result.length >= MAX_FIELDS) {
       break
+    }
+    if (
+      isItemCurrentlyHidden(item, data, state, parent) ||
+      isItemCurrentlyReadOnly(item, data, state, parent)
+    ) {
+      continue
     }
     const field = normalizeAssistantFormField(item)
     if (field) {

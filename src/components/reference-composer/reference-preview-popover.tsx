@@ -12,6 +12,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { ContentView } from '@/components/energon/content-view'
+import { findFloatingLayerContainer } from '@/lib/floating-layer'
 import type {
   ReferencePreview,
   ReferencePreviewHint,
@@ -69,6 +70,7 @@ export function ReferencePreviewPopover({
   const [error, setError] = useState('')
   const openTimer = useRef<number | undefined>(undefined)
   const closeTimer = useRef<number | undefined>(undefined)
+  const triggerRef = useRef<HTMLSpanElement>(null)
   const previewRequest = useRef<Promise<ReferencePreview> | undefined>(
     undefined
   )
@@ -169,6 +171,7 @@ export function ReferencePreviewPopover({
     >
       <PopoverTrigger asChild>
         <span
+          ref={triggerRef}
           className={triggerClassName}
           onPointerEnter={schedulePreview}
           onPointerLeave={scheduleClose}
@@ -179,6 +182,7 @@ export function ReferencePreviewPopover({
         </span>
       </PopoverTrigger>
       <PopoverContent
+        container={findFloatingLayerContainer(triggerRef.current)}
         side={side}
         align={align}
         sideOffset={8}
