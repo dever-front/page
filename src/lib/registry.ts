@@ -183,6 +183,11 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
       default: mod.FormInput,
     }))
   ),
+  'form-color': lazyNode(() =>
+    import('@/page/nodes/form/color').then((mod) => ({
+      default: mod.FormColor,
+    }))
+  ),
   'form-icon': lazyNode(() =>
     import('@/page/nodes/form/icon').then((mod) => ({ default: mod.FormIcon }))
   ),

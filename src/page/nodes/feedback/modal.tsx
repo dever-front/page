@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { getByPath, resolvePath } from '@/lib/path'
 import { loadPageSchema } from '@/lib/request'
+import { reloadStoreDataContainer } from '@/lib/page-data-reload'
 import { reloadStorePageSchema } from '@/lib/page-schema-reload'
 import { validatePageSchema, type PageSchemaType } from '@/lib/schema'
 import { useAssistantOverlayRegistration } from '@/lib/assistant/use-overlay-registration'
@@ -186,14 +187,19 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
 
       if (refreshParentOnCloseRef.current) {
         refreshParentOnCloseRef.current = false
-        void reloadStorePageSchema(store)
+        const reloadDataKey = String(item.meta?.reloadDataKey || '').trim()
+        if (reloadDataKey) {
+          void reloadStoreDataContainer(store, reloadDataKey)
+        } else {
+          void reloadStorePageSchema(store)
+        }
       }
     }, OVERLAY_CONTENT_CLEANUP_DELAY)
 
     return () => {
       window.clearTimeout(timer)
     }
-  }, [open, store])
+  }, [item.meta?.reloadDataKey, open, store])
 
   useEffect(() => {
     if (!import.meta.env.DEV || !import.meta.hot) {
