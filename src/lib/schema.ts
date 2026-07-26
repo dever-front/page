@@ -219,6 +219,7 @@ export const PageInfoSchema = z.object({
   name: z.string().optional(),
   route: z.string().optional(),
   title: z.string().optional(),
+  loading: z.enum(['default', 'none']).optional(),
   icon: z.string().optional(),
   parent: z.string().optional(),
   sort: z.number().optional(),

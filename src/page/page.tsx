@@ -79,6 +79,7 @@ export function Page({
   const [pageSchema, setPageSchema] = useState<PageSchemaType | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showLoadingState, setShowLoadingState] = useState(true)
   const [loadedKey, setLoadedKey] = useState('')
   const [reloadVersion, setReloadVersion] = useState(0)
   const loadKey = buildPageLoadKey(route, schemaProp)
@@ -129,6 +130,7 @@ export function Page({
         ? startPageProgress(route || '', progressRequestKey)
         : ''
       setLoading(isNewPage || !hasLoadedRef.current)
+      setShowLoadingState(true)
       setError(null)
 
       try {
@@ -153,6 +155,11 @@ export function Page({
         }
 
         const validated = validatePageSchema(raw)
+        const shouldShowLoadingState = validated.page.loading !== 'none'
+        setShowLoadingState(shouldShowLoadingState)
+        if (!shouldShowLoadingState) {
+          onReady?.()
+        }
         await preparePageSchema(validated)
         if (cancelled) return
         setPageSchema(validated)
@@ -181,7 +188,7 @@ export function Page({
     return () => {
       cancelled = true
     }
-  }, [loadKey, reloadVersion, route, schemaProp])
+  }, [loadKey, onReady, reloadVersion, route, schemaProp])
 
   useEffect(() => {
     if (error) {
@@ -200,7 +207,7 @@ export function Page({
   }
 
   if (loading || isStalePage) {
-    return <FrontLoadingState />
+    return showLoadingState ? <FrontLoadingState /> : null
   }
 
   if (!pageSchema) return null
