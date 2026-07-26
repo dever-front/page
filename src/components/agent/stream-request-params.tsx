@@ -1332,9 +1332,10 @@ function parseClientDefaultValue(param: PowerParam) {
   }
 }
 
-function firstOptionRequestValue(param: PowerParam) {
-  const firstOption = param.options?.[0]
-  return firstOption ? optionRequestValue(firstOption) : undefined
+function latestOptionRequestValue(param: PowerParam) {
+  const options = param.options || []
+  const latestOption = options[options.length - 1]
+  return latestOption ? optionRequestValue(latestOption) : undefined
 }
 
 function optionDefaultValue(param: PowerParam, value: string) {
@@ -1384,7 +1385,7 @@ function displayParamValue(param: PowerParam, value: unknown) {
 function missingDefaultParamValue(param: PowerParam) {
   switch (normalizeParamType(param.type)) {
     case 'option':
-      return firstOptionRequestValue(param)
+      return latestOptionRequestValue(param)
     case 'switch':
       return false
     default:
