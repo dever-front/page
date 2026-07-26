@@ -23,6 +23,7 @@ import * as uploadRuleMetasModule from '@/hooks/use-upload-rule-metas'
 import { Button, buttonVariants } from '@/components/ui/button'
 import * as cardModule from '@/components/ui/card'
 import * as dialogModule from '@/components/ui/dialog'
+import * as dropdownMenuModule from '@/components/ui/dropdown-menu'
 import * as inputModule from '@/components/ui/input'
 import * as radioGroupModule from '@/components/ui/radio-group'
 import * as selectModule from '@/components/ui/select'
@@ -98,6 +99,7 @@ function createCompatModules(): Record<string, Record<string, any>> {
     '@/components/ui/button': { Button, buttonVariants },
     '@/components/ui/card': cardModule,
     '@/components/ui/dialog': dialogModule,
+    '@/components/ui/dropdown-menu': dropdownMenuModule,
     '@/components/ui/input': inputModule,
     '@/components/ui/radio-group': radioGroupModule,
     '@/components/ui/select': selectModule,

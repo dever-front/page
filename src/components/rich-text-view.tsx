@@ -1,4 +1,11 @@
-import { Fragment, type CSSProperties, createElement, type ReactNode, useMemo } from 'react'
+import {
+  Fragment,
+  type CSSProperties,
+  createElement,
+  type ReactNode,
+  useLayoutEffect,
+  useMemo,
+} from 'react'
 import {
   isEmptyRichTextDoc,
   normalizeRichTextMaxWidth,
@@ -21,14 +28,57 @@ import {
 import { safeRichTextHref } from '@/lib/rich-text-link'
 import { cn } from '@/lib/utils'
 
+export type RichTextOutlineItem = {
+  id: string
+  level: number
+  text: string
+}
+
+export type RichTextOutlineOptions = {
+  minLevel?: number
+  maxLevel?: number
+  idPrefix?: string
+}
+
 type RichTextViewProps = {
   value: unknown
   className?: string
   preview?: boolean
+  outline?: RichTextOutlineOptions
+  onOutlineChange?: (items: RichTextOutlineItem[]) => void
 }
 
-export function RichTextView({ value, className, preview }: RichTextViewProps) {
+type RichTextOutline = {
+  items: RichTextOutlineItem[]
+  headingIDs: ReadonlyMap<string, string>
+}
+
+const EMPTY_RICH_TEXT_OUTLINE: RichTextOutline = {
+  items: [],
+  headingIDs: new Map(),
+}
+
+export function RichTextView({
+  value,
+  className,
+  preview,
+  outline,
+  onOutlineChange,
+}: RichTextViewProps) {
   const doc = useMemo(() => parseRichTextDoc(value), [value])
+  const outlineEnabled = outline != null
+  const outlineMinLevel = normalizeHeadingLevel(outline?.minLevel, 2)
+  const outlineMaxLevel = Math.max(outlineMinLevel, normalizeHeadingLevel(outline?.maxLevel, 3))
+  const outlineIDPrefix = normalizeOutlineIDPrefix(outline?.idPrefix)
+  const resolvedOutline = useMemo(
+    () =>
+      createRichTextOutline(doc, outlineEnabled, outlineMinLevel, outlineMaxLevel, outlineIDPrefix),
+    [doc, outlineEnabled, outlineIDPrefix, outlineMaxLevel, outlineMinLevel]
+  )
+
+  useLayoutEffect(() => {
+    onOutlineChange?.(resolvedOutline.items)
+  }, [onOutlineChange, resolvedOutline.items])
 
   if (!doc || isEmptyRichTextDoc(doc)) {
     return null
@@ -36,28 +86,38 @@ export function RichTextView({ value, className, preview }: RichTextViewProps) {
 
   return (
     <div className={cn(richTextContentClassName, preview && richTextPreviewClassName, className)}>
-      {renderRichTextDoc(doc)}
+      {renderRichTextDoc(doc, resolvedOutline.headingIDs)}
     </div>
   )
 }
 
-function renderRichTextDoc(doc: RichTextNode) {
-  return renderRichTextChildren(doc, 'doc')
+function renderRichTextDoc(doc: RichTextNode, headingIDs: ReadonlyMap<string, string>) {
+  return renderRichTextChildren(doc, 'doc', headingIDs)
 }
 
-function renderRichTextChildren(node: RichTextNode, key: string): ReactNode {
+function renderRichTextChildren(
+  node: RichTextNode,
+  key: string,
+  headingIDs: ReadonlyMap<string, string>
+): ReactNode {
   if (!Array.isArray(node.content)) {
     return null
   }
-  return node.content.map((child, index) => renderRichTextNode(child, `${key}-${index}`))
+  return node.content.map((child, index) =>
+    renderRichTextNode(child, `${key}-${index}`, headingIDs)
+  )
 }
 
-function renderRichTextNode(node: RichTextNode | null | undefined, key: string): ReactNode {
+function renderRichTextNode(
+  node: RichTextNode | null | undefined,
+  key: string,
+  headingIDs: ReadonlyMap<string, string>
+): ReactNode {
   if (!node || typeof node.type !== 'string') {
     return null
   }
 
-  const children = renderRichTextChildren(node, key)
+  const children = renderRichTextChildren(node, key, headingIDs)
   switch (node.type) {
     case 'blockquote':
       return <blockquote key={key}>{children}</blockquote>
@@ -74,7 +134,11 @@ function renderRichTextNode(node: RichTextNode | null | undefined, key: string):
     case 'hardBreak':
       return <br key={key} />
     case 'heading':
-      return createElement(headingTag(node), { key, style: blockStyle(node) }, children)
+      return createElement(
+        headingTag(node),
+        { key, id: headingIDs.get(key), style: blockStyle(node) },
+        children
+      )
     case 'articleBlock':
       return <div key={key} style={blockStyle(node)}>{children}</div>
     case 'horizontalRule':
@@ -351,10 +415,80 @@ function normalizePlaceholderProgress(value: unknown) {
   return Math.max(0, Math.min(100, Math.round(progress)))
 }
 
+function createRichTextOutline(
+  doc: RichTextNode | null,
+  enabled: boolean,
+  minLevel: number,
+  maxLevel: number,
+  idPrefix: string
+): RichTextOutline {
+  if (!enabled || !doc || isEmptyRichTextDoc(doc)) {
+    return EMPTY_RICH_TEXT_OUTLINE
+  }
+
+  const items: RichTextOutlineItem[] = []
+  const headingIDs = new Map<string, string>()
+  collectRichTextOutline(doc, 'doc', minLevel, maxLevel, idPrefix, items, headingIDs)
+  return items.length > 0 ? { items, headingIDs } : EMPTY_RICH_TEXT_OUTLINE
+}
+
+function collectRichTextOutline(
+  node: RichTextNode,
+  key: string,
+  minLevel: number,
+  maxLevel: number,
+  idPrefix: string,
+  items: RichTextOutlineItem[],
+  headingIDs: Map<string, string>
+) {
+  if (!Array.isArray(node.content)) {
+    return
+  }
+
+  node.content.forEach((child, index) => {
+    const childKey = `${key}-${index}`
+    if (child.type === 'heading') {
+      const level = headingLevel(child)
+      const text = richTextNodePlainText(child).replace(/\s+/g, ' ').trim()
+      if (level >= minLevel && level <= maxLevel && text) {
+        const id = `${idPrefix}-${items.length + 1}`
+        items.push({ id, level, text })
+        headingIDs.set(childKey, id)
+      }
+    }
+    collectRichTextOutline(child, childKey, minLevel, maxLevel, idPrefix, items, headingIDs)
+  })
+}
+
+function richTextNodePlainText(node: RichTextNode): string {
+  if (node.type === 'text') {
+    return String(node.text || '')
+  }
+  if (node.type === 'hardBreak') {
+    return ' '
+  }
+  return Array.isArray(node.content) ? node.content.map(richTextNodePlainText).join('') : ''
+}
+
+function normalizeHeadingLevel(value: unknown, fallback: number) {
+  const level = Number(value)
+  return Number.isFinite(level) ? Math.min(Math.max(Math.round(level), 1), 6) : fallback
+}
+
+function normalizeOutlineIDPrefix(value: unknown) {
+  const prefix = String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return prefix || 'rich-text-section'
+}
+
 function headingTag(node: RichTextNode) {
-  const level = Number(node.attrs?.level || 2)
-  const normalized = Number.isFinite(level) ? Math.min(Math.max(level, 1), 6) : 2
-  return `h${normalized}`
+  return `h${headingLevel(node)}`
+}
+
+function headingLevel(node: RichTextNode) {
+  return normalizeHeadingLevel(node.attrs?.level, 2)
 }
 
 function blockStyle(node: RichTextNode): CSSProperties | undefined {
