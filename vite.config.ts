@@ -1,5 +1,9 @@
 import path from 'path'
-import { type PluginOption, defineConfig } from 'vite'
+import {
+  type PluginOption,
+  type RenderBuiltAssetUrl,
+  defineConfig,
+} from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
 import { deverRuntimePlugin } from './vite-plugin-runtime'
@@ -18,6 +22,16 @@ function isSingleBundleMode(value: string | undefined) {
       .trim()
       .toLowerCase() !== 'split'
   )
+}
+
+const renderFrontBuiltAssetUrl: RenderBuiltAssetUrl = (
+  _filename,
+  { hostType }
+) => {
+  // Keep HTML on the configured base; nested assets must work on both path and host-bound sites.
+  if (hostType !== 'html') {
+    return { relative: true }
+  }
 }
 
 // https://vite.dev/config/
@@ -50,6 +64,9 @@ export default defineConfig(async () => {
 
   return {
     base: frontBase,
+    experimental: {
+      renderBuiltUrl: renderFrontBuiltAssetUrl,
+    },
     publicDir: false,
     plugins,
     build: {
