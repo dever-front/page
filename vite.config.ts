@@ -24,37 +24,7 @@ function isSingleBundleMode(value: string | undefined) {
   )
 }
 
-const frontChunkGroups = [
-  ['/src/page/nodes/form/', 'nodes-form'],
-  ['/src/page/nodes/data-record/', 'nodes-form'],
-  ['/src/page/nodes/show/', 'nodes-show'],
-  ['/src/page/nodes/media/', 'nodes-media'],
-  ['/src/page/nodes/feedback/', 'nodes-feedback'],
-  ['/src/page/nodes/nav/', 'nodes-navigation'],
-  ['/src/page/nodes/app/', 'nodes-app'],
-  ['/src/features/auth/', 'feature-auth'],
-  ['/src/routes/(auth)/', 'feature-auth'],
-  ['/src/features/settings/', 'feature-settings'],
-  ['/src/routes/_authenticated/settings/', 'feature-settings'],
-  ['/src/features/errors/', 'feature-errors'],
-  ['/src/routes/(errors)/', 'feature-errors'],
-  ['/src/routes/_authenticated/errors/', 'feature-errors'],
-  ['/node_modules/recharts/', 'vendor-chart'],
-  ['/node_modules/@tiptap/', 'vendor-editor'],
-  ['/node_modules/prosemirror-', 'vendor-editor'],
-  ['/node_modules/lowlight/', 'vendor-editor'],
-  ['/node_modules/@xyflow/', 'vendor-canvas'],
-] as const
-
-function resolveFrontManualChunk(id: string) {
-  const moduleId = id.replace(/\\/g, '/')
-  const group = frontChunkGroups.find(([modulePath]) =>
-    moduleId.includes(modulePath)
-  )
-  if (group) {
-    return group[1]
-  }
-}
+const minimumSplitChunkSize = 10_000
 
 const renderFrontBuiltAssetUrl: RenderBuiltAssetUrl = (
   _filename,
@@ -115,8 +85,7 @@ export default defineConfig(async () => {
         }
         : {
           output: {
-            manualChunks: resolveFrontManualChunk,
-            onlyExplicitManualChunks: true,
+            experimentalMinChunkSize: minimumSplitChunkSize,
           },
         },
     },
