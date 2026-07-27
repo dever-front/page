@@ -65,8 +65,29 @@ const IMAGE_EXTENSIONS = new Set([
   '.jpeg',
   '.gif',
   '.webp',
+  '.avif',
   '.bmp',
   '.svg',
+])
+
+const VIDEO_EXTENSIONS = new Set([
+  '.mp4',
+  '.mov',
+  '.webm',
+  '.avi',
+  '.mkv',
+  '.m4v',
+  '.ogg',
+])
+
+const AUDIO_EXTENSIONS = new Set([
+  '.mp3',
+  '.wav',
+  '.m4a',
+  '.aac',
+  '.flac',
+  '.ogg',
+  '.opus',
 ])
 
 export async function listResources(
@@ -348,7 +369,67 @@ export function isImageResource(item?: UploadFileItem | null) {
     return true
   }
 
-  return IMAGE_EXTENSIONS.has(String(item.ext || '').toLowerCase())
+  return IMAGE_EXTENSIONS.has(resolveResourceExtension(item))
+}
+
+export function resolveResourceExtension(item?: UploadFileItem | null) {
+  if (!item) {
+    return ''
+  }
+
+  const explicitExtension = normalizeResourceExtension(item.ext)
+  if (explicitExtension) {
+    return explicitExtension
+  }
+
+  for (const value of [
+    item.name,
+    item.path,
+    item.url,
+    item.open_url,
+    item.download,
+    item.thumbnail,
+  ]) {
+    const extension = resourceExtensionFromValue(value)
+    if (extension) {
+      return extension
+    }
+  }
+
+  return ''
+}
+
+function normalizeResourceExtension(value: unknown) {
+  const extension = String(value || '').trim().toLowerCase()
+  if (!extension) {
+    return ''
+  }
+  const normalized = extension.startsWith('.') ? extension : `.${extension}`
+  return /^\.[a-z0-9]{1,12}$/.test(normalized) ? normalized : ''
+}
+
+function resourceExtensionFromValue(value: unknown) {
+  const source = String(value || '').trim()
+  if (!source) {
+    return ''
+  }
+
+  let path = source.split(/[?#]/, 1)[0] || ''
+  try {
+    path = new URL(source).pathname
+  } catch {
+    // Relative paths and file names are handled below.
+  }
+
+  try {
+    path = decodeURIComponent(path)
+  } catch {
+    // Keep the encoded path when it contains malformed escape sequences.
+  }
+
+  const name = path.split('/').pop() || ''
+  const dotIndex = name.lastIndexOf('.')
+  return dotIndex > 0 ? normalizeResourceExtension(name.slice(dotIndex)) : ''
 }
 
 function extractUploadUrlObjects(value: unknown): Array<{ name?: string; url: string }> {
@@ -436,7 +517,11 @@ export function isVideoResource(item?: UploadFileItem | null) {
     return true
   }
 
-  return String(item.mime || '').toLowerCase().startsWith('video/')
+  if (String(item.mime || '').toLowerCase().startsWith('video/')) {
+    return true
+  }
+
+  return VIDEO_EXTENSIONS.has(resolveResourceExtension(item))
 }
 
 export function isAudioResource(item?: UploadFileItem | null) {
@@ -448,7 +533,11 @@ export function isAudioResource(item?: UploadFileItem | null) {
     return true
   }
 
-  return String(item.mime || '').toLowerCase().startsWith('audio/')
+  if (String(item.mime || '').toLowerCase().startsWith('audio/')) {
+    return true
+  }
+
+  return AUDIO_EXTENSIONS.has(resolveResourceExtension(item))
 }
 
 export function resolveResourcePreviewKind(item?: UploadFileItem | null) {
