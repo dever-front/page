@@ -18,9 +18,9 @@ function frontDependencyEntry(name: string) {
 
 function isSingleBundleMode(value: string | undefined) {
   return (
-    String(value || 'single')
+    String(value || 'split')
       .trim()
-      .toLowerCase() !== 'split'
+      .toLowerCase() === 'single'
   )
 }
 
