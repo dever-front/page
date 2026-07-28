@@ -1,4 +1,10 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { Bot } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -17,10 +23,16 @@ import {
 } from '@/lib/assistant/floating-state'
 import { ASSISTANT_FLOATING_LAYER_CLASS } from '@/lib/floating-layer'
 import { useAuthStore } from '@/stores/auth-store'
-import { AssistantDrawer } from './drawer'
+
+const AssistantDrawer = lazy(() =>
+  import('./drawer').then((module) => ({
+    default: module.AssistantDrawer,
+  }))
+)
 
 export function GlobalAssistant() {
   const [open, setOpen] = useState(false)
+  const [drawerMounted, setDrawerMounted] = useState(false)
   const user = useAuthStore((state) => state.auth.user)
   const userKey = getAssistantFloatingUserKey(user)
   const enabled = useAssistantFloatingEnabled(userKey)
@@ -59,6 +71,7 @@ export function GlobalAssistant() {
               size="icon"
               onClick={(event) => {
                 event.stopPropagation()
+                setDrawerMounted(true)
                 setOpen(true)
               }}
               className="size-12 rounded-full shadow-lg"
@@ -73,7 +86,11 @@ export function GlobalAssistant() {
         </Tooltip>
       </div>
 
-      <AssistantDrawer open={open} onOpenChange={setOpen} />
+      {drawerMounted ? (
+        <Suspense fallback={null}>
+          <AssistantDrawer open={open} onOpenChange={setOpen} />
+        </Suspense>
+      ) : null}
     </>
   )
 }

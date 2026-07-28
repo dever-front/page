@@ -1,10 +1,14 @@
 import { mergeAttributes, Node } from '@tiptap/core'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { ReferenceNodeView } from './reference-node-view'
-import type { ReferencePreviewLoader } from './types'
+import type {
+  ReferencePreviewLoader,
+  ReferenceUsageOption,
+} from './types'
 
 export type ReferenceNodeOptions = {
   loadPreview?: ReferencePreviewLoader
+  usageOptions?: ReferenceUsageOption[]
 }
 
 export const ReferenceNode = Node.create<ReferenceNodeOptions>({
@@ -15,7 +19,7 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
   selectable: true,
 
   addOptions() {
-    return { loadPreview: undefined }
+    return { loadPreview: undefined, usageOptions: [] }
   },
 
   addAttributes() {

@@ -2,12 +2,14 @@ import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import type { ReferenceNodeOptions } from './reference-node'
 import { ReferenceTag } from './reference-tag'
 import type { ReferencePreviewHint, ReferenceType } from './types'
+import { compatibleReferenceUsageOptions } from './reference-usage'
 import { referenceTrigger } from './text'
 
 export function ReferenceNodeView({
   node,
   selected,
   deleteNode,
+  updateAttributes,
   extension,
 }: NodeViewProps) {
   const refType = referenceType(node.attrs.refType)
@@ -16,7 +18,14 @@ export function ReferenceNodeView({
   const trigger = referenceTrigger(String(node.attrs.trigger || ''))
   const versionId = Number(node.attrs.versionId || 0)
   const hint = referencePreviewHint(node.attrs)
-  const loadPreview = (extension.options as ReferenceNodeOptions).loadPreview
+  const options = extension.options as ReferenceNodeOptions
+  const loadPreview = options.loadPreview
+  const usage = String(node.attrs.usage || '')
+  const usageOptions = compatibleReferenceUsageOptions(
+    options.usageOptions || [],
+    hint?.kind
+  )
+  const usageSupported = usageOptions.some((option) => option.key === usage)
 
   return (
     <NodeViewWrapper
@@ -36,6 +45,22 @@ export function ReferenceNodeView({
         className='!mx-0'
         onDelete={deleteNode}
       />
+      {usageOptions.length > 1 ? (
+        <select
+          className='reference-node-usage'
+          aria-label={`设置${label || '引用素材'}用途`}
+          value={usageSupported ? usage : ''}
+          onPointerDown={(event) => event.stopPropagation()}
+          onChange={(event) => updateAttributes({ usage: event.target.value })}
+        >
+          {!usageSupported ? <option value=''>选择用途</option> : null}
+          {usageOptions.map((option) => (
+            <option key={option.key} value={option.key}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      ) : null}
     </NodeViewWrapper>
   )
 }

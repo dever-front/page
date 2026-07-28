@@ -36,6 +36,7 @@ import { ReferenceAttachmentMenu } from './attachment-menu'
 import { ReferencePicker } from './picker'
 import { ReferenceNode } from './reference-node'
 import { ReferenceTag } from './reference-tag'
+import { compatibleReferenceUsageOptions } from './reference-usage'
 import { serializeReferenceDocument } from './serialize'
 import { ReferenceComposerControlTooltip } from './tooltip'
 import {
@@ -53,6 +54,7 @@ import type {
   ReferenceProvider,
   ReferencePreviewLoader,
   ReferenceScope,
+  ReferenceUsageOption,
 } from './types'
 
 const EMPTY_PARAM_FILES: UploadFileItem[] = []
@@ -77,6 +79,7 @@ export type {
   ReferenceProviderPickerProps,
   ReferenceScope,
   ReferenceType,
+  ReferenceUsageOption,
 } from './types'
 export { referenceContentFromText } from './text'
 
@@ -612,6 +615,7 @@ export function ReferenceEditor({
   providers,
   loadReferences,
   loadPreview,
+  usageOptions = [],
   onChange,
   onSubmit,
 }: ReferenceEditorProps) {
@@ -680,8 +684,10 @@ export function ReferenceEditor({
   const editor = useEditor({
     immediatelyRender: false,
     content: referenceEditorDocument(value, content, references),
-    extensions: referenceEditorExtensions(placeholder, (request) =>
-      loadPreviewRef.current(request)
+    extensions: referenceEditorExtensions(
+      placeholder,
+      (request) => loadPreviewRef.current(request),
+      usageOptions
     ),
     editorProps: {
       attributes: {
@@ -856,7 +862,14 @@ export function ReferenceEditor({
         .focus()
         .insertContent(
           referenceInsertionContent(
-            [{ ...option, trigger: option.trigger || provider?.trigger || '@' }],
+            [
+              {
+                ...option,
+                trigger: option.trigger || provider?.trigger || '@',
+                usage:
+                  option.usage || defaultReferenceUsage(option, usageOptions),
+              },
+            ],
             '',
             false
           )
@@ -865,7 +878,7 @@ export function ReferenceEditor({
       setPickerOpen(false)
       setPickerTrigger('')
     },
-    [editor, pickerTrigger, referenceProviders]
+    [editor, pickerTrigger, referenceProviders, usageOptions]
   )
 
   const activeProvider = referenceProviderForTrigger(
@@ -957,7 +970,8 @@ function referenceContentSignature(content: ReferenceContent | undefined) {
 
 function referenceEditorExtensions(
   placeholder: string,
-  loadPreview: ReferencePreviewLoader
+  loadPreview: ReferencePreviewLoader,
+  usageOptions: ReferenceUsageOption[] = []
 ) {
   return [
     StarterKit.configure({
@@ -970,8 +984,19 @@ function referenceEditorExtensions(
       orderedList: false,
     }),
     Placeholder.configure({ placeholder }),
-    ReferenceNode.configure({ loadPreview }),
+    ReferenceNode.configure({ loadPreview, usageOptions }),
   ]
+}
+
+function defaultReferenceUsage(
+  option: ReferenceOption,
+  usageOptions: ReferenceUsageOption[]
+) {
+  const candidates = compatibleReferenceUsageOptions(
+    usageOptions,
+    option.preview?.kind
+  )
+  return candidates.length === 1 ? candidates[0].key : ''
 }
 
 function appendUniqueFiles(
@@ -1252,6 +1277,8 @@ const referenceComposerStyles = `
 .reference-composer-editor p.is-editor-empty:first-child::before { float: left; height: 0; color: var(--muted-foreground); content: attr(data-placeholder); pointer-events: none; }
 .reference-composer-editor .reference-node-view { display: inline-flex; margin: 3px 4px; vertical-align: middle; }
 .reference-composer-editor .reference-node-view.ProseMirror-selectednode { outline: none; }
+.reference-node-usage { align-self: center; max-width: 7rem; height: 25px; margin-left: -5px; border: 1px solid var(--border); border-left: 0; border-radius: 0 6px 6px 0; padding: 0 20px 0 6px; background: var(--background); color: var(--foreground); font-size: 11px; line-height: 1; outline: none; }
+.reference-node-usage:focus { border-color: color-mix(in oklab, var(--foreground) 28%, var(--border)); }
 .reference-text-editor { position: relative; width: 100%; min-width: 0; min-height: 100%; }
 .reference-text-editor-content { min-height: 100%; }
 .reference-text-editor-input { box-sizing: border-box; width: 100%; min-height: 100%; max-height: 240px; padding: 8px 10px; border: 1px solid transparent; border-radius: 6px; background: transparent; font-size: inherit; line-height: inherit; }

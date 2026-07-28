@@ -94,6 +94,12 @@ export type ReferenceOption = {
   versionID?: number
 }
 
+export type ReferenceUsageOption = {
+  key: string
+  label: string
+  acceptedKinds?: string[]
+}
+
 export type ReferenceLoadRequest = {
   scope: ReferenceScope
   query: string
@@ -163,6 +169,7 @@ export type ReferenceEditorProps = {
     request: ReferenceLoadRequest
   ) => Promise<ReferenceLoadResult>
   loadPreview?: ReferencePreviewLoader
+  usageOptions?: ReferenceUsageOption[]
   onChange: (value: string, content: ReferenceContent) => void
   onSubmit?: () => void
 }

@@ -319,13 +319,6 @@ export function getNodeComponent(type: string) {
   return coreNodeRegistry[type] || getRuntimePluginNodes()[type]
 }
 
-export function preloadNodeComponents(schema: PageSchemaType) {
-  const nodeTypes = collectSchemaNodeTypes(schema)
-  return Promise.allSettled(
-    nodeTypes.map((type) => getNodeComponent(type)?.preload?.())
-  )
-}
-
 export function ensureNodePluginsForSchema(schema: PageSchemaType) {
   const pluginNodeTypes = collectSchemaNodeTypes(schema).filter(
     (type) => !coreNodeRegistry[type] && !getRuntimePluginNodes()[type]

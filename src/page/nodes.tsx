@@ -79,11 +79,14 @@ function NodeItem({ item, store, layoutId }: NodeItemComponentProps) {
   const error = useNodeError(store, item.id)
   const required = useNodeRequired(store, item)
   const hidden = useNodeHidden(store, item)
+  const openPath = String(item.meta?.openPath || '').trim()
+  const open = useStorePathValue(store, openPath || undefined)
+  const deferred = openPath !== '' && !Boolean(open)
 
   // 解析 option
   const { option, optionLoading, ensureOptionLoaded } = useNodeOption(
     store,
-    hidden ? undefined : item.option,
+    hidden || deferred ? undefined : item.option,
     item
   )
 
@@ -112,7 +115,7 @@ function NodeItem({ item, store, layoutId }: NodeItemComponentProps) {
     error,
   }
 
-  if (hidden) {
+  if (hidden || deferred) {
     return null
   }
 
