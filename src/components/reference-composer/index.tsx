@@ -36,7 +36,10 @@ import { ReferenceAttachmentMenu } from './attachment-menu'
 import { ReferencePicker } from './picker'
 import { ReferenceNode } from './reference-node'
 import { ReferenceTag } from './reference-tag'
-import { compatibleReferenceUsageOptions } from './reference-usage'
+import {
+  compatibleReferenceUsageOptions,
+  referenceUsageAvailable,
+} from './reference-usage'
 import { serializeReferenceDocument } from './serialize'
 import { ReferenceComposerControlTooltip } from './tooltip'
 import {
@@ -51,6 +54,7 @@ import type {
   ReferenceEditorProps,
   ReferenceContent,
   ReferenceOption,
+  ReferencePickerRequest,
   ReferenceProvider,
   ReferencePreviewLoader,
   ReferenceScope,
@@ -75,6 +79,7 @@ export type {
   ReferencePreviewLoader,
   ReferencePreviewMedia,
   ReferencePreviewRequest,
+  ReferencePickerRequest,
   ReferenceProvider,
   ReferenceProviderPickerProps,
   ReferenceScope,
@@ -616,6 +621,9 @@ export function ReferenceEditor({
   loadReferences,
   loadPreview,
   usageOptions = [],
+  pickerRequest,
+  onReferenceDelete,
+  onReferenceUsageChange,
   onChange,
   onSubmit,
 }: ReferenceEditorProps) {
@@ -635,6 +643,8 @@ export function ReferenceEditor({
   )
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerTrigger, setPickerTrigger] = useState('')
+  const [pickerPreferredUsage, setPickerPreferredUsage] = useState('')
+  const [pickerAcceptedKinds, setPickerAcceptedKinds] = useState<string[]>([])
   const [pickerPosition, setPickerPosition] = useState<{
     top?: number
     bottom?: number
@@ -649,6 +659,11 @@ export function ReferenceEditor({
   const contentRef = useRef(content)
   const onChangeRef = useRef(onChange)
   const onSubmitRef = useRef(onSubmit)
+  const onReferenceDeleteRef = useRef(onReferenceDelete)
+  const onReferenceUsageChangeRef = useRef(onReferenceUsageChange)
+  const appliedPickerRequestRef = useRef<
+    ReferencePickerRequest['id'] | undefined
+  >(undefined)
   const loadPreviewRef = useRef<ReferencePreviewLoader>(async (request) => ({
     refType: request.refType,
     refId: request.refId,
@@ -661,6 +676,8 @@ export function ReferenceEditor({
   contentRef.current = content
   onChangeRef.current = onChange
   onSubmitRef.current = onSubmit
+  onReferenceDeleteRef.current = onReferenceDelete
+  onReferenceUsageChangeRef.current = onReferenceUsageChange
   loadPreviewRef.current = referencePreviewDispatcher(referenceProviders)
   const referenceSignature = useMemo(
     () =>
@@ -674,6 +691,10 @@ export function ReferenceEditor({
             item.preview?.kind,
             item.preview?.url,
             item.preview?.text,
+            item.usage,
+            item.versionID,
+            item.origin,
+            item.originID,
           ].join(':')
         )
         .join('|'),
@@ -687,7 +708,10 @@ export function ReferenceEditor({
     extensions: referenceEditorExtensions(
       placeholder,
       (request) => loadPreviewRef.current(request),
-      usageOptions
+      usageOptions,
+      (reference) => onReferenceDeleteRef.current?.(reference),
+      (reference, usage) =>
+        onReferenceUsageChangeRef.current?.(reference, usage)
     ),
     editorProps: {
       attributes: {
@@ -700,6 +724,8 @@ export function ReferenceEditor({
           return false
         }
         setPickerTrigger(provider.trigger)
+        setPickerPreferredUsage('')
+        setPickerAcceptedKinds([])
         setPickerOpen(true)
         return true
       },
@@ -787,6 +813,33 @@ export function ReferenceEditor({
   }, [autoFocus, disabled, editor])
 
   useEffect(() => {
+    if (
+      !pickerRequest ||
+      disabled ||
+      appliedPickerRequestRef.current === pickerRequest.id
+    ) {
+      return
+    }
+    const requestedTrigger = referenceTrigger(pickerRequest.trigger)
+    const provider = referenceProviderForTrigger(
+      referenceProviders,
+      requestedTrigger
+    )
+    if (!provider) {
+      return
+    }
+    appliedPickerRequestRef.current = pickerRequest.id
+    setPickerTrigger(provider.trigger)
+    setPickerPreferredUsage(String(pickerRequest.preferredUsage || '').trim())
+    setPickerAcceptedKinds(
+      (pickerRequest.acceptedKinds || [])
+        .map((kind) => String(kind || '').trim())
+        .filter(Boolean)
+    )
+    setPickerOpen(true)
+  }, [disabled, pickerRequest, referenceProviders])
+
+  useEffect(() => {
     if (!pickerOpen) {
       return
     }
@@ -867,7 +920,13 @@ export function ReferenceEditor({
                 ...option,
                 trigger: option.trigger || provider?.trigger || '@',
                 usage:
-                  option.usage || defaultReferenceUsage(option, usageOptions),
+                  option.usage ||
+                  defaultReferenceUsage(
+                    option,
+                    usageOptions,
+                    editor.getJSON(),
+                    pickerPreferredUsage
+                  ),
               },
             ],
             '',
@@ -877,13 +936,26 @@ export function ReferenceEditor({
         .run()
       setPickerOpen(false)
       setPickerTrigger('')
+      setPickerPreferredUsage('')
+      setPickerAcceptedKinds([])
     },
-    [editor, pickerTrigger, referenceProviders, usageOptions]
+    [
+      editor,
+      pickerPreferredUsage,
+      pickerTrigger,
+      referenceProviders,
+      usageOptions,
+    ]
   )
 
   const activeProvider = referenceProviderForTrigger(
     referenceProviders,
     pickerTrigger
+  )
+  const pickerMaxSelection = referencePickerSelectionLimit(
+    pickerPreferredUsage,
+    usageOptions,
+    editor?.getJSON()
   )
 
   return (
@@ -899,8 +971,16 @@ export function ReferenceEditor({
       {pickerOpen && activeProvider?.renderPicker
         ? activeProvider.renderPicker({
             open: true,
+            acceptedKinds: pickerAcceptedKinds,
+            preferredUsage: pickerPreferredUsage,
+            maxSelection: pickerMaxSelection,
+            selectedReferences: referenceParts(contentRef.current),
             onSelect: insertReference,
-            onClose: () => setPickerOpen(false),
+            onClose: () => {
+              setPickerOpen(false)
+              setPickerPreferredUsage('')
+              setPickerAcceptedKinds([])
+            },
           })
         : null}
       {pickerOpen &&
@@ -932,7 +1012,11 @@ export function ReferenceEditor({
                   referencePreviewDispatcher(referenceProviders)
                 }
                 onSelect={insertReference}
-                onClose={() => setPickerOpen(false)}
+                onClose={() => {
+                  setPickerOpen(false)
+                  setPickerPreferredUsage('')
+                  setPickerAcceptedKinds([])
+                }}
               />
             </div>,
             document.body
@@ -963,7 +1047,9 @@ function referenceContentSignature(content: ReferenceContent | undefined) {
         ? `text:${part.text}`
         : `${part.ref_type}:${part.ref_id}:${part.usage || ''}:${
             part.ref_trigger || '@'
-          }:${part.ref_version_id || 0}`
+          }:${part.ref_version_id || 0}:${part.ref_origin || ''}:${
+            part.ref_origin_id || ''
+          }`
     )
     .join('|')
 }
@@ -971,7 +1057,9 @@ function referenceContentSignature(content: ReferenceContent | undefined) {
 function referenceEditorExtensions(
   placeholder: string,
   loadPreview: ReferencePreviewLoader,
-  usageOptions: ReferenceUsageOption[] = []
+  usageOptions: ReferenceUsageOption[] = [],
+  onDeleteReference?: ReferenceEditorProps['onReferenceDelete'],
+  onUsageChange?: ReferenceEditorProps['onReferenceUsageChange']
 ) {
   return [
     StarterKit.configure({
@@ -984,19 +1072,57 @@ function referenceEditorExtensions(
       orderedList: false,
     }),
     Placeholder.configure({ placeholder }),
-    ReferenceNode.configure({ loadPreview, usageOptions }),
+    ReferenceNode.configure({
+      loadPreview,
+      usageOptions,
+      onDeleteReference,
+      onUsageChange,
+    }),
   ]
 }
 
 function defaultReferenceUsage(
   option: ReferenceOption,
-  usageOptions: ReferenceUsageOption[]
+  usageOptions: ReferenceUsageOption[],
+  document: import('@tiptap/core').JSONContent,
+  preferredUsage = ''
 ) {
   const candidates = compatibleReferenceUsageOptions(
     usageOptions,
     option.preview?.kind
   )
-  return candidates.length === 1 ? candidates[0].key : ''
+  const counts = referenceUsageCounts(document)
+  const preferred = candidates.find(
+    (candidate) =>
+      candidate.key === preferredUsage &&
+      referenceUsageAvailable(candidate, counts)
+  )
+  if (preferred) {
+    return preferred.key
+  }
+  return (
+    candidates.find((candidate) => referenceUsageAvailable(candidate, counts))
+      ?.key || ''
+  )
+}
+
+function referencePickerSelectionLimit(
+  preferredUsage: string,
+  usageOptions: ReferenceUsageOption[],
+  document?: import('@tiptap/core').JSONContent
+) {
+  const option = usageOptions.find(
+    (candidate) => candidate.key === preferredUsage
+  )
+  if (!option) {
+    return 1
+  }
+  const maxFiles = Number(option.maxFiles || 0)
+  if (maxFiles <= 0) {
+    return 8
+  }
+  const counts = document ? referenceUsageCounts(document) : {}
+  return Math.max(1, maxFiles - (counts[option.key] || 0))
 }
 
 function appendUniqueFiles(
@@ -1043,11 +1169,20 @@ function referenceInsertionContent(
         previewText: option.preview?.text || option.description || '',
         previewKind: option.preview?.kind || '',
         previewUrl: option.preview?.url || '',
+        origin: option.origin || '',
+        originId: option.originID || '',
       },
     })
   })
   content.push(textNode(' '))
   return content
+}
+
+function referenceParts(content: ReferenceContent | undefined) {
+  return (content?.parts || []).filter(
+    (part): part is Extract<ReferenceContent['parts'][number], { type: 'reference' }> =>
+      part.type === 'reference'
+  )
 }
 
 function textNode(text: string): import('@tiptap/core').JSONContent {
@@ -1277,13 +1412,15 @@ const referenceComposerStyles = `
 .reference-composer-editor p.is-editor-empty:first-child::before { float: left; height: 0; color: var(--muted-foreground); content: attr(data-placeholder); pointer-events: none; }
 .reference-composer-editor .reference-node-view { display: inline-flex; margin: 3px 4px; vertical-align: middle; }
 .reference-composer-editor .reference-node-view.ProseMirror-selectednode { outline: none; }
-.reference-node-usage { align-self: center; max-width: 7rem; height: 25px; margin-left: -5px; border: 1px solid var(--border); border-left: 0; border-radius: 0 6px 6px 0; padding: 0 20px 0 6px; background: var(--background); color: var(--foreground); font-size: 11px; line-height: 1; outline: none; }
-.reference-node-usage:focus { border-color: color-mix(in oklab, var(--foreground) 28%, var(--border)); }
+.reference-tag-usage { max-width: 7rem; height: 22px; margin: -1px -3px -1px 2px; border: 0; border-left: 1px solid color-mix(in oklab, currentColor 18%, transparent); padding: 0 18px 0 6px; background: transparent; color: inherit; font-size: 11px; line-height: 1; outline: none; cursor: pointer; }
+.reference-tag-delete { display: inline-flex; width: 20px; height: 20px; flex: 0 0 20px; align-items: center; justify-content: center; margin: -1px -4px -1px 0; border: 0; border-radius: 4px; padding: 0; background: transparent; color: color-mix(in oklab, currentColor 68%, transparent); cursor: pointer; }
+.reference-tag-delete:hover { background: color-mix(in oklab, currentColor 10%, transparent); color: currentColor; }
+.reference-tag-delete svg { width: 12px; height: 12px; }
 .reference-text-editor { position: relative; width: 100%; min-width: 0; min-height: 100%; }
 .reference-text-editor-content { min-height: 100%; }
 .reference-text-editor-input { box-sizing: border-box; width: 100%; min-height: 100%; max-height: 240px; padding: 8px 10px; border: 1px solid transparent; border-radius: 6px; background: transparent; font-size: inherit; line-height: inherit; }
 .reference-text-editor-input:focus { border-color: color-mix(in oklab, var(--foreground) 22%, var(--border)); background: var(--background); box-shadow: 0 0 0 2px color-mix(in oklab, var(--foreground) 8%, transparent); }
-.reference-text-editor-input .reference-node-view { display: inline-flex; margin: 1px 2px; vertical-align: middle; }
+.reference-text-editor-input .reference-node-view { display: inline-flex; margin: 1px 4px; vertical-align: middle; }
 .reference-text-editor[data-disabled='true'] { opacity: .62; }
 .reference-editor-picker-layer .reference-picker { position: relative; bottom: auto; left: auto; width: 100%; }
 .reference-composer-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 0 14px 12px; }

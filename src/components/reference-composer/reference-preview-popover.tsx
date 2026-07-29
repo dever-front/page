@@ -20,6 +20,7 @@ import type {
   ReferencePreviewMedia,
   ReferenceType,
 } from './types'
+import { loadReferencePreview } from './reference-preview-cache'
 
 const CLOSE_DELAY = 140
 const GENERIC_MEDIA_DESCRIPTIONS: Record<string, string> = {
@@ -96,7 +97,13 @@ export function ReferencePreviewPopover({
     }
     setLoading(true)
     setError('')
-    const pending = loadPreview({ refType, refId, label, trigger, versionId })
+    const pending = loadReferencePreview(loadPreview, {
+      refType,
+      refId,
+      label,
+      trigger,
+      versionId,
+    })
     previewRequest.current = pending
     void pending
       .then(setPreview)

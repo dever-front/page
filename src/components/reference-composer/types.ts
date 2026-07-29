@@ -60,6 +60,8 @@ export type ReferencePart =
       usage?: string
       ref_trigger?: string
       ref_version_id?: number
+      ref_origin?: string
+      ref_origin_id?: string
     }
 
 export type ReferenceContent = {
@@ -92,11 +94,21 @@ export type ReferenceOption = {
   usage?: string
   trigger?: string
   versionID?: number
+  origin?: string
+  originID?: string
 }
 
 export type ReferenceUsageOption = {
   key: string
   label: string
+  acceptedKinds?: string[]
+  maxFiles?: number
+}
+
+export type ReferencePickerRequest = {
+  id: string | number
+  trigger?: string
+  preferredUsage?: string
   acceptedKinds?: string[]
 }
 
@@ -114,6 +126,10 @@ export type ReferenceLoadResult = {
 
 export type ReferenceProviderPickerProps = {
   open: boolean
+  acceptedKinds?: string[]
+  preferredUsage?: string
+  maxSelection?: number
+  selectedReferences?: Extract<ReferencePart, { type: 'reference' }>[]
   onSelect: (option: ReferenceOption) => void
   onClose: () => void
 }
@@ -170,6 +186,14 @@ export type ReferenceEditorProps = {
   ) => Promise<ReferenceLoadResult>
   loadPreview?: ReferencePreviewLoader
   usageOptions?: ReferenceUsageOption[]
+  pickerRequest?: ReferencePickerRequest
+  onReferenceDelete?: (
+    reference: Extract<ReferencePart, { type: 'reference' }>
+  ) => void
+  onReferenceUsageChange?: (
+    reference: Extract<ReferencePart, { type: 'reference' }>,
+    usage: string
+  ) => void
   onChange: (value: string, content: ReferenceContent) => void
   onSubmit?: () => void
 }

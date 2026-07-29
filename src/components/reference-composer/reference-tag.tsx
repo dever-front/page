@@ -4,6 +4,7 @@ import {
   MessageSquare,
   Video,
   Volume2,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -15,6 +16,7 @@ import type {
   ReferencePreviewHint,
   ReferencePreviewLoader,
   ReferenceType,
+  ReferenceUsageOption,
 } from './types'
 
 type ReferenceTagProps = {
@@ -27,6 +29,9 @@ type ReferenceTagProps = {
   loadPreview?: ReferencePreviewLoader
   selected?: boolean
   className?: string
+  usage?: string
+  usageOptions?: ReferenceUsageOption[]
+  onUsageChange?: (usage: string) => void
   onDelete?: () => void
 }
 
@@ -40,6 +45,9 @@ export function ReferenceTag({
   loadPreview,
   selected = false,
   className,
+  usage = '',
+  usageOptions = [],
+  onUsageChange,
   onDelete,
 }: ReferenceTagProps) {
   const displayLabel = referenceLabel(label)
@@ -75,6 +83,38 @@ export function ReferenceTag({
           >
             <ReferenceTagIcon kind={kind} url={thumbnail} />
             <span className='truncate'>{displayLabel}</span>
+            {usageOptions.length > 1 ? (
+              <select
+                className='reference-tag-usage'
+                aria-label={`设置${displayLabel || '引用素材'}用途`}
+                value={usage}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+                onChange={(event) => onUsageChange?.(event.target.value)}
+              >
+                {!usage ? <option value=''>选择用途</option> : null}
+                {usageOptions.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            {onDelete ? (
+              <button
+                type='button'
+                className='reference-tag-delete'
+                aria-label={`移除${displayLabel || '引用素材'}`}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  onDelete()
+                }}
+              >
+                <X aria-hidden='true' />
+              </button>
+            ) : null}
           </span>
         )
       }}

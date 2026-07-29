@@ -55,6 +55,8 @@ export function referenceContentFromText(
       usage: match.item.option.usage,
       ref_trigger: referenceTrigger(match.item.option.trigger),
       ref_version_id: match.item.option.versionID,
+      ref_origin: match.item.option.origin,
+      ref_origin_id: match.item.option.originID,
     })
     cursor = match.index + match.item.mention.length
   }
@@ -73,16 +75,12 @@ export function referenceDocumentFromContent(
   content: ReferenceContent,
   references: ReferenceOption[]
 ): JSONContent {
-  const options = new Map(
-    references.map((option) => [referenceTargetKey(option), option])
-  )
+  const options = referenceOptionLookup(references)
   const paragraphs: JSONContent[][] = [[]]
 
   for (const part of content.parts) {
     if (part.type === 'reference') {
-      const option = options.get(
-        `${part.ref_type}:${part.ref_id}:${part.ref_version_id || 0}`
-      )
+      const option = referenceOptionForPart(options, part)
       paragraphs[paragraphs.length - 1].push({
         type: 'reference',
         attrs: {
@@ -90,11 +88,13 @@ export function referenceDocumentFromContent(
           refId: part.ref_id,
           label: referenceLabel(option?.label || part.label),
           usage: part.usage || '',
-          trigger: referenceTrigger(option?.trigger || part.ref_trigger),
+          trigger: referenceTrigger(part.ref_trigger || option?.trigger),
           versionId: option?.versionID || part.ref_version_id || 0,
           previewText: option?.preview?.text || option?.description || '',
           previewKind: option?.preview?.kind || '',
           previewUrl: option?.preview?.url || '',
+          origin: part.ref_origin || option?.origin || '',
+          originId: part.ref_origin_id || option?.originID || '',
         },
       })
       continue
@@ -117,6 +117,58 @@ export function referenceDocumentFromContent(
       content: paragraph.length > 0 ? paragraph : undefined,
     })),
   }
+}
+
+type ReferenceOptionLookup = {
+  exact: Map<string, ReferenceOption>
+  origin: Map<string, ReferenceOption>
+  target: Map<string, ReferenceOption>
+}
+
+function referenceOptionLookup(
+  references: ReferenceOption[]
+): ReferenceOptionLookup {
+  const lookup: ReferenceOptionLookup = {
+    exact: new Map(),
+    origin: new Map(),
+    target: new Map(),
+  }
+  for (const option of references) {
+    lookup.exact.set(referenceTargetKey(option), option)
+    lookup.target.set(referenceBaseTargetKey(option.refType, option.refId), option)
+    if (option.originID) {
+      lookup.origin.set(
+        referenceOriginTargetKey(
+          option.refType,
+          option.refId,
+          option.origin,
+          option.originID
+        ),
+        option
+      )
+    }
+  }
+  return lookup
+}
+
+function referenceOptionForPart(
+  lookup: ReferenceOptionLookup,
+  part: Extract<ReferencePart, { type: 'reference' }>
+) {
+  return (
+    lookup.exact.get(referencePartTargetKey(part)) ||
+    (part.ref_origin_id
+      ? lookup.origin.get(
+          referenceOriginTargetKey(
+            part.ref_type,
+            part.ref_id,
+            part.ref_origin,
+            part.ref_origin_id
+          )
+        )
+      : undefined) ||
+    lookup.target.get(referenceBaseTargetKey(part.ref_type, part.ref_id))
+  )
 }
 
 function referenceMatches(references: ReferenceOption[]) {
@@ -161,7 +213,33 @@ function nextReferenceMatch(
 }
 
 function referenceTargetKey(option: ReferenceOption) {
-  return `${option.refType}:${option.refId}:${option.versionID || 0}`
+  return option.originID
+    ? `${option.refType}:${option.refId}:${option.versionID || 0}:${option.origin || ''}:${option.originID}`
+    : `${option.refType}:${option.refId}:${option.versionID || 0}`
+}
+
+function referencePartTargetKey(
+  part: Extract<ReferencePart, { type: 'reference' }>
+) {
+  return part.ref_origin_id
+    ? `${part.ref_type}:${part.ref_id}:${part.ref_version_id || 0}:${part.ref_origin || ''}:${part.ref_origin_id}`
+    : `${part.ref_type}:${part.ref_id}:${part.ref_version_id || 0}`
+}
+
+function referenceOriginTargetKey(
+  refType: ReferenceOption['refType'],
+  refId: number,
+  origin?: string,
+  originID?: string
+) {
+  return `${refType}:${refId}:${origin || ''}:${originID || ''}`
+}
+
+function referenceBaseTargetKey(
+  refType: ReferenceOption['refType'],
+  refId: number
+) {
+  return `${refType}:${refId}`
 }
 
 function appendText(parts: ReferencePart[], text: string) {

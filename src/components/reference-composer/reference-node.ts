@@ -2,6 +2,7 @@ import { mergeAttributes, Node } from '@tiptap/core'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { ReferenceNodeView } from './reference-node-view'
 import type {
+  ReferencePart,
   ReferencePreviewLoader,
   ReferenceUsageOption,
 } from './types'
@@ -9,6 +10,13 @@ import type {
 export type ReferenceNodeOptions = {
   loadPreview?: ReferencePreviewLoader
   usageOptions?: ReferenceUsageOption[]
+  onDeleteReference?: (
+    reference: Extract<ReferencePart, { type: 'reference' }>
+  ) => void
+  onUsageChange?: (
+    reference: Extract<ReferencePart, { type: 'reference' }>,
+    usage: string
+  ) => void
 }
 
 export const ReferenceNode = Node.create<ReferenceNodeOptions>({
@@ -17,9 +25,15 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
   inline: true,
   atom: true,
   selectable: true,
+  draggable: true,
 
   addOptions() {
-    return { loadPreview: undefined, usageOptions: [] }
+    return {
+      loadPreview: undefined,
+      usageOptions: [],
+      onDeleteReference: undefined,
+      onUsageChange: undefined,
+    }
   },
 
   addAttributes() {
@@ -33,6 +47,8 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
       previewText: { default: '' },
       previewKind: { default: '' },
       previewUrl: { default: '' },
+      origin: { default: '' },
+      originId: { default: '' },
     }
   },
 
@@ -71,6 +87,9 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
         }
         const nodeBefore = $from.nodeBefore
         if (nodeBefore?.type.name === this.name) {
+          this.options.onDeleteReference?.(
+            referencePartFromAttributes(nodeBefore.attrs)
+          )
           return this.editor.commands.deleteRange({
             from: from - nodeBefore.nodeSize,
             to: from,
@@ -86,6 +105,9 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
         if (referenceBefore?.type.name !== this.name) {
           return false
         }
+        this.options.onDeleteReference?.(
+          referencePartFromAttributes(referenceBefore.attrs)
+        )
         let deleteFrom = spacerStart - referenceBefore.nodeSize
         const parentStart = $from.start()
         if (
@@ -104,3 +126,38 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
     }
   },
 })
+
+export function referencePartFromAttributes(
+  attrs: Record<string, unknown>
+): Extract<ReferencePart, { type: 'reference' }> {
+  const versionID = Number(attrs.versionId || 0)
+  return {
+    type: 'reference',
+    ref_type: referenceTypeFromValue(attrs.refType),
+    ref_id: Number(attrs.refId || 0),
+    label: String(attrs.label || '').trim(),
+    usage: String(attrs.usage || '').trim() || undefined,
+    ref_trigger: String(attrs.trigger || '').trim() || undefined,
+    ref_version_id: versionID > 0 ? versionID : undefined,
+    ref_origin: String(attrs.origin || '').trim() || undefined,
+    ref_origin_id: String(attrs.originId || '').trim() || undefined,
+  }
+}
+
+export function referenceTypeFromValue(value: unknown): Extract<
+  ReferencePart,
+  { type: 'reference' }
+>['ref_type'] {
+  const current = String(value || '')
+  if (
+    current === 'message' ||
+    current === 'artifact' ||
+    current === 'upload_file' ||
+    current === 'session' ||
+    current === 'canvas_node' ||
+    current === 'asset'
+  ) {
+    return current
+  }
+  return 'message'
+}

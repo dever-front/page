@@ -276,12 +276,16 @@ function runtimePayload(
   basePath = `/${siteKey}`
 ) {
   const apiPrefix = trimSlashes(site.api || DEFAULT_API)
+  const pagePrefix =
+    trimSlashes(site.entry || apiPrefix).split('/').find(Boolean) || DEFAULT_API
   const runtimeSetting = site.setting?.runtime || {}
   return {
     siteKey,
     basePath,
+    pagePrefix,
     apiPrefix,
-    apiHost: `${DEV_API_PREFIX}/${apiPrefix}/`,
+    apiHost: `${DEV_API_PREFIX}/${DEFAULT_API}/`,
+    siteApiHost: `${DEV_API_PREFIX}/${apiPrefix}/`,
     site: {
       name: site.name || siteKey,
       subtitle: site.subtitle,
@@ -1293,7 +1297,6 @@ function hasRuntimeSiteOwnerFields(site: FrontSite) {
       stringValue(siteConfig.subtitle || site.subtitle) ||
       stringValue(siteConfig.description || site.description) ||
       normalizeStringList(siteConfig.url || site.url).length > 0 ||
-      stringValue(site.api) ||
       stringValue(site.entry) ||
       stringValue(siteConfig.logo || site.logo || site.assets?.logo) ||
       stringValue(siteConfig.favicon || site.favicon || site.assets?.favicon) ||

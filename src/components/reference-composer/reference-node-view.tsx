@@ -1,7 +1,13 @@
+import { useEffect, useState } from 'react'
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
-import type { ReferenceNodeOptions } from './reference-node'
+import {
+  referencePartFromAttributes,
+  referenceTypeFromValue,
+  type ReferenceNodeOptions,
+} from './reference-node'
 import { ReferenceTag } from './reference-tag'
-import type { ReferencePreviewHint, ReferenceType } from './types'
+import type { ReferencePreviewHint } from './types'
+import { loadReferencePreview } from './reference-preview-cache'
 import { compatibleReferenceUsageOptions } from './reference-usage'
 import { referenceTrigger } from './text'
 
@@ -12,26 +18,48 @@ export function ReferenceNodeView({
   updateAttributes,
   extension,
 }: NodeViewProps) {
-  const refType = referenceType(node.attrs.refType)
+  const refType = referenceTypeFromValue(node.attrs.refType)
   const refId = Number(node.attrs.refId || 0)
   const label = String(node.attrs.label || '').trim()
   const trigger = referenceTrigger(String(node.attrs.trigger || ''))
   const versionId = Number(node.attrs.versionId || 0)
-  const hint = referencePreviewHint(node.attrs)
+  const staticHint = referencePreviewHint(node.attrs)
   const options = extension.options as ReferenceNodeOptions
   const loadPreview = options.loadPreview
+  const loadedHint = useMissingPreviewHint({
+    label,
+    refId,
+    refType,
+    trigger,
+    versionId,
+    hint: staticHint,
+    loadPreview,
+  })
+  const hint = mergePreviewHints(staticHint, loadedHint)
   const usage = String(node.attrs.usage || '')
   const usageOptions = compatibleReferenceUsageOptions(
     options.usageOptions || [],
     hint?.kind
   )
   const usageSupported = usageOptions.some((option) => option.key === usage)
+  const reference = referencePartFromAttributes(node.attrs)
+
+  const deleteReference = () => {
+    options.onDeleteReference?.(reference)
+    deleteNode()
+  }
+
+  const changeUsage = (nextUsage: string) => {
+    options.onUsageChange?.(reference, nextUsage)
+    updateAttributes({ usage: nextUsage })
+  }
 
   return (
     <NodeViewWrapper
       as='span'
       className='reference-node-view'
       contentEditable={false}
+      data-drag-handle=''
     >
       <ReferenceTag
         label={label}
@@ -43,41 +71,85 @@ export function ReferenceNodeView({
         loadPreview={loadPreview}
         selected={selected}
         className='!mx-0'
-        onDelete={deleteNode}
+        usage={usageSupported ? usage : ''}
+        usageOptions={usageOptions}
+        onUsageChange={changeUsage}
+        onDelete={deleteReference}
       />
-      {usageOptions.length > 1 ? (
-        <select
-          className='reference-node-usage'
-          aria-label={`设置${label || '引用素材'}用途`}
-          value={usageSupported ? usage : ''}
-          onPointerDown={(event) => event.stopPropagation()}
-          onChange={(event) => updateAttributes({ usage: event.target.value })}
-        >
-          {!usageSupported ? <option value=''>选择用途</option> : null}
-          {usageOptions.map((option) => (
-            <option key={option.key} value={option.key}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      ) : null}
     </NodeViewWrapper>
   )
 }
 
-function referenceType(value: unknown): ReferenceType {
-  const current = String(value || '')
-  if (
-    current === 'message' ||
-    current === 'artifact' ||
-    current === 'upload_file' ||
-    current === 'session' ||
-    current === 'canvas_node' ||
-    current === 'asset'
-  ) {
-    return current
+function useMissingPreviewHint({
+  label,
+  refId,
+  refType,
+  trigger,
+  versionId,
+  hint,
+  loadPreview,
+}: {
+  label: string
+  refId: number
+  refType: ReturnType<typeof referenceTypeFromValue>
+  trigger: string
+  versionId: number
+  hint?: ReferencePreviewHint
+  loadPreview?: ReferenceNodeOptions['loadPreview']
+}) {
+  const [loadedHint, setLoadedHint] = useState<ReferencePreviewHint>()
+
+  useEffect(() => {
+    setLoadedHint(undefined)
+    if (hint?.kind || !loadPreview || refId <= 0) {
+      return
+    }
+
+    let active = true
+    void loadReferencePreview(loadPreview, {
+      refType,
+      refId,
+      label,
+      trigger,
+      versionId,
+    }).then((preview) => {
+      if (!active) {
+        return
+      }
+      const media = preview.media[0]
+      setLoadedHint({
+        text: preview.text.trim() || undefined,
+        kind: media?.kind || undefined,
+        url: media?.url || undefined,
+      })
+    }).catch(() => {
+      // The hover preview owns error presentation; a missing inline hint is harmless.
+    })
+
+    return () => {
+      active = false
+    }
+  }, [hint?.kind, label, loadPreview, refId, refType, trigger, versionId])
+
+  return loadedHint
+}
+
+function mergePreviewHints(
+  primary?: ReferencePreviewHint,
+  fallback?: ReferencePreviewHint
+) {
+  if (!primary) {
+    return fallback
   }
-  return 'message'
+  if (!fallback) {
+    return primary
+  }
+  return {
+    text: primary.text || fallback.text,
+    kind: primary.kind || fallback.kind,
+    url: primary.url || fallback.url,
+    sourceUrl: primary.sourceUrl || fallback.sourceUrl,
+  }
 }
 
 function referencePreviewHint(
