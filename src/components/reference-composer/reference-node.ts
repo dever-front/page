@@ -81,6 +81,9 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
   addKeyboardShortcuts() {
     return {
       Backspace: () => {
+        if (!this.editor.isEditable) {
+          return false
+        }
         const { empty, from, $from } = this.editor.state.selection
         if (!empty) {
           return false

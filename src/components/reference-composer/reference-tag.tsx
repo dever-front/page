@@ -28,6 +28,7 @@ type ReferenceTagProps = {
   hint?: ReferencePreviewHint
   loadPreview?: ReferencePreviewLoader
   selected?: boolean
+  disabled?: boolean
   className?: string
   usage?: string
   usageOptions?: ReferenceUsageOption[]
@@ -44,6 +45,7 @@ export function ReferenceTag({
   hint,
   loadPreview,
   selected = false,
+  disabled = false,
   className,
   usage = '',
   usageOptions = [],
@@ -60,7 +62,7 @@ export function ReferenceTag({
       versionId={versionId}
       hint={hint}
       loadPreview={loadPreview}
-      onDelete={onDelete}
+      onDelete={disabled ? undefined : onDelete}
       triggerClassName='inline'
     >
       {(preview) => {
@@ -73,7 +75,9 @@ export function ReferenceTag({
             data-reference-type={refType}
             data-reference-id={refId}
             data-selected={selected || undefined}
-            tabIndex={0}
+            data-disabled={disabled || undefined}
+            tabIndex={disabled ? -1 : 0}
+            aria-disabled={disabled || undefined}
             aria-label={`引用：${displayLabel}`}
             className={cn(
               'mx-1 inline-flex max-w-[min(22rem,78vw)] cursor-default items-center gap-1.5 rounded-md border border-slate-300/80 bg-slate-100/90 px-2 py-0.5 align-baseline text-[0.9em] leading-6 text-slate-800 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors select-none hover:border-slate-400 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-slate-400/45 focus-visible:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-700',
@@ -88,6 +92,7 @@ export function ReferenceTag({
                 className='reference-tag-usage'
                 aria-label={`设置${displayLabel || '引用素材'}用途`}
                 value={usage}
+                disabled={disabled}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => event.stopPropagation()}
                 onChange={(event) => onUsageChange?.(event.target.value)}
@@ -105,11 +110,14 @@ export function ReferenceTag({
                 type='button'
                 className='reference-tag-delete'
                 aria-label={`移除${displayLabel || '引用素材'}`}
+                disabled={disabled}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
                   event.preventDefault()
                   event.stopPropagation()
-                  onDelete()
+                  if (!disabled) {
+                    onDelete()
+                  }
                 }}
               >
                 <X aria-hidden='true' />

@@ -612,6 +612,7 @@ export function ReferenceEditor({
   references,
   placeholder = '输入内容，使用 @ 引用',
   disabled = false,
+  textEditable = true,
   autoFocus = false,
   className,
   layerZIndex = 2200,
@@ -622,6 +623,7 @@ export function ReferenceEditor({
   loadPreview,
   usageOptions = [],
   pickerRequest,
+  onPickerRequestConsumed,
   onReferenceDelete,
   onReferenceUsageChange,
   onChange,
@@ -659,8 +661,10 @@ export function ReferenceEditor({
   const contentRef = useRef(content)
   const onChangeRef = useRef(onChange)
   const onSubmitRef = useRef(onSubmit)
+  const onPickerRequestConsumedRef = useRef(onPickerRequestConsumed)
   const onReferenceDeleteRef = useRef(onReferenceDelete)
   const onReferenceUsageChangeRef = useRef(onReferenceUsageChange)
+  const textEditableRef = useRef(textEditable)
   const appliedPickerRequestRef = useRef<
     ReferencePickerRequest['id'] | undefined
   >(undefined)
@@ -676,8 +680,10 @@ export function ReferenceEditor({
   contentRef.current = content
   onChangeRef.current = onChange
   onSubmitRef.current = onSubmit
+  onPickerRequestConsumedRef.current = onPickerRequestConsumed
   onReferenceDeleteRef.current = onReferenceDelete
   onReferenceUsageChangeRef.current = onReferenceUsageChange
+  textEditableRef.current = textEditable
   loadPreviewRef.current = referencePreviewDispatcher(referenceProviders)
   const referenceSignature = useMemo(
     () =>
@@ -719,6 +725,9 @@ export function ReferenceEditor({
         'aria-label': placeholder,
       },
       handleTextInput(_view, _from, _to, text) {
+        if (!textEditableRef.current) {
+          return true
+        }
         const provider = referenceProviderForTrigger(referenceProviders, text)
         if (!provider) {
           return false
@@ -746,7 +755,26 @@ export function ReferenceEditor({
           onSubmitRef.current()
           return true
         }
+        if (!textEditableRef.current && isTextMutationKey(event)) {
+          event.preventDefault()
+          return true
+        }
         return false
+      },
+      handlePaste() {
+        return !textEditableRef.current
+      },
+      handleDrop() {
+        return !textEditableRef.current
+      },
+      handleDOMEvents: {
+        beforeinput(_view, event) {
+          if (textEditableRef.current) {
+            return false
+          }
+          event.preventDefault()
+          return true
+        },
       },
     },
     onUpdate({ editor: currentEditor }) {
@@ -772,6 +800,16 @@ export function ReferenceEditor({
   useEffect(() => {
     editor?.setEditable(!disabled)
   }, [disabled, editor])
+
+  useEffect(() => {
+    if (!disabled) {
+      return
+    }
+    setPickerOpen(false)
+    setPickerTrigger('')
+    setPickerPreferredUsage('')
+    setPickerAcceptedKinds([])
+  }, [disabled])
 
   useEffect(() => {
     if (!editor) {
@@ -807,10 +845,10 @@ export function ReferenceEditor({
   ])
 
   useEffect(() => {
-    if (autoFocus && editor && !disabled) {
+    if (autoFocus && editor && !disabled && textEditable) {
       editor.commands.focus('end')
     }
-  }, [autoFocus, disabled, editor])
+  }, [autoFocus, disabled, editor, textEditable])
 
   useEffect(() => {
     if (
@@ -837,6 +875,7 @@ export function ReferenceEditor({
         .filter(Boolean)
     )
     setPickerOpen(true)
+    onPickerRequestConsumedRef.current?.(pickerRequest.id)
   }, [disabled, pickerRequest, referenceProviders])
 
   useEffect(() => {
@@ -903,7 +942,7 @@ export function ReferenceEditor({
 
   const insertReference = useCallback(
     (option: ReferenceOption) => {
-      if (!editor || option.selectable === false) {
+      if (disabled || !editor || option.selectable === false) {
         return
       }
       const provider = referenceProviderForTrigger(
@@ -940,6 +979,7 @@ export function ReferenceEditor({
       setPickerAcceptedKinds([])
     },
     [
+      disabled,
       editor,
       pickerPreferredUsage,
       pickerTrigger,
@@ -963,6 +1003,7 @@ export function ReferenceEditor({
       ref={rootRef}
       className={cn('reference-text-editor', className)}
       data-disabled={disabled || undefined}
+      data-text-editable={textEditable ? 'true' : 'false'}
     >
       <EditorContent
         editor={editor}
@@ -1024,6 +1065,31 @@ export function ReferenceEditor({
         : null}
       <style>{referenceComposerStyles}</style>
     </div>
+  )
+}
+
+function isTextMutationKey(event: {
+  key: string
+  altKey: boolean
+  ctrlKey: boolean
+  metaKey: boolean
+  isComposing?: boolean
+}) {
+  if (event.isComposing || event.key === 'Process') {
+    return true
+  }
+  if (
+    event.key === 'Backspace' ||
+    event.key === 'Delete' ||
+    event.key === 'Enter'
+  ) {
+    return true
+  }
+  return (
+    event.key.length === 1 &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey
   )
 }
 
@@ -1413,8 +1479,11 @@ const referenceComposerStyles = `
 .reference-composer-editor .reference-node-view { display: inline-flex; margin: 3px 4px; vertical-align: middle; }
 .reference-composer-editor .reference-node-view.ProseMirror-selectednode { outline: none; }
 .reference-tag-usage { max-width: 7rem; height: 22px; margin: -1px -3px -1px 2px; border: 0; border-left: 1px solid color-mix(in oklab, currentColor 18%, transparent); padding: 0 18px 0 6px; background: transparent; color: inherit; font-size: 11px; line-height: 1; outline: none; cursor: pointer; }
+.reference-tag-usage:disabled { cursor: default; opacity: .58; }
 .reference-tag-delete { display: inline-flex; width: 20px; height: 20px; flex: 0 0 20px; align-items: center; justify-content: center; margin: -1px -4px -1px 0; border: 0; border-radius: 4px; padding: 0; background: transparent; color: color-mix(in oklab, currentColor 68%, transparent); cursor: pointer; }
 .reference-tag-delete:hover { background: color-mix(in oklab, currentColor 10%, transparent); color: currentColor; }
+.reference-tag-delete:disabled { cursor: default; opacity: .35; }
+.reference-tag-delete:disabled:hover { background: transparent; color: color-mix(in oklab, currentColor 68%, transparent); }
 .reference-tag-delete svg { width: 12px; height: 12px; }
 .reference-text-editor { position: relative; width: 100%; min-width: 0; min-height: 100%; }
 .reference-text-editor-content { min-height: 100%; }
@@ -1422,6 +1491,7 @@ const referenceComposerStyles = `
 .reference-text-editor-input:focus { border-color: color-mix(in oklab, var(--foreground) 22%, var(--border)); background: var(--background); box-shadow: 0 0 0 2px color-mix(in oklab, var(--foreground) 8%, transparent); }
 .reference-text-editor-input .reference-node-view { display: inline-flex; margin: 1px 4px; vertical-align: middle; }
 .reference-text-editor[data-disabled='true'] { opacity: .62; }
+.reference-text-editor[data-text-editable='false'] .reference-text-editor-input { caret-color: transparent; cursor: default; }
 .reference-editor-picker-layer .reference-picker { position: relative; bottom: auto; left: auto; width: 100%; }
 .reference-composer-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; padding: 0 14px 12px; }
 .reference-composer-tools { display: flex; min-width: 0; flex: 1; flex-wrap: wrap; align-items: center; gap: 6px; }

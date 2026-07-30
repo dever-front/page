@@ -175,6 +175,7 @@ export type ReferenceEditorProps = {
   references: ReferenceOption[]
   placeholder?: string
   disabled?: boolean
+  textEditable?: boolean
   autoFocus?: boolean
   className?: string
   layerZIndex?: number
@@ -187,6 +188,7 @@ export type ReferenceEditorProps = {
   loadPreview?: ReferencePreviewLoader
   usageOptions?: ReferenceUsageOption[]
   pickerRequest?: ReferencePickerRequest
+  onPickerRequestConsumed?: (requestID: ReferencePickerRequest['id']) => void
   onReferenceDelete?: (
     reference: Extract<ReferencePart, { type: 'reference' }>
   ) => void

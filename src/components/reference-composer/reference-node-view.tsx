@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import {
   referencePartFromAttributes,
@@ -17,6 +17,7 @@ export function ReferenceNodeView({
   deleteNode,
   updateAttributes,
   extension,
+  editor,
 }: NodeViewProps) {
   const refType = referenceTypeFromValue(node.attrs.refType)
   const refId = Number(node.attrs.refId || 0)
@@ -43,13 +44,20 @@ export function ReferenceNodeView({
   )
   const usageSupported = usageOptions.some((option) => option.key === usage)
   const reference = referencePartFromAttributes(node.attrs)
+  const disabled = useReferenceNodeDisabled(editor)
 
   const deleteReference = () => {
+    if (disabled) {
+      return
+    }
     options.onDeleteReference?.(reference)
     deleteNode()
   }
 
   const changeUsage = (nextUsage: string) => {
+    if (disabled) {
+      return
+    }
     options.onUsageChange?.(reference, nextUsage)
     updateAttributes({ usage: nextUsage })
   }
@@ -59,7 +67,7 @@ export function ReferenceNodeView({
       as='span'
       className='reference-node-view'
       contentEditable={false}
-      data-drag-handle=''
+      data-drag-handle={disabled ? undefined : ''}
     >
       <ReferenceTag
         label={label}
@@ -71,6 +79,7 @@ export function ReferenceNodeView({
         loadPreview={loadPreview}
         selected={selected}
         className='!mx-0'
+        disabled={disabled}
         usage={usageSupported ? usage : ''}
         usageOptions={usageOptions}
         onUsageChange={changeUsage}
@@ -78,6 +87,22 @@ export function ReferenceNodeView({
       />
     </NodeViewWrapper>
   )
+}
+
+function useReferenceNodeDisabled(editor: NodeViewProps['editor']) {
+  const readDisabled = useCallback(() => !editor.isEditable, [editor])
+  const [disabled, setDisabled] = useState(readDisabled)
+
+  useEffect(() => {
+    const syncDisabled = () => setDisabled(readDisabled())
+    syncDisabled()
+    editor.on('update', syncDisabled)
+    return () => {
+      editor.off('update', syncDisabled)
+    }
+  }, [editor, readDisabled])
+
+  return disabled
 }
 
 function useMissingPreviewHint({
