@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useMemo,
 } from 'react'
+import { FirstFrameVideo } from '@/components/media/first-frame-video'
 import {
   isEmptyRichTextDoc,
   normalizeRichTextMaxWidth,
@@ -267,7 +268,7 @@ function renderRichTextVideo(node: RichTextNode, key: string) {
   if (caption) {
     return (
       <figure key={key} className="my-4 max-w-full" style={attrs.style}>
-        <video
+        <FirstFrameVideo
           src={attrs.src}
           controls
           preload="metadata"
@@ -279,7 +280,7 @@ function renderRichTextVideo(node: RichTextNode, key: string) {
     )
   }
   return (
-    <video
+    <FirstFrameVideo
       key={key}
       src={attrs.src}
       controls

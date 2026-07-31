@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, ImageOff, Music2, Video } from 'lucide-react'
+import { FirstFrameVideo } from '@/components/media/first-frame-video'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -250,7 +251,7 @@ function ParamOptionPreviewMedia({
     case 'video':
       return (
         <div className='aspect-video overflow-hidden bg-black'>
-          <video
+          <FirstFrameVideo
             src={previewURL}
             controls
             playsInline

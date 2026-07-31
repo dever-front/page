@@ -13,6 +13,7 @@ import {
   Video,
   Volume2,
 } from 'lucide-react'
+import { FirstFrameVideo } from '@/components/media/first-frame-video'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { ReferencePreviewPopover } from './reference-preview-popover'
 import { groupReferenceRows, type ReferenceTurn } from './turns'
@@ -517,7 +518,7 @@ function MaterialPreview({ option }: { option: ReferenceOption }) {
         {hasThumbnail && previewUrl ? (
           <LazyThumbnail src={previewUrl} alt={option.label} />
         ) : sourceUrl ? (
-          <video src={sourceUrl} muted playsInline preload='metadata' />
+          <FirstFrameVideo src={sourceUrl} muted playsInline preload='metadata' />
         ) : (
           <Video />
         )}

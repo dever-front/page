@@ -9,6 +9,7 @@ import {
   Video,
 } from 'lucide-react'
 import { EnergonAudioPlayer } from '@/components/energon/audio-player'
+import { FirstFrameVideo } from '@/components/media/first-frame-video'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -411,7 +412,7 @@ function ResourcePreviewBody({
 
   if (previewKind === 'video') {
     return (
-      <video
+      <FirstFrameVideo
         src={previewUrl}
         controls
         preload="metadata"

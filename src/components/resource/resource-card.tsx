@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { FirstFrameVideo } from '@/components/media/first-frame-video'
 import {
   Select,
   SelectContent,
@@ -120,7 +121,7 @@ export function ResourceCard({
               className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
             />
           ) : previewKind === 'video' && previewUrl ? (
-            <video
+            <FirstFrameVideo
               src={previewUrl}
               muted
               playsInline

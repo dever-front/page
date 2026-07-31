@@ -1,5 +1,6 @@
 import { Video } from 'lucide-react'
 import { useMemo } from 'react'
+import { FirstFrameVideo } from '@/components/media/first-frame-video'
 import { useResourcePreviewDialog } from '@/components/resource/use-resource-preview'
 import { LongText } from '@/components/long-text'
 import { normalizeUploadUrlItems } from '@/lib/resource'
@@ -95,7 +96,12 @@ export function MediaVideo({ item, value, store }: NodeItemProps) {
                 {String(file.name || '').trim() || targetURL}
               </LongText>
             </button>
-            <video controls preload='metadata' src={targetURL} className='max-h-64 w-full rounded bg-black/90' />
+            <FirstFrameVideo
+              controls
+              preload='metadata'
+              src={targetURL}
+              className='max-h-64 w-full rounded bg-black/90'
+            />
           </div>
         )
       })}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { NodeViewWrapper, type ReactNodeViewProps } from '@tiptap/react'
 import { MessageSquareText } from 'lucide-react'
+import { FirstFrameVideo } from '@/components/media/first-frame-video'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -303,7 +304,7 @@ export function EditorMediaNodeView({
         ) : null}
 
         {kind === 'video' ? (
-          <video
+          <FirstFrameVideo
             src={src}
             controls
             preload="metadata"

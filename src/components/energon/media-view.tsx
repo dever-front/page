@@ -14,6 +14,7 @@ import {
   UploadCloud,
 } from 'lucide-react'
 import { EnergonAudioPlayer } from '@/components/energon/audio-player'
+import { FirstFrameVideo } from '@/components/media/first-frame-video'
 import { Button } from '@/components/ui/button'
 import { ResourcePreviewDialogLazy } from '@/components/resource/lazy-dialogs'
 import { EnergonProgressBlock } from '@/components/energon/progress'
@@ -594,7 +595,7 @@ function InlineVideoPreview({
             : 'mx-auto w-fit max-w-full rounded-lg bg-transparent'
         )}
       >
-        <video
+        <FirstFrameVideo
           src={url}
           poster={poster}
           controls
@@ -638,8 +639,8 @@ function InlineVideoPreview({
       className="group relative w-full overflow-hidden rounded-lg bg-black"
       style={{ aspectRatio }}
     >
-      <video
-        ref={videoRef}
+      <FirstFrameVideo
+        videoRef={videoRef}
         src={url}
         poster={poster}
         controls={playing}

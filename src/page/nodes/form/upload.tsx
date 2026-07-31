@@ -16,6 +16,7 @@ import {
   Upload,
   X,
 } from 'lucide-react'
+import { FirstFrameVideo } from '@/components/media/first-frame-video'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { LongText } from '@/components/long-text'
@@ -728,7 +729,7 @@ function SelectedMediaTileBody({
 
   if (previewKind === 'video' && previewUrl) {
     return (
-      <video
+      <FirstFrameVideo
         src={previewUrl}
         muted
         playsInline

@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from 'react'
 import { ExternalLink, FileText, Loader2, Trash2 } from 'lucide-react'
+import { FirstFrameVideo } from '@/components/media/first-frame-video'
 import {
   Popover,
   PopoverContent,
@@ -339,7 +340,7 @@ function ReferencePreviewMediaView({
   }
   if (media.kind === 'video') {
     return (
-      <video
+      <FirstFrameVideo
         src={media.url}
         controls
         preload='metadata'
