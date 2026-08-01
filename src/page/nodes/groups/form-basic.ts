@@ -1,0 +1,6 @@
+export { FormCheckbox } from '../form/checkbox'
+export { FormColor } from '../form/color'
+export { FormNumber } from '../form/number'
+export { FormPassword } from '../form/password'
+export { FormRadio } from '../form/radio'
+export { FormSwitch } from '../form/switch'

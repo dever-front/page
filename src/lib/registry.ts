@@ -4,6 +4,7 @@
  * 所有组件都必须通过注册表使用
  */
 import { type ComponentType } from 'react'
+import type { NodeItemProps } from '@/page/nodes'
 import { Aside } from '@/page/layout/aside'
 import {
   CardContentLayout,
@@ -53,6 +54,29 @@ export const layoutRegistry: Record<
 
 // ========== Node 组件注册 ==========
 
+const loadAppShellNodes = () => import('@/page/nodes/groups/app-shell')
+const loadShowNodes = () => import('@/page/nodes/groups/show')
+const loadFormBasicNodes = () => import('@/page/nodes/groups/form-basic')
+const loadFormTextNodes = () => import('@/page/nodes/groups/form-text')
+const loadMediaNodes = () => import('@/page/nodes/groups/media')
+const loadFeedbackNodes = () => import('@/page/nodes/groups/feedback')
+
+function createLazyNodeGroup<T>(loadGroup: () => Promise<T>) {
+  return (componentName: keyof T) =>
+    lazyNode(() =>
+      loadGroup().then((group) => ({
+        default: group[componentName] as ComponentType<NodeItemProps>,
+      }))
+    )
+}
+
+const appShellNode = createLazyNodeGroup(loadAppShellNodes)
+const showNode = createLazyNodeGroup(loadShowNodes)
+const formBasicNode = createLazyNodeGroup(loadFormBasicNodes)
+const formTextNode = createLazyNodeGroup(loadFormTextNodes)
+const mediaNode = createLazyNodeGroup(loadMediaNodes)
+const feedbackNode = createLazyNodeGroup(loadFeedbackNodes)
+
 const coreNodeRegistry: Record<string, LazyNodeComponent> = {
   // App shell/auth
   'app-site-brand': lazyNode(() =>
@@ -65,81 +89,29 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
       default: mod.AppLoginForm,
     }))
   ),
-  'app-skip-to-main': lazyNode(() =>
-    import('@/page/nodes/app/shell').then((mod) => ({
-      default: mod.AppSkipToMain,
-    }))
-  ),
-  'app-sidebar': lazyNode(() =>
-    import('@/page/nodes/app/shell').then((mod) => ({
-      default: mod.AppSidebarNode,
-    }))
-  ),
-  'app-topbar': lazyNode(() =>
-    import('@/page/nodes/app/shell').then((mod) => ({
-      default: mod.AppTopbarNode,
-    }))
-  ),
-  'app-outlet': lazyNode(() =>
-    import('@/page/nodes/app/shell').then((mod) => ({
-      default: mod.AppOutletNode,
-    }))
-  ),
-  'app-assistant': lazyNode(() =>
-    import('@/page/nodes/app/shell').then((mod) => ({
-      default: mod.AppAssistantNode,
-    }))
-  ),
+  'app-skip-to-main': appShellNode('AppSkipToMain'),
+  'app-sidebar': appShellNode('AppSidebarNode'),
+  'app-topbar': appShellNode('AppTopbarNode'),
+  'app-outlet': appShellNode('AppOutletNode'),
+  'app-assistant': appShellNode('AppAssistantNode'),
 
   // Show
-  'show-base': lazyNode(() =>
-    import('@/page/nodes/show/base').then((mod) => ({ default: mod.ShowBase }))
-  ),
-  'show-title': lazyNode(() =>
-    import('@/page/nodes/show/title').then((mod) => ({
-      default: mod.ShowTitle,
-    }))
-  ),
-  'show-rich': lazyNode(() =>
-    import('@/page/nodes/show/rich').then((mod) => ({ default: mod.ShowRich }))
-  ),
-  'show-text': lazyNode(() =>
-    import('@/page/nodes/show/text').then((mod) => ({ default: mod.ShowText }))
-  ),
-  'show-date': lazyNode(() =>
-    import('@/page/nodes/show/date').then((mod) => ({ default: mod.ShowDate }))
-  ),
-  'show-link': lazyNode(() =>
-    import('@/page/nodes/show/link').then((mod) => ({ default: mod.ShowLink }))
-  ),
-  'show-button': lazyNode(() =>
-    import('@/page/nodes/show/button').then((mod) => ({
-      default: mod.ShowButton,
-    }))
-  ),
+  'show-base': showNode('ShowBase'),
+  'show-title': showNode('ShowTitle'),
+  'show-rich': showNode('ShowRich'),
+  'show-text': showNode('ShowText'),
+  'show-date': showNode('ShowDate'),
+  'show-link': showNode('ShowLink'),
+  'show-button': showNode('ShowButton'),
   'show-button-group': lazyNode(() =>
     import('@/page/nodes/show/button-group').then((mod) => ({
       default: mod.ShowButtonGroup,
     }))
   ),
-  'show-tag': lazyNode(() =>
-    import('@/page/nodes/show/tag').then((mod) => ({ default: mod.ShowTag }))
-  ),
-  'show-select': lazyNode(() =>
-    import('@/page/nodes/show/select').then((mod) => ({
-      default: mod.ShowSelect,
-    }))
-  ),
-  'show-status': lazyNode(() =>
-    import('@/page/nodes/show/status').then((mod) => ({
-      default: mod.ShowStatus,
-    }))
-  ),
-  'show-stat-card': lazyNode(() =>
-    import('@/page/nodes/show/stat-card').then((mod) => ({
-      default: mod.ShowStatCard,
-    }))
-  ),
+  'show-tag': showNode('ShowTag'),
+  'show-select': showNode('ShowSelect'),
+  'show-status': showNode('ShowStatus'),
+  'show-stat-card': showNode('ShowStatCard'),
   'show-chart': lazyNode(() =>
     import('@/page/nodes/show/chart').then((mod) => ({
       default: mod.ShowChart,
@@ -150,17 +122,9 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
       default: mod.ShowTable,
     }))
   ),
-  'show-page': lazyNode(() =>
-    import('@/page/nodes/show/page').then((mod) => ({ default: mod.ShowPage }))
-  ),
-  'show-icon': lazyNode(() =>
-    import('@/page/nodes/show/icon').then((mod) => ({ default: mod.ShowIcon }))
-  ),
-  'show-tooltip': lazyNode(() =>
-    import('@/page/nodes/show/tooltip').then((mod) => ({
-      default: mod.ShowTooltip,
-    }))
-  ),
+  'show-page': showNode('ShowPage'),
+  'show-icon': showNode('ShowIcon'),
+  'show-tooltip': showNode('ShowTooltip'),
   'show-category-list': lazyNode(() =>
     import('@/page/nodes/show/category-list').then((mod) => ({
       default: mod.ShowCategoryList,
@@ -181,29 +145,13 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
   ),
 
   // Form
-  'form-input': lazyNode(() =>
-    import('@/page/nodes/form/input').then((mod) => ({
-      default: mod.FormInput,
-    }))
-  ),
-  'form-color': lazyNode(() =>
-    import('@/page/nodes/form/color').then((mod) => ({
-      default: mod.FormColor,
-    }))
-  ),
+  'form-input': formTextNode('FormInput'),
+  'form-color': formBasicNode('FormColor'),
   'form-icon': lazyNode(() =>
     import('@/page/nodes/form/icon').then((mod) => ({ default: mod.FormIcon }))
   ),
-  'form-password': lazyNode(() =>
-    import('@/page/nodes/form/password').then((mod) => ({
-      default: mod.FormPassword,
-    }))
-  ),
-  'form-textarea': lazyNode(() =>
-    import('@/page/nodes/form/textarea').then((mod) => ({
-      default: mod.FormTextarea,
-    }))
-  ),
+  'form-password': formBasicNode('FormPassword'),
+  'form-textarea': formTextNode('FormTextarea'),
   'form-upload': lazyNode(() =>
     import('@/page/nodes/form/upload').then((mod) => ({
       default: mod.FormUpload,
@@ -214,26 +162,10 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
       default: mod.FormEditor,
     }))
   ),
-  'form-number': lazyNode(() =>
-    import('@/page/nodes/form/number').then((mod) => ({
-      default: mod.FormNumber,
-    }))
-  ),
-  'form-switch': lazyNode(() =>
-    import('@/page/nodes/form/switch').then((mod) => ({
-      default: mod.FormSwitch,
-    }))
-  ),
-  'form-radio': lazyNode(() =>
-    import('@/page/nodes/form/radio').then((mod) => ({
-      default: mod.FormRadio,
-    }))
-  ),
-  'form-checkbox': lazyNode(() =>
-    import('@/page/nodes/form/checkbox').then((mod) => ({
-      default: mod.FormCheckbox,
-    }))
-  ),
+  'form-number': formBasicNode('FormNumber'),
+  'form-switch': formBasicNode('FormSwitch'),
+  'form-radio': formBasicNode('FormRadio'),
+  'form-checkbox': formBasicNode('FormCheckbox'),
   'form-select': lazyNode(() =>
     import('@/page/nodes/form/select').then((mod) => ({
       default: mod.FormSelect,
@@ -274,48 +206,16 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
   ),
 
   // Media
-  'media-image': lazyNode(() =>
-    import('@/page/nodes/media/image').then((mod) => ({
-      default: mod.MediaImage,
-    }))
-  ),
-  'media-audio': lazyNode(() =>
-    import('@/page/nodes/media/audio').then((mod) => ({
-      default: mod.MediaAudio,
-    }))
-  ),
-  'media-video': lazyNode(() =>
-    import('@/page/nodes/media/video').then((mod) => ({
-      default: mod.MediaVideo,
-    }))
-  ),
-  'media-file-list': lazyNode(() =>
-    import('@/page/nodes/media/file-list').then((mod) => ({
-      default: mod.MediaFileList,
-    }))
-  ),
+  'media-image': mediaNode('MediaImage'),
+  'media-audio': mediaNode('MediaAudio'),
+  'media-video': mediaNode('MediaVideo'),
+  'media-file-list': mediaNode('MediaFileList'),
 
   // Feedback
-  'feedback-modal': lazyNode(() =>
-    import('@/page/nodes/feedback/modal').then((mod) => ({
-      default: mod.FeedbackModal,
-    }))
-  ),
-  'feedback-alert': lazyNode(() =>
-    import('@/page/nodes/feedback/alert').then((mod) => ({
-      default: mod.FeedbackAlert,
-    }))
-  ),
-  'feedback-confirm': lazyNode(() =>
-    import('@/page/nodes/feedback/confirm').then((mod) => ({
-      default: mod.FeedbackConfirm,
-    }))
-  ),
-  'feedback-drawer': lazyNode(() =>
-    import('@/page/nodes/feedback/drawer').then((mod) => ({
-      default: mod.FeedbackDrawer,
-    }))
-  ),
+  'feedback-modal': feedbackNode('FeedbackModal'),
+  'feedback-alert': feedbackNode('FeedbackAlert'),
+  'feedback-confirm': feedbackNode('FeedbackConfirm'),
+  'feedback-drawer': feedbackNode('FeedbackDrawer'),
 }
 
 export function getNodeComponent(type: string) {

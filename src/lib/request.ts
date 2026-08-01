@@ -19,6 +19,10 @@ export type RequestResult = {
   message?: string
 }
 
+export type RequestOptions = {
+  reportError?: boolean
+}
+
 export const REQUEST_ERROR_EVENT = 'app:request-error'
 export const FRONT_RUNTIME_REFRESH_EVENT = 'app:front-runtime-refresh'
 export const SITE_CONTEXT_HEADER = 'X-Dever-Site'
@@ -461,7 +465,8 @@ export async function requestRaw(
 export async function request(
   api: string,
   method: string = 'get',
-  params?: any
+  params?: any,
+  options?: RequestOptions
 ): Promise<RequestResult> {
   try {
     const normalizedMethod = normalizeRequestMethod(method)
@@ -470,7 +475,7 @@ export async function request(
     }
 
     const result = await requestRaw(api, method, params)
-    const normalized = normalizeRequestRawPayload(result)
+    const normalized = normalizeRequestRawPayload(result, options)
     if (handleAuthRequiredResult(normalized)) {
       return normalized
     }
@@ -487,7 +492,7 @@ export async function request(
       if (handleAuthRequiredResult(normalized)) {
         return normalized
       }
-      if (normalized.message) {
+      if (normalized.message && shouldReportRequestError(options)) {
         emitRequestError({
           code: normalized.code,
           message: normalized.message,
@@ -503,12 +508,17 @@ export async function request(
 
     const message =
       error instanceof Error && error.message ? error.message : '请求失败'
-    emitRequestError({ code: -1, message })
+    if (shouldReportRequestError(options)) {
+      emitRequestError({ code: -1, message })
+    }
     return { code: -1, data: null, message }
   }
 }
 
-function normalizeRequestRawPayload(result: any): RequestResult {
+function normalizeRequestRawPayload(
+  result: any,
+  options?: RequestOptions
+): RequestResult {
   if (
     result &&
     typeof result === 'object' &&
@@ -520,7 +530,8 @@ function normalizeRequestRawPayload(result: any): RequestResult {
     if (
       Number(result.status) === 2 &&
       normalized.message &&
-      !isAuthRequiredResult(normalized)
+      !isAuthRequiredResult(normalized) &&
+      shouldReportRequestError(options)
     ) {
       emitRequestError({
         code: normalized.code,
@@ -532,7 +543,7 @@ function normalizeRequestRawPayload(result: any): RequestResult {
   }
 
   if (isRuntimeResponseFrame(result)) {
-    return normalizeRuntimeResponseFrame(result)
+    return normalizeRuntimeResponseFrame(result, options)
   }
 
   return result as RequestResult
@@ -591,7 +602,10 @@ function isRuntimeResponseFrame(value: unknown) {
   )
 }
 
-function normalizeRuntimeResponseFrame(result: any): RequestResult {
+function normalizeRuntimeResponseFrame(
+  result: any,
+  options?: RequestOptions
+): RequestResult {
   const normalized: RequestResult = {
     code: Number(result.status) === 1 ? 0 : Number(result.code ?? -1),
     data: result,
@@ -599,7 +613,10 @@ function normalizeRuntimeResponseFrame(result: any): RequestResult {
   }
 
   if (Number(result.status) === 2 && normalized.message) {
-    if (!isAuthRequiredResult(normalized)) {
+    if (
+      !isAuthRequiredResult(normalized) &&
+      shouldReportRequestError(options)
+    ) {
       emitRequestError({
         code: normalized.code,
         message: normalized.message,
@@ -608,6 +625,10 @@ function normalizeRuntimeResponseFrame(result: any): RequestResult {
   }
 
   return normalized
+}
+
+function shouldReportRequestError(options?: RequestOptions) {
+  return options?.reportError !== false
 }
 
 function parseResponseBody(rawText: string) {

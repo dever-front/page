@@ -1,4 +1,9 @@
-import { joinFrontApi, request, requestBlob } from './request'
+import {
+  joinFrontApi,
+  request,
+  requestBlob,
+  type RequestOptions,
+} from './request'
 import { runRuntimeStream } from './runtime-stream-runner'
 import { streamValueText, type RuntimeStreamFrame } from './stream'
 import { digestUploadFile } from './upload-hash'
@@ -32,6 +37,7 @@ export type UploadRequestOptions = {
   bizName?: string
   categoryId?: string | number
   transport?: string
+  reportError?: boolean
   onProgress?: (loaded: number, total: number) => void
 }
 
@@ -90,12 +96,18 @@ export async function uploadFileByRule(
   let initResult = await request(
     joinFrontApi('upload/init'),
     'post',
-    initPayload
+    initPayload,
+    uploadRequestOptions(options)
   )
   if (shouldRetryInitWithHash(initResult, hash)) {
     hash = await digestUploadFile(file)
     initPayload = buildUploadInitPayload(ruleId, file, hash, options)
-    initResult = await request(joinFrontApi('upload/init'), 'post', initPayload)
+    initResult = await request(
+      joinFrontApi('upload/init'),
+      'post',
+      initPayload,
+      uploadRequestOptions(options)
+    )
   }
   if (initResult.code !== 0 || !initResult.data) {
     throw new Error(initResult.message || '初始化上传失败')
@@ -114,7 +126,7 @@ export async function uploadFileByRule(
     }
     await uploadFileDirect(file, sessionPayload.direct, options?.onProgress)
   } else {
-    await uploadFileByRelay(file, sessionPayload, options?.onProgress)
+    await uploadFileByRelay(file, sessionPayload, options)
   }
 
   const completeResult = await request(
@@ -123,7 +135,8 @@ export async function uploadFileByRule(
     {
       session_id: sessionPayload.session_id,
       token: sessionPayload.token,
-    }
+    },
+    uploadRequestOptions(options)
   )
   if (completeResult.code !== 0 || !completeResult.data) {
     throw new Error(completeResult.message || '完成上传失败')
@@ -170,7 +183,8 @@ export async function importRemoteFileByRule(
   const result = await request(
     joinFrontApi('upload/import_url'),
     'post',
-    buildImportRemotePayload(ruleId, url, options)
+    buildImportRemotePayload(ruleId, url, options),
+    uploadRequestOptions(options)
   )
   if (result.code !== 0 || !result.data) {
     throw new Error(result.message || '保存资源失败')
@@ -390,7 +404,7 @@ export async function downloadUploadFile(item: UploadFileItem) {
 async function uploadFileByRelay(
   file: File,
   payload: UploadSessionInitPayload,
-  onProgress?: (loaded: number, total: number) => void
+  options?: UploadRequestOptions
 ) {
   const chunkSize = Math.max(Number(payload.chunk_size || file.size || 1), 1)
   let loaded = 0
@@ -408,15 +422,22 @@ async function uploadFileByRelay(
         `upload/part?session_id=${payload.session_id}&part_number=${index + 1}`
       ),
       'post',
-      formData
+      formData,
+      uploadRequestOptions(options)
     )
     if (result.code !== 0) {
       throw new Error(result.message || '上传分片失败')
     }
 
     loaded = end
-    onProgress?.(loaded, file.size)
+    options?.onProgress?.(loaded, file.size)
   }
+}
+
+function uploadRequestOptions(
+  options?: Pick<UploadRequestOptions, 'reportError'>
+): RequestOptions | undefined {
+  return options?.reportError === false ? { reportError: false } : undefined
 }
 
 export async function uploadFileDirect(

@@ -12,6 +12,7 @@ type FrontPluginRuntimeGlobal = {
 type RuntimeManifestEntry = {
   file?: string
   css?: string[]
+  compat?: string[]
   isEntry?: boolean
   module?: boolean
 }
@@ -25,7 +26,7 @@ declare global {
 const runtimeNodes: NodeComponentRegistry = {}
 const runtimeNodeLoadErrors = new Map<string, string>()
 const loadingPlugins = new Map<string, Promise<void>>()
-let sdkPromise: Promise<void> | null = null
+let sdkModulePromise: Promise<typeof import('./sdk-compat')> | null = null
 
 export function getRuntimePluginNodes() {
   return runtimeNodes
@@ -135,12 +136,12 @@ async function loadRuntimePluginWithDependencies(
 
 async function loadRuntimePlugin(plugin: RuntimePluginConfig) {
   installRuntimeGlobal()
-  await ensureRuntimeSDK()
 
   const entry = plugin.entry
     ? {
         file: plugin.entry,
         css: plugin.css,
+        compat: plugin.compat,
         module: plugin.module,
       }
     : await loadManifestEntry(plugin.manifest || '')
@@ -150,6 +151,7 @@ async function loadRuntimePlugin(plugin: RuntimePluginConfig) {
       `插件 ${plugin.name || plugin.manifest || plugin.entry} 缺少前端入口`
     )
   }
+  await ensureRuntimeSDK(entry.compat)
 
   const baseUrl = plugin.manifest
     ? plugin.manifest.slice(0, plugin.manifest.lastIndexOf('/') + 1)
@@ -172,11 +174,15 @@ async function loadManifestEntry(manifestUrl: string) {
     throw new Error(`插件 manifest 加载失败(${response.status})`)
   }
 
-  const entry = findManifestEntry(await response.json())
+  const manifest = await response.json()
+  const entry = findManifestEntry(manifest)
   if (!entry?.file) {
     throw new Error('插件 manifest 缺少入口文件')
   }
-  return entry
+  return {
+    ...entry,
+    compat: manifestCompatSources(manifest),
+  }
 }
 
 function runtimePluginConfigs() {
@@ -194,18 +200,16 @@ function pluginMatchesNodeTypes(
   return nodeTypes.some((type) => nodeSet.has(type))
 }
 
-export async function ensureRuntimeSDK() {
+export async function ensureRuntimeSDK(compat?: string[]) {
   installRuntimeGlobal()
-  if (window[GLOBAL_KEY]?.sdk) {
-    return
+  if (!sdkModulePromise) {
+    sdkModulePromise = import('./sdk-compat')
   }
-  if (!sdkPromise) {
-    sdkPromise = import('./sdk-compat').then(({ createFrontPluginSDK }) => {
-      installRuntimeGlobal()
-      window[GLOBAL_KEY]!.sdk = createFrontPluginSDK()
-    })
+  const sdkModule = await sdkModulePromise
+  if (!window[GLOBAL_KEY]?.sdk) {
+    window[GLOBAL_KEY]!.sdk = sdkModule.createFrontPluginSDK()
   }
-  await sdkPromise
+  await sdkModule.ensureCompatModules(compat)
 }
 
 function runtimePluginKey(plugin: RuntimePluginConfig) {
@@ -226,6 +230,24 @@ function findManifestEntry(
     entries.find((entry) => entry?.isEntry) ||
     entries.find((entry) => String(entry?.file || '').endsWith('.js'))
   )
+}
+
+function manifestCompatSources(manifest: unknown) {
+  if (!manifest || typeof manifest !== 'object') {
+    return undefined
+  }
+  const metadata = (manifest as Record<string, unknown>).__plugin
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return undefined
+  }
+  if (!Object.prototype.hasOwnProperty.call(metadata, 'compat')) {
+    return undefined
+  }
+  const compat = (metadata as Record<string, unknown>).compat
+  if (!Array.isArray(compat)) {
+    return undefined
+  }
+  return uniqueStrings(compat.map((source) => String(source || '')))
 }
 
 function resolveRuntimeAsset(baseUrl: string, file: string) {

@@ -1,58 +1,91 @@
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { getSiteConfig } from '@/config/app-config'
-import * as authStoreModule from '@/stores/auth-store'
-import * as themeProviderModule from '@/context/theme-provider'
-import * as agentResultProtocolModule from '@/lib/agent-result-protocol'
-import * as agentRunnerModule from '@/lib/agent/runner'
-import * as assistantContextModule from '@/lib/assistant/context'
-import * as assistantReferenceModule from '@/lib/assistant/reference'
-import * as authRedirectModule from '@/lib/auth-redirect'
-import * as floatingLayerModule from '@/lib/floating-layer'
-import * as iconModule from '@/lib/icon'
-import * as pageSchemaReloadModule from '@/lib/page-schema-reload'
-import * as requestModule from '@/lib/request'
-import * as resourceModule from '@/lib/resource'
-import * as runtimeStreamOutputModule from '@/lib/runtime-stream-output'
-import * as runtimeStreamRunnerModule from '@/lib/runtime-stream-runner'
-import * as storeModule from '@/lib/store'
-import * as streamModule from '@/lib/stream'
-import * as uploadModule from '@/lib/upload'
-import * as utilsModule from '@/lib/utils'
-import * as richTextHtmlModule from '@/lib/rich-text-html'
-import * as uploadRuleMetasModule from '@/hooks/use-upload-rule-metas'
-import { Button, buttonVariants } from '@/components/ui/button'
-import * as cardModule from '@/components/ui/card'
-import * as dialogModule from '@/components/ui/dialog'
-import * as dropdownMenuModule from '@/components/ui/dropdown-menu'
-import * as inputModule from '@/components/ui/input'
-import * as radioGroupModule from '@/components/ui/radio-group'
-import * as selectModule from '@/components/ui/select'
-import * as sheetModule from '@/components/ui/sheet'
-import * as switchModule from '@/components/ui/switch'
-import * as tableModule from '@/components/ui/table'
-import * as textareaModule from '@/components/ui/textarea'
-import * as formDateModule from '@/page/nodes/form/date'
-import * as formIconModule from '@/page/nodes/form/icon'
-import * as formUploadModule from '@/page/nodes/form/upload'
-import * as tableInlineEditModule from '@/page/nodes/show/table/inline-edit'
-import * as showTooltipModule from '@/page/nodes/show/tooltip'
-import * as agentInteractionPanelModule from '@/components/agent/interaction-panel'
-import * as agentStreamRequestParamsModule from '@/components/agent/stream-request-params'
-import * as assistantFormActionsModule from '@/components/assistant/form-actions'
-import * as assistantMemoryDialogModule from '@/components/assistant/memory-dialog'
-import * as assistantReferencePickerModule from '@/components/assistant/reference-picker'
-import * as assistantSessionHistoryDialogModule from '@/components/assistant/session-history-dialog'
-import * as assistantTaskPopoverModule from '@/components/assistant/task-popover'
-import * as confirmDialogModule from '@/components/confirm-dialog'
-import * as energonContentViewModule from '@/components/energon/content-view'
-import * as energonProgressModule from '@/components/energon/progress'
-import * as siteLogoModule from '@/components/layout/site-logo'
-import * as richTextEditorModule from '@/components/rich-text-editor'
-import * as richTextViewModule from '@/components/rich-text-view'
-import * as referenceComposerModule from '@/components/reference-composer'
-import * as searchableOptionPickerModule from '@/components/searchable-option-picker'
-import * as streamTimingModule from '@/components/stream-timing'
 import { defineFrontPlugin, lazyNode, mergePluginNodes } from './types'
+
+type CompatModule = Record<string, any>
+type CompatModuleLoader = () => Promise<unknown>
+
+const compatModuleLoaders = {
+  '@/components/agent/interaction-panel': () =>
+    import('@/components/agent/interaction-panel'),
+  '@/components/agent/stream-request-params': () =>
+    import('@/components/agent/stream-request-params'),
+  '@/components/assistant/form-actions': () =>
+    import('@/components/assistant/form-actions'),
+  '@/components/assistant/memory-dialog': () =>
+    import('@/components/assistant/memory-dialog'),
+  '@/components/assistant/reference-picker': () =>
+    import('@/components/assistant/reference-picker'),
+  '@/components/assistant/session-history-dialog': () =>
+    import('@/components/assistant/session-history-dialog'),
+  '@/components/assistant/task-popover': () =>
+    import('@/components/assistant/task-popover'),
+  '@/components/confirm-dialog': () => import('@/components/confirm-dialog'),
+  '@/components/energon/content-view': () =>
+    import('@/components/energon/content-view'),
+  '@/components/energon/progress': () =>
+    import('@/components/energon/progress'),
+  '@/components/layout/site-logo': () =>
+    import('@/components/layout/site-logo'),
+  '@/components/reference-composer': () =>
+    import('@/components/reference-composer'),
+  '@/components/rich-text-editor': () =>
+    import('@/components/rich-text-editor'),
+  '@/components/rich-text-view': () => import('@/components/rich-text-view'),
+  '@/components/searchable-option-picker': () =>
+    import('@/components/searchable-option-picker'),
+  '@/components/stream-timing': () => import('@/components/stream-timing'),
+  '@/components/ui/button': () => import('@/components/ui/button'),
+  '@/components/ui/card': () => import('@/components/ui/card'),
+  '@/components/ui/dialog': () => import('@/components/ui/dialog'),
+  '@/components/ui/dropdown-menu': () =>
+    import('@/components/ui/dropdown-menu'),
+  '@/components/ui/input': () => import('@/components/ui/input'),
+  '@/components/ui/radio-group': () => import('@/components/ui/radio-group'),
+  '@/components/ui/select': () => import('@/components/ui/select'),
+  '@/components/ui/sheet': () => import('@/components/ui/sheet'),
+  '@/components/ui/switch': () => import('@/components/ui/switch'),
+  '@/components/ui/table': () => import('@/components/ui/table'),
+  '@/components/ui/textarea': () => import('@/components/ui/textarea'),
+  '@/config/app-config': () =>
+    import('@/config/app-config').then(({ getSiteConfig }) => ({ getSiteConfig })),
+  '@/context/theme-provider': () => import('@/context/theme-provider'),
+  '@/hooks/use-upload-rule-metas': () =>
+    import('@/hooks/use-upload-rule-metas'),
+  '@/lib/agent-result-protocol': () => import('@/lib/agent-result-protocol'),
+  '@/lib/agent/runner': () => import('@/lib/agent/runner'),
+  '@/lib/assistant/context': () => import('@/lib/assistant/context'),
+  '@/lib/assistant/reference': () => import('@/lib/assistant/reference'),
+  '@/lib/auth-redirect': () => import('@/lib/auth-redirect'),
+  '@/lib/floating-layer': () => import('@/lib/floating-layer'),
+  '@/lib/icon': () => import('@/lib/icon'),
+  '@/lib/page-data-reload': () => import('@/lib/page-data-reload'),
+  '@/lib/page-schema-reload': () => import('@/lib/page-schema-reload'),
+  '@/lib/plugin/types': async () => ({
+    defineFrontPlugin,
+    lazyNode,
+    mergePluginNodes,
+  }),
+  '@/lib/request': () => import('@/lib/request'),
+  '@/lib/resource': () => import('@/lib/resource'),
+  '@/lib/rich-text-html': () => import('@/lib/rich-text-html'),
+  '@/lib/runtime-stream-output': () => import('@/lib/runtime-stream-output'),
+  '@/lib/runtime-stream-runner': () => import('@/lib/runtime-stream-runner'),
+  '@/lib/store': () => import('@/lib/store'),
+  '@/lib/stream': () => import('@/lib/stream'),
+  '@/lib/upload': () => import('@/lib/upload'),
+  '@/lib/utils': () => import('@/lib/utils'),
+  '@/page/nodes/form/date': () => import('@/page/nodes/form/date'),
+  '@/page/nodes/form/icon': () => import('@/page/nodes/form/icon'),
+  '@/page/nodes/form/upload': () => import('@/page/nodes/form/upload'),
+  '@/page/nodes/show/table/inline-edit': () =>
+    import('@/page/nodes/show/table/inline-edit'),
+  '@/page/nodes/show/tooltip': () => import('@/page/nodes/show/tooltip'),
+  '@/page/nodes': async () => ({}),
+  '@/stores/auth-store': () => import('@/stores/auth-store'),
+} satisfies Record<string, CompatModuleLoader>
+
+const compatModules = new Map<string, CompatModule>()
+const loadingCompatModules = new Map<string, Promise<void>>()
 
 export type FrontPluginSDK = {
   defineFrontPlugin: typeof defineFrontPlugin
@@ -60,11 +93,10 @@ export type FrontPluginSDK = {
   mergePluginNodes: typeof mergePluginNodes
   useNavigate: typeof useNavigate
   useSearch: typeof useSearch
-  getCompatModule: (path: string) => Record<string, any>
+  getCompatModule: (path: string) => CompatModule
 }
 
 export function createFrontPluginSDK(): FrontPluginSDK {
-  const modules = createCompatModules()
   return {
     defineFrontPlugin,
     lazyNode,
@@ -72,72 +104,57 @@ export function createFrontPluginSDK(): FrontPluginSDK {
     useNavigate,
     useSearch,
     getCompatModule(path) {
-      return modules[path] || {}
+      return compatModules.get(normalizeCompatSource(path)) || {}
     },
   }
 }
 
-function createCompatModules(): Record<string, Record<string, any>> {
-  return {
-    '@/components/agent/interaction-panel': agentInteractionPanelModule,
-    '@/components/agent/stream-request-params': agentStreamRequestParamsModule,
-    '@/components/assistant/form-actions': assistantFormActionsModule,
-    '@/components/assistant/memory-dialog': assistantMemoryDialogModule,
-    '@/components/assistant/reference-picker': assistantReferencePickerModule,
-    '@/components/assistant/session-history-dialog':
-      assistantSessionHistoryDialogModule,
-    '@/components/assistant/task-popover': assistantTaskPopoverModule,
-    '@/components/confirm-dialog': confirmDialogModule,
-    '@/components/energon/content-view': energonContentViewModule,
-    '@/components/energon/progress': energonProgressModule,
-    '@/components/layout/site-logo': siteLogoModule,
-    '@/components/rich-text-editor': richTextEditorModule,
-    '@/components/rich-text-view': richTextViewModule,
-    '@/components/reference-composer': referenceComposerModule,
-    '@/components/searchable-option-picker': searchableOptionPickerModule,
-    '@/components/stream-timing': streamTimingModule,
-    '@/components/ui/button': { Button, buttonVariants },
-    '@/components/ui/card': cardModule,
-    '@/components/ui/dialog': dialogModule,
-    '@/components/ui/dropdown-menu': dropdownMenuModule,
-    '@/components/ui/input': inputModule,
-    '@/components/ui/radio-group': radioGroupModule,
-    '@/components/ui/select': selectModule,
-    '@/components/ui/sheet': sheetModule,
-    '@/components/ui/switch': switchModule,
-    '@/components/ui/table': tableModule,
-    '@/components/ui/textarea': textareaModule,
-    '@/config/app-config': { getSiteConfig },
-    '@/context/theme-provider': themeProviderModule,
-    '@/hooks/use-upload-rule-metas': uploadRuleMetasModule,
-    '@/lib/agent-result-protocol': agentResultProtocolModule,
-    '@/lib/agent/runner': agentRunnerModule,
-    '@/lib/assistant/context': assistantContextModule,
-    '@/lib/assistant/reference': assistantReferenceModule,
-    '@/lib/auth-redirect': authRedirectModule,
-    '@/lib/floating-layer': floatingLayerModule,
-    '@/lib/icon': iconModule,
-    '@/lib/page-schema-reload': pageSchemaReloadModule,
-    '@/lib/plugin/types': {
-      defineFrontPlugin,
-      lazyNode,
-      mergePluginNodes,
-    },
-    '@/lib/request': requestModule,
-    '@/lib/rich-text-html': richTextHtmlModule,
-    '@/lib/resource': resourceModule,
-    '@/lib/runtime-stream-output': runtimeStreamOutputModule,
-    '@/lib/runtime-stream-runner': runtimeStreamRunnerModule,
-    '@/lib/store': storeModule,
-    '@/lib/stream': streamModule,
-    '@/lib/upload': uploadModule,
-    '@/lib/utils': utilsModule,
-    '@/page/nodes/form/date': formDateModule,
-    '@/page/nodes/form/icon': formIconModule,
-    '@/page/nodes/form/upload': formUploadModule,
-    '@/page/nodes/show/table/inline-edit': tableInlineEditModule,
-    '@/page/nodes/show/tooltip': showTooltipModule,
-    '@/page/nodes': {},
-    '@/stores/auth-store': authStoreModule,
+export async function ensureCompatModules(sources?: string[]) {
+  // Legacy manifests have no dependency metadata and must retain the old
+  // load-all behavior. An explicit empty list means the plugin needs none.
+  const targets =
+    sources === undefined
+      ? Object.keys(compatModuleLoaders)
+      : uniqueCompatSources(sources)
+  await Promise.all(targets.map(ensureCompatModule))
+}
+
+async function ensureCompatModule(source: string) {
+  const normalizedSource = normalizeCompatSource(source)
+  if (compatModules.has(normalizedSource)) {
+    return
   }
+
+  const existing = loadingCompatModules.get(normalizedSource)
+  if (existing) {
+    await existing
+    return
+  }
+
+  const loader = compatModuleLoaders[
+    normalizedSource as keyof typeof compatModuleLoaders
+  ]
+  if (!loader) {
+    throw new Error(`宿主未注册兼容模块 ${normalizedSource}`)
+  }
+
+  const loading = loader().then((module) => {
+    compatModules.set(normalizedSource, module as CompatModule)
+  })
+  loadingCompatModules.set(normalizedSource, loading)
+  try {
+    await loading
+  } finally {
+    if (loadingCompatModules.get(normalizedSource) === loading) {
+      loadingCompatModules.delete(normalizedSource)
+    }
+  }
+}
+
+function uniqueCompatSources(sources: string[]) {
+  return Array.from(new Set(sources.map(normalizeCompatSource).filter(Boolean)))
+}
+
+function normalizeCompatSource(source: string) {
+  return String(source || '').trim()
 }

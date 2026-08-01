@@ -57,6 +57,7 @@ export type RuntimePluginConfig = {
   manifest?: string
   entry?: string
   css?: string[]
+  compat?: string[]
   nodes?: string[]
   depends?: string[]
   module?: boolean
@@ -386,6 +387,10 @@ function normalizeRuntimePlugin(
     manifest,
     entry,
     css: normalizeStringList(plugin.css),
+    compat:
+      plugin.compat === undefined
+        ? undefined
+        : normalizeStringList(plugin.compat),
     nodes: normalizeStringList(plugin.nodes),
     depends: normalizeStringList(plugin.depends),
     module: plugin.module === true,
