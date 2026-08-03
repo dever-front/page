@@ -22,11 +22,13 @@ import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
 import {
   buildDefaultParamValues,
   buildRequestInput,
+  filterActivePowerParams,
   isFileParam,
   isPromptParam,
   normalizePowerParams,
   paramFilesRequestValue,
   PowerParamPopover,
+  shouldDisplayPowerParam,
   validateMainParams,
   type ParamFileMap,
   type ParamValueMap,
@@ -116,25 +118,6 @@ export function ReferenceComposer({
     () => normalizePowerParams(parameters),
     [parameters]
   )
-  const fileParams = useMemo(
-    () => normalizedParams.filter(isFileParam),
-    [normalizedParams]
-  )
-  const toolbarParams = useMemo(
-    () =>
-      normalizedParams.filter((param) => {
-        const type = String(param.type || '')
-          .trim()
-          .toLowerCase()
-        return (
-          !isFileParam(param) &&
-          !isPromptParam(param) &&
-          type !== 'hidden' &&
-          type !== 'description'
-        )
-      }),
-    [normalizedParams]
-  )
   const clipboardImageRuleIds = useMemo(() => {
     const ruleId = Number(clipboardImageUploadRuleId || 0)
     return Number.isFinite(ruleId) && ruleId > 0 ? [Math.floor(ruleId)] : []
@@ -155,6 +138,39 @@ export function ReferenceComposer({
   const [attachmentCounts, setAttachmentCounts] = useState<
     Record<string, number>
   >({})
+  const activeParams = useMemo(
+    () => filterActivePowerParams(normalizedParams, paramValues),
+    [normalizedParams, paramValues]
+  )
+  const fileParams = useMemo(
+    () => activeParams.filter(isFileParam),
+    [activeParams]
+  )
+  const inactiveFileParamKeys = useMemo(() => {
+    const activeKeys = new Set(
+      fileParams.map((param) => String(param.key || '').trim()).filter(Boolean)
+    )
+    return normalizedParams
+      .filter(isFileParam)
+      .map((param) => String(param.key || '').trim())
+      .filter((key) => key && !activeKeys.has(key))
+  }, [fileParams, normalizedParams])
+  const toolbarParams = useMemo(
+    () =>
+      activeParams.filter((param) => {
+        const type = String(param.type || '')
+          .trim()
+          .toLowerCase()
+        return (
+          shouldDisplayPowerParam(param, normalizedParams) &&
+          !isFileParam(param) &&
+          !isPromptParam(param) &&
+          type !== 'hidden' &&
+          type !== 'description'
+        )
+      }),
+    [activeParams, normalizedParams]
+  )
   const submitRef = useRef<() => void>(() => undefined)
   const pasteClipboardImagesRef = useRef<(files: File[]) => boolean>(
     () => false
@@ -239,6 +255,35 @@ export function ReferenceComposer({
     setAttachmentCounts({})
     setMessage('')
   }, [normalizedParams])
+
+  useEffect(() => {
+    if (inactiveFileParamKeys.length === 0) {
+      return
+    }
+    const inactiveUsages = new Set(inactiveFileParamKeys)
+    if (editor) {
+      const currentDocument = editor.getJSON()
+      const nextDocument = removeReferenceUsages(
+        currentDocument,
+        inactiveUsages
+      )
+      if (nextDocument !== currentDocument) {
+        editor.commands.setContent(nextDocument)
+        setAttachmentCounts(referenceUsageCounts(nextDocument))
+      }
+    }
+    setAttachmentFiles((current) => {
+      const next = { ...current }
+      let changed = false
+      for (const key of inactiveUsages) {
+        if (key in next) {
+          delete next[key]
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+  }, [editor, inactiveFileParamKeys])
 
   useEffect(() => {
     editor?.setEditable(
@@ -1271,6 +1316,30 @@ function activeParamFiles(content: ReferenceContent, files: ParamFileMap) {
     result[key] = ids ? values.filter((file) => ids.has(String(file.id))) : []
   }
   return result
+}
+
+function removeReferenceUsages(
+  node: import('@tiptap/core').JSONContent,
+  inactiveUsages: Set<string>
+): import('@tiptap/core').JSONContent {
+  const content = node.content || []
+  if (content.length === 0) {
+    return node
+  }
+
+  let changed = false
+  const nextContent: import('@tiptap/core').JSONContent[] = []
+  for (const child of content) {
+    const usage = String(child.attrs?.usage || '').trim()
+    if (child.type === 'reference' && inactiveUsages.has(usage)) {
+      changed = true
+      continue
+    }
+    const nextChild = removeReferenceUsages(child, inactiveUsages)
+    changed = changed || nextChild !== child
+    nextContent.push(nextChild)
+  }
+  return changed ? { ...node, content: nextContent } : node
 }
 
 function referenceUsageCounts(document: import('@tiptap/core').JSONContent) {

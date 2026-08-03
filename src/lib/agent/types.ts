@@ -8,19 +8,36 @@ export type AgentInteractionOption = {
 
 export type AgentInteractionField = {
   id?: string | number
+  power_param_id?: string | number
+  powerParamId?: string | number
   key?: string
   name?: string
   label?: string
+  icon?: string
   type?: string
+  preview_type?: string
+  previewType?: string
+  usage?: number
   value_type?: string
+  valueType?: string
   default_value?: unknown
+  defaultValue?: unknown
   default?: unknown
   value?: unknown
   placeholder?: string
+  active_when_key?: string
+  activeWhenKey?: string
+  active_when_value?: string
+  activeWhenValue?: string
   required?: boolean
   upload_rule_id?: string | number
   uploadRuleId?: string | number
   max_files?: number
+  maxFiles?: number
+  accepted_kinds?: string[]
+  acceptedKinds?: string[]
+  asset_kinds?: string[]
+  assetKinds?: string[]
   multiple?: boolean
   sort?: number
   options?: AgentInteractionOption[]
@@ -38,6 +55,8 @@ export type AgentInteraction = {
   description?: string
   presentation?: string
   power?: string
+  source_target_id?: string | number
+  sourceTargetId?: string | number
   fields?: AgentInteractionField[]
   values?: Record<string, unknown>
   default_values?: Record<string, unknown>

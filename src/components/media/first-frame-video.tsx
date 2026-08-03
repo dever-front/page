@@ -56,7 +56,9 @@ export function FirstFrameVideo({
 
   function handleLoadedData(event: SyntheticEvent<HTMLVideoElement>) {
     onLoadedData?.(event)
-    notifyFirstFrameReady(event.currentTarget)
+    const video = event.currentTarget
+    seekToFirstFrame(video)
+    notifyFirstFrameReady(video)
   }
 
   function handleSeeked(event: SyntheticEvent<HTMLVideoElement>) {

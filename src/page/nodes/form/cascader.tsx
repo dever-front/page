@@ -144,6 +144,7 @@ export function FormCascader({
   const fetchLevelOptions = useCallback(
     async (parentId: any, level: number) => {
       const childLevel = level > 0 && hasCascaderOptionSource(item.meta, true)
+      const leafField = String(item.meta?.leafField || 'leaf').trim() || 'leaf'
       const params = buildParams(parentId, level)
       const requestApi = sanitizeRouteOptionURL(api)
       const cacheKey = buildRemoteOptionCacheKey(requestApi, params)
@@ -168,7 +169,11 @@ export function FormCascader({
             return []
           }
 
-          const nextOptions = normalizeRemoteOptions(result.data, childLevel)
+          const nextOptions = normalizeRemoteOptions(
+            result.data,
+            childLevel,
+            leafField
+          )
           setCachedRemoteOptionResult(cacheKey, nextOptions)
           return nextOptions
         })
@@ -357,6 +362,17 @@ export function FormCascader({
   const allowWrap = item.meta?.wrap !== false
   const hasVisibleLevels = displayLevels.some((options) => options.length > 0)
 
+  const clearLevelValue = (level: number) => {
+    const nextValues = selectedValues.slice(0, level)
+    if (leafValueMode) {
+      setLeafPathValues(nextValues)
+      keepParentOnEmptyRef.current = nextValues.length > 0
+      setValue('')
+      return
+    }
+    setValue(nextValues)
+  }
+
   return (
     <div
       className={cn(
@@ -407,6 +423,7 @@ export function FormCascader({
               emptyText='未找到匹配选项'
               disabled={!!item.meta?.disabled}
               error={!!error}
+              onClear={() => clearLevelValue(level)}
               className={cn(
                 'w-[14rem] max-w-full min-w-[10rem]',
                 item.meta?.controlClassName
@@ -579,18 +596,24 @@ function buildSelectedLeafPathCacheKey(
 
 function normalizeRemoteOptions(
   rows: any[],
-  childLevel: boolean
+  childLevel: boolean,
+  leafField: string
 ): CascaderOption[] {
-  return rows.map((current: any) => ({
-    ...current,
-    id: current?.id,
-    value: String(current?.value ?? ''),
-    leaf:
-      childLevel ||
-      current?.leaf === true ||
-      current?.leaf === 1 ||
-      current?.leaf === '1',
-  }))
+  return rows.map((current: any) => {
+    const hasExplicitLeaf = Object.prototype.hasOwnProperty.call(
+      current || {},
+      leafField
+    )
+    const leafValue = current?.[leafField]
+    return {
+      ...current,
+      id: current?.id,
+      value: String(current?.value ?? ''),
+      leaf: hasExplicitLeaf
+        ? leafValue === true || leafValue === 1 || leafValue === '1'
+        : childLevel,
+    }
+  })
 }
 
 function resolveRowRelation(

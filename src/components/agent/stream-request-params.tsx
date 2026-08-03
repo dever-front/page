@@ -41,6 +41,7 @@ import {
   isParamOptionSelected,
   normalizeParamPreviewType,
   paramOptionRequestValue,
+  resolveParamOption,
 } from './power-param-option-dialog'
 
 export {
@@ -48,6 +49,7 @@ export {
   isParamOptionSelected,
   normalizeParamPreviewType,
   paramOptionRequestValue,
+  resolveParamOption,
 } from './power-param-option-dialog'
 
 const PARAM_USAGE_MAIN = 1
@@ -75,6 +77,8 @@ export type PowerParam = {
   usage: number
   value_type: string
   default_value?: string
+  active_when_key?: string
+  active_when_value?: string
   placeholder?: string
   required?: boolean
   upload_rule_id?: string | number
@@ -696,7 +700,7 @@ function SingleOptionControl({
       {options.map((option) => {
         const optionID = String(option.id)
         const optionValue = optionRequestValue(option)
-        const checked = isSelectedOptionValue(option, [selected])
+        const checked = isSelectedOptionValue(option, [selected], options)
         return (
           <Button
             key={optionID}
@@ -769,7 +773,7 @@ function MultiOptionControl({
       {options.map((option) => {
         const optionID = String(option.id)
         const optionValue = optionRequestValue(option)
-        const checked = isSelectedOptionValue(option, selected)
+        const checked = isSelectedOptionValue(option, selected, options)
         return (
           <label
             key={optionID}
@@ -789,7 +793,8 @@ function MultiOptionControl({
                 }
                 onChange(
                   selected.filter(
-                    (current) => !isSelectedOptionValue(option, [current])
+                    (current) =>
+                      !isSelectedOptionValue(option, [current], options)
                   )
                 )
               }}
@@ -1133,7 +1138,10 @@ export function buildRequestInput(
 ): Record<string, unknown> {
   const input: Record<string, unknown> = {}
   for (const param of params) {
-    if (isDisplayOnlyParam(param)) {
+    if (
+      isDisplayOnlyParam(param) ||
+      !isPowerParamActive(param, params, values)
+    ) {
       continue
     }
     const key = inputKeyForParam(param)
@@ -1154,7 +1162,11 @@ export function validateMainParams(
   values: ParamValueMap
 ) {
   for (const param of params) {
-    if (!isRequiredParam(param) || isDisplayOnlyParam(param)) {
+    if (
+      !isRequiredParam(param) ||
+      isDisplayOnlyParam(param) ||
+      !isPowerParamActive(param, params, values)
+    ) {
       continue
     }
     const key = inputKeyForParam(param)
@@ -1233,6 +1245,100 @@ export function isHiddenParam(param: PowerParam) {
   return normalizeParamType(param.type) === 'hidden'
 }
 
+type ConditionalPowerParam = {
+  key?: string
+  default_value?: string
+  active_when_key?: string
+  active_when_value?: string
+  options?: PowerParamOption[]
+}
+
+export function isPowerParamActive<T extends ConditionalPowerParam>(
+  param: T,
+  params: T[],
+  values: ParamValueMap
+) {
+  const conditionKey = String(param.active_when_key || '').trim()
+  const expectedValue = String(param.active_when_value || '').trim()
+  if (!conditionKey || !expectedValue) {
+    return true
+  }
+
+  const controller = params.find(
+    (candidate) =>
+      String(candidate.key || '').trim().toLowerCase() ===
+      conditionKey.toLowerCase()
+  )
+  if (!controller) {
+    return false
+  }
+  const actualValue = powerParamConditionValue(controller, values)
+  return (
+    normalizePowerParamConditionOption(
+      controller,
+      actualValue
+    ).toLowerCase() ===
+    normalizePowerParamConditionOption(controller, expectedValue).toLowerCase()
+  )
+}
+
+export function filterActivePowerParams<T extends ConditionalPowerParam>(
+  params: T[],
+  values: ParamValueMap
+) {
+  return params.filter((param) => isPowerParamActive(param, params, values))
+}
+
+export function isPowerParamConditionController<
+  T extends ConditionalPowerParam,
+>(param: T, params: T[]) {
+  const key = String(param.key || '').trim().toLowerCase()
+  return Boolean(
+    key &&
+      params.some(
+        (candidate) =>
+          String(candidate.active_when_key || '').trim().toLowerCase() === key
+      )
+  )
+}
+
+export function shouldDisplayPowerParam<T extends ConditionalPowerParam>(
+  param: T,
+  params: T[]
+) {
+  return !(
+    isPowerParamConditionController(param, params) &&
+    (param.options || []).length === 1
+  )
+}
+
+function powerParamConditionValue(
+  controller: ConditionalPowerParam,
+  values: ParamValueMap
+) {
+  const key = String(controller.key || '').trim()
+  if (key && Object.prototype.hasOwnProperty.call(values, key)) {
+    return values[key]
+  }
+  const configuredDefault = String(controller.default_value || '').trim()
+  const options = controller.options || []
+  if (configuredDefault) {
+    const matched = resolveParamOption(options, configuredDefault)
+    if (matched) {
+      return optionRequestValue(matched)
+    }
+  }
+  return options[0] ? optionRequestValue(options[0]) : configuredDefault
+}
+
+function normalizePowerParamConditionOption(
+  controller: ConditionalPowerParam,
+  value: unknown
+) {
+  const matched = resolveParamOption(controller.options || [], value)
+  return String(matched ? optionRequestValue(matched) : value ?? '').trim()
+}
+
 function isDescriptionParam(param: PowerParam) {
   return normalizeParamType(param.type) === 'description'
 }
@@ -1289,6 +1395,8 @@ function normalizePowerParam(row: unknown): PowerParam | null {
     usage: normalizeParamUsage(row.usage),
     value_type: normalizeValueType(row.value_type),
     default_value: valueText(row.default_value),
+    active_when_key: valueText(row.active_when_key),
+    active_when_value: valueText(row.active_when_value),
     placeholder: valueText(row.placeholder),
     required: normalizeRequiredFlag(row.required),
     upload_rule_id: row.upload_rule_id,
@@ -1343,9 +1451,7 @@ function optionDefaultValue(param: PowerParam, value: string) {
   if (options.length === 0) {
     return value || undefined
   }
-  const matched = options.find((option) =>
-    isSelectedOptionValue(option, [value])
-  )
+  const matched = resolveParamOption(options, value)
   return optionRequestValue(matched || options[0])
 }
 
@@ -1487,9 +1593,7 @@ function optionDisplayLabels(
   }
   return selectedValues
     .map((value) => {
-      const option = options.find((current) =>
-        isSelectedOptionValue(current, [value])
-      )
+      const option = resolveParamOption(options, value)
       return option?.value || (fallbackToRaw ? String(value).trim() : '')
     })
     .filter((label) => label !== '')
@@ -1498,9 +1602,7 @@ function optionDisplayLabels(
 function optionRequestValues(param: PowerParam, value: unknown) {
   const options = param.options || []
   return normalizeStringArray(value).map((current) => {
-    const option = options.find((candidate) =>
-      isSelectedOptionValue(candidate, [current])
-    )
+    const option = resolveParamOption(options, current)
     return option ? optionRequestValue(option) : current
   })
 }
@@ -1518,9 +1620,10 @@ function optionPickerOptions(options: PowerParamOption[]) {
 
 export function isSelectedOptionValue(
   option: PowerParamOption,
-  values: string[]
+  values: string[],
+  options: PowerParamOption[] = [option]
 ) {
-  return isParamOptionSelected(option, values)
+  return isParamOptionSelected(option, values, options)
 }
 
 function paramLabel(param: PowerParam) {

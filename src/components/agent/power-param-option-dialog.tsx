@@ -52,9 +52,7 @@ export function PowerParamOptionDialog({
       stopAllAudio(audioElementsRef.current)
       return
     }
-    const selected = options.find((option) =>
-      isParamOptionSelected(option, [String(value ?? '')])
-    )
+    const selected = resolveParamOption(options, value)
     setDraftKey(selected ? paramPreviewOptionKey(selected) : '')
   }, [open, options, value])
 
@@ -313,17 +311,38 @@ export function paramOptionRequestValue(option: ParamPreviewOption) {
   )
 }
 
+export function resolveParamOption(
+  options: ParamPreviewOption[],
+  value: unknown
+) {
+  const normalizedValue = String(value ?? '').trim()
+  if (!normalizedValue) {
+    return undefined
+  }
+  // Match request-value fields across the full list before falling back to IDs.
+  const valueSelectors = [
+    (option: ParamPreviewOption) => option.native_value,
+    (option: ParamPreviewOption) => option.value,
+    (option: ParamPreviewOption) => option.name,
+    (option: ParamPreviewOption) => option.id,
+  ]
+  for (const selectValue of valueSelectors) {
+    const matched = options.find(
+      (option) => String(selectValue(option) ?? '').trim() === normalizedValue
+    )
+    if (matched) {
+      return matched
+    }
+  }
+  return undefined
+}
+
 export function isParamOptionSelected(
   option: ParamPreviewOption,
-  values: string[]
+  values: string[],
+  options: ParamPreviewOption[] = [option]
 ) {
-  const candidates = [
-    String(option.id),
-    String(option.native_value || '').trim(),
-    String(option.value || '').trim(),
-    String(option.name || '').trim(),
-  ].filter(Boolean)
-  return values.some((value) => candidates.includes(String(value).trim()))
+  return values.some((value) => resolveParamOption(options, value) === option)
 }
 
 function paramPreviewOptionKey(option: ParamPreviewOption) {

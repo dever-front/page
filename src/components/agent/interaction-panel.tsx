@@ -12,6 +12,7 @@ import {
   PowerParamField,
   buildDefaultParamValues,
   buildRequestInput,
+  filterActivePowerParams,
   inputKeyForParam,
   isHiddenParam,
   isPromptParam,
@@ -20,6 +21,7 @@ import {
   normalizePowerParams,
   paramFilesRequestValue,
   summarizeParamDisplayValue,
+  shouldDisplayPowerParam,
   validateMainParams,
   type ParamFileMap,
   type ParamUploadedFile,
@@ -77,21 +79,37 @@ export function AgentInteractionPanel({
   const isPowerParams = interactionType === 'power_params'
   const isStepper = normalizeText(interaction.presentation) === 'stepper'
   const formParams = useMemo(
-    () => normalizeInteractionFields(interaction.fields),
-    [interaction.fields]
+    () => (isPowerParams ? [] : normalizeInteractionFields(interaction.fields)),
+    [interaction.fields, isPowerParams]
+  )
+  const embeddedPowerParams = useMemo(
+    () => (isPowerParams ? normalizePowerParams(interaction.fields) : []),
+    [interaction.fields, isPowerParams]
   )
   const interactionValues = useMemo(
     () => normalizeInteractionValues(interaction),
     [interaction]
   )
-  const params = isPowerParams ? powerParams : formParams
+  const hasEmbeddedPowerParams = embeddedPowerParams.length > 0
+  const interactionSourceTargetID = normalizeInteractionSourceTargetID(
+    interaction,
+    interactionValues
+  )
+  const params = isPowerParams
+    ? hasEmbeddedPowerParams
+      ? embeddedPowerParams
+      : powerParams
+    : formParams
+  const resolvedPowerSourceTargetID =
+    interactionSourceTargetID ||
+    (hasEmbeddedPowerParams ? '' : powerSourceTargetID)
   const formKey = [
     interaction.id || '',
     interactionType,
     powerKey,
     readonly ? 'readonly' : 'edit',
     readonly ? JSON.stringify(initialData || {}) : '',
-    powerSourceTargetID,
+    resolvedPowerSourceTargetID,
     JSON.stringify(interactionValues),
     params.map((param) => `${param.id}:${param.key}`).join('|'),
   ].join(':')
@@ -99,7 +117,7 @@ export function AgentInteractionPanel({
   useEffect(() => {
     let cancelled = false
 
-    if (!isPowerParams) {
+    if (!isPowerParams || hasEmbeddedPowerParams) {
       return () => {
         cancelled = true
       }
@@ -120,6 +138,7 @@ export function AgentInteractionPanel({
       const result = await request(paramApi, 'get', {
         power: powerKey,
         include_sources: 1,
+        source_target_id: interactionSourceTargetID,
       })
       if (cancelled) {
         return
@@ -140,7 +159,13 @@ export function AgentInteractionPanel({
     return () => {
       cancelled = true
     }
-  }, [isPowerParams, paramApi, powerKey])
+  }, [
+    hasEmbeddedPowerParams,
+    interactionSourceTargetID,
+    isPowerParams,
+    paramApi,
+    powerKey,
+  ])
 
   return (
     <div
@@ -169,8 +194,8 @@ export function AgentInteractionPanel({
       <AgentInteractionParamForm
         key={formKey}
         params={params}
-        loading={isPowerParams ? loading : false}
-        loadError={isPowerParams ? loadError : ''}
+        loading={isPowerParams && !hasEmbeddedPowerParams ? loading : false}
+        loadError={isPowerParams && !hasEmbeddedPowerParams ? loadError : ''}
         powerKey={isPowerParams ? powerKey : ''}
         disabled={disabled}
         readonly={readonly}
@@ -181,8 +206,8 @@ export function AgentInteractionPanel({
         stepper={isStepper}
         allowCustomChoice={allowCustomChoice}
         extraData={
-          isPowerParams && powerSourceTargetID
-            ? { source_target_id: powerSourceTargetID }
+          isPowerParams && resolvedPowerSourceTargetID
+            ? { source_target_id: resolvedPowerSourceTargetID }
             : undefined
         }
         onSubmit={onSubmit}
@@ -225,19 +250,31 @@ function AgentInteractionParamForm({
   const [error, setError] = useState('')
   const autoSubmittedRef = useRef(false)
   const [paramValues, setParamValues] = useState<ParamValueMap>(() =>
-    buildInitialParamValues(params, initialValues)
+    buildInitialParamValues(
+      params,
+      readonly
+        ? {
+            ...normalizeRecord(initialValues),
+            ...normalizeRecord(initialData),
+          }
+        : initialValues
+    )
   )
   const [paramFiles, setParamFiles] = useState<ParamFileMap>({})
   const visibleParams = useMemo(
-    () => params.filter((param) => !isHiddenParam(param)),
-    [params]
+    () =>
+      filterActivePowerParams(params, paramValues).filter(
+        (param) =>
+          !isHiddenParam(param) && shouldDisplayPowerParam(param, params)
+      ),
+    [paramValues, params]
   )
   const uploadRuleIds = useMemo(
     () =>
-      params
+      visibleParams
         .map((param) => Number(param.upload_rule_id || 0))
         .filter((ruleId) => Number.isFinite(ruleId) && ruleId > 0),
-    [params]
+    [visibleParams]
   )
   const uploadRuleMetas = useUploadRuleMetas(uploadRuleIds)
 
@@ -514,6 +551,19 @@ function normalizeInteractionValues(
   )
 }
 
+function normalizeInteractionSourceTargetID(
+  interaction: AgentInteraction,
+  values: Record<string, unknown>
+) {
+  const value = normalizeText(
+    interaction.source_target_id ??
+      interaction.sourceTargetId ??
+      values.source_target_id ??
+      values.sourceTargetId
+  )
+  return value === '0' ? '' : value
+}
+
 function buildInitialParamValues(
   params: PowerParam[],
   initialValues?: Record<string, unknown>
@@ -655,25 +705,48 @@ function normalizeInteractionField(
 
   return {
     id: normalizeText(field.id || key) || `field_${index + 1}`,
+    power_param_id: normalizeID(
+      field.power_param_id ?? field.powerParamId
+    ),
     name: normalizeText(field.name || field.label || key),
     key,
+    icon: normalizeText(field.icon),
     type: controlType,
-    usage: 1,
+    usage: Number(field.usage || 1),
     preview_type: normalizeParamPreviewType(
       field.preview_type ?? field.previewType
     ),
     value_type: normalizeInteractionValueType(field),
     default_value: defaultValue,
+    active_when_key: normalizeText(
+      field.active_when_key ?? field.activeWhenKey
+    ),
+    active_when_value: normalizeText(
+      field.active_when_value ?? field.activeWhenValue
+    ),
     placeholder: normalizeText(field.placeholder),
     required: Boolean(field.required),
     upload_rule_id:
       normalizeID(field.upload_rule_id ?? field.uploadRuleId) ||
       defaultInteractionUploadRuleID(type, field),
-    max_files: Number(field.max_files || 0),
+    max_files: Number(field.max_files ?? field.maxFiles ?? 0),
+    asset_kinds: normalizeTextList(
+      field.asset_kinds ??
+        field.assetKinds ??
+        field.accepted_kinds ??
+        field.acceptedKinds
+    ),
     sort: Number(field.sort || index + 1),
     options,
     recommendedValues,
   }
+}
+
+function normalizeTextList(value: unknown) {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.map(normalizeText).filter(Boolean)
 }
 
 function normalizeRecommendedValues(

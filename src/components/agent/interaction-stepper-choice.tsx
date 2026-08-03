@@ -38,16 +38,17 @@ export function InteractionStepperChoice({
 }) {
   const multiple = param.type === 'multi_option'
   const selectedValues = normalizeSelectedValues(value)
-  const optionColumns = splitOptionColumns(param.options || [])
+  const options = param.options || []
+  const optionColumns = splitOptionColumns(options)
   const toggleOption = (option: PowerParamOption) => {
     const optionValue = optionRequestValue(option)
     if (!multiple) {
       onChange(optionValue)
       return
     }
-    const nextValues = isSelectedOptionValue(option, selectedValues)
+    const nextValues = isSelectedOptionValue(option, selectedValues, options)
       ? selectedValues.filter(
-          (current) => !isSelectedOptionValue(option, [current])
+          (current) => !isSelectedOptionValue(option, [current], options)
         )
       : [...selectedValues, optionValue]
     onChange(nextValues)
@@ -79,10 +80,15 @@ export function InteractionStepperChoice({
         {optionColumns.map((column, columnIndex) => (
           <div key={columnIndex} className='space-y-2'>
             {column.map((option) => {
-              const selected = isSelectedOptionValue(option, selectedValues)
+              const selected = isSelectedOptionValue(
+                option,
+                selectedValues,
+                options
+              )
               const recommended = isSelectedOptionValue(
                 option,
-                param.recommendedValues
+                param.recommendedValues,
+                options
               )
               return (
                 <button
