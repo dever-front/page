@@ -74,6 +74,7 @@ type UploadSessionInitPayload = {
   transport: string
   chunk_size: number
   chunk_total: number
+  mime: string
   direct?: UploadDirectPayload
 }
 
@@ -124,7 +125,12 @@ export async function uploadFileByRule(
     if (!sessionPayload.direct) {
       throw new Error('初始化上传结果缺少直传配置')
     }
-    await uploadFileDirect(file, sessionPayload.direct, options?.onProgress)
+    await uploadFileDirect(
+      file,
+      sessionPayload.direct,
+      options?.onProgress,
+      sessionPayload.mime
+    )
   } else {
     await uploadFileByRelay(file, sessionPayload, options)
   }
@@ -170,6 +176,7 @@ function normalizeUploadSessionInitPayload(
     transport,
     chunk_size: chunkSize,
     chunk_total: chunkTotal,
+    mime: String(payload.mime || '').trim(),
     direct: payload.direct,
   }
 }
@@ -443,7 +450,8 @@ function uploadRequestOptions(
 export async function uploadFileDirect(
   file: File,
   direct: UploadDirectPayload,
-  onProgress?: (loaded: number, total: number) => void
+  onProgress?: (loaded: number, total: number) => void,
+  mimeType?: string
 ) {
   const uploadURL = String(
     direct.uploadURL || direct.upload_url || direct.UploadURL || ''
@@ -458,7 +466,11 @@ export async function uploadFileDirect(
       formData.append(key, value)
     }
   )
-  formData.append('file', file, file.name)
+  const resolvedMimeType = String(mimeType || '').trim()
+  const uploadBody = resolvedMimeType
+    ? file.slice(0, file.size, resolvedMimeType)
+    : file
+  formData.append('file', uploadBody, file.name)
 
   const response = await fetch(uploadURL, {
     method: String(direct.method || direct.Method || 'post').toUpperCase(),

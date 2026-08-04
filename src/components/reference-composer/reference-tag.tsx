@@ -21,6 +21,7 @@ import type {
 
 type ReferenceTagProps = {
   label: string
+  alias?: string
   refType: ReferenceType
   refId: number
   trigger?: string
@@ -38,6 +39,7 @@ type ReferenceTagProps = {
 
 export function ReferenceTag({
   label,
+  alias = '',
   refType,
   refId,
   trigger,
@@ -78,7 +80,7 @@ export function ReferenceTag({
             data-disabled={disabled || undefined}
             tabIndex={disabled ? -1 : 0}
             aria-disabled={disabled || undefined}
-            aria-label={`引用：${displayLabel}`}
+            aria-label={`引用：${displayLabel}${alias ? `，${alias}` : ''}`}
             className={cn(
               'mx-1 inline-flex max-w-[min(22rem,78vw)] cursor-default items-center gap-1.5 rounded-md border border-slate-300/80 bg-slate-100/90 px-2 py-0.5 align-baseline text-[0.9em] leading-6 text-slate-800 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors select-none hover:border-slate-400 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-slate-400/45 focus-visible:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-700',
               selected && 'border-slate-500 ring-2 ring-slate-400/35',
@@ -87,6 +89,11 @@ export function ReferenceTag({
           >
             <ReferenceTagIcon kind={kind} url={thumbnail} />
             <span className='truncate'>{displayLabel}</span>
+            {alias ? (
+              <span className='shrink-0 border-l border-slate-300 pl-1.5 text-[0.78em] font-medium text-slate-500 dark:border-slate-600 dark:text-slate-300'>
+                {alias}
+              </span>
+            ) : null}
             {usageOptions.length > 1 ? (
               <select
                 className='reference-tag-usage'

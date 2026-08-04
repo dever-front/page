@@ -10,6 +10,7 @@ import type {
 export type ReferenceNodeOptions = {
   loadPreview?: ReferencePreviewLoader
   usageOptions?: ReferenceUsageOption[]
+  showMediaAliases?: boolean
   onDeleteReference?: (
     reference: Extract<ReferencePart, { type: 'reference' }>
   ) => void
@@ -31,6 +32,7 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
     return {
       loadPreview: undefined,
       usageOptions: [],
+      showMediaAliases: false,
       onDeleteReference: undefined,
       onUsageChange: undefined,
     }

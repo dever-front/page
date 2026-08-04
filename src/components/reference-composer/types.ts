@@ -188,6 +188,7 @@ export type ReferenceEditorProps = {
   ) => Promise<ReferenceLoadResult>
   loadPreview?: ReferencePreviewLoader
   usageOptions?: ReferenceUsageOption[]
+  showMediaAliases?: boolean
   pickerRequest?: ReferencePickerRequest
   onPickerRequestConsumed?: (requestID: ReferencePickerRequest['id']) => void
   onReferenceDelete?: (

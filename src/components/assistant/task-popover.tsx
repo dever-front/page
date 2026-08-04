@@ -54,6 +54,8 @@ type AssistantTaskPopoverProps = {
   loadingText?: string
   errorText?: string
   maxReferences?: number
+  referencesEnabled?: boolean
+  stoppable?: boolean
   onSubmit: (input: AssistantTaskPopoverSubmitInput) => Promise<boolean | void>
 }
 
@@ -75,6 +77,8 @@ export function AssistantTaskPopover({
   loadingText = '正在生成',
   errorText = 'AI 生成失败',
   maxReferences = DEFAULT_MAX_REFERENCES,
+  referencesEnabled = true,
+  stoppable = true,
   onSubmit,
 }: AssistantTaskPopoverProps) {
   const triggerRef = useRef<HTMLButtonElement | null>(null)
@@ -225,28 +229,34 @@ export function AssistantTaskPopover({
             disabled={running}
           />
 
-          <AssistantReferenceList
-            references={references}
-            disabled={running}
-            onRemove={removeReference}
-          />
-
-          <div className="flex items-center justify-between gap-2">
-            <div className="shrink-0">
-              <AssistantReferencePicker
+          {referencesEnabled ? (
+            <>
+              <AssistantReferenceList
                 references={references}
                 disabled={running}
-                maxFiles={maxReferences}
-                onReferencesChange={setReferences}
-                onMessage={setMessage}
+                onRemove={removeReference}
               />
-            </div>
-            {message ? (
-              <span className="min-w-0 truncate text-xs text-muted-foreground">
-                {message}
-              </span>
-            ) : null}
-          </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <div className="shrink-0">
+                  <AssistantReferencePicker
+                    references={references}
+                    disabled={running}
+                    maxFiles={maxReferences}
+                    onReferencesChange={setReferences}
+                    onMessage={setMessage}
+                  />
+                </div>
+                {message ? (
+                  <span className="min-w-0 truncate text-xs text-muted-foreground">
+                    {message}
+                  </span>
+                ) : null}
+              </div>
+            </>
+          ) : message ? (
+            <div className="text-xs text-muted-foreground">{message}</div>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t px-4 py-3">
@@ -263,11 +273,21 @@ export function AssistantTaskPopover({
             type="button"
             size="sm"
             className="gap-1.5"
-            disabled={disabled && !running}
-            onClick={(event) => (running ? stopSubmit(event) : void handleSubmit(event))}
+            disabled={running ? !stoppable : disabled}
+            onClick={(event) =>
+              running && stoppable ? stopSubmit(event) : void handleSubmit(event)
+            }
           >
-            {running ? <Square className="size-4" /> : <Sparkles className="size-4" />}
-            {running ? '停止' : submitLabel}
+            {running ? (
+              stoppable ? (
+                <Square className="size-4" />
+              ) : (
+                <Loader2 className="size-4 animate-spin" />
+              )
+            ) : (
+              <Sparkles className="size-4" />
+            )}
+            {running ? (stoppable ? '停止' : loadingText) : submitLabel}
           </Button>
         </div>
       </PopoverContent>

@@ -10,6 +10,10 @@ import type { ReferencePreviewHint } from './types'
 import { loadReferencePreview } from './reference-preview-cache'
 import { compatibleReferenceUsageOptions } from './reference-usage'
 import { referenceTrigger } from './text'
+import {
+  referenceAliasTargetKey,
+  referenceMediaAliases,
+} from './reference-alias'
 
 export function ReferenceNodeView({
   node,
@@ -18,6 +22,7 @@ export function ReferenceNodeView({
   updateAttributes,
   extension,
   editor,
+  getPos,
 }: NodeViewProps) {
   const refType = referenceTypeFromValue(node.attrs.refType)
   const refId = Number(node.attrs.refId || 0)
@@ -26,6 +31,11 @@ export function ReferenceNodeView({
   const versionId = Number(node.attrs.versionId || 0)
   const staticHint = referencePreviewHint(node.attrs)
   const options = extension.options as ReferenceNodeOptions
+  const alias = useReferenceNodeMediaAlias(
+    editor,
+    getPos,
+    Boolean(options.showMediaAliases)
+  )
   const loadPreview = options.loadPreview
   const loadedHint = useMissingPreviewHint({
     label,
@@ -71,6 +81,7 @@ export function ReferenceNodeView({
     >
       <ReferenceTag
         label={label}
+        alias={alias}
         refType={refType}
         refId={refId}
         trigger={trigger}
@@ -87,6 +98,58 @@ export function ReferenceNodeView({
       />
     </NodeViewWrapper>
   )
+}
+
+function useReferenceNodeMediaAlias(
+  editor: NodeViewProps['editor'],
+  getPos: NodeViewProps['getPos'],
+  enabled: boolean
+) {
+  const readAlias = useCallback(() => {
+    if (!enabled) {
+      return ''
+    }
+    let currentPosition = -1
+    try {
+      const position = getPos()
+      currentPosition = typeof position === 'number' ? position : -1
+    } catch {
+      return ''
+    }
+    const positions: number[] = []
+    const entries: Array<{
+      key: string
+      kind?: string
+      deferred?: boolean
+    }> = []
+    editor.state.doc.descendants((currentNode, position) => {
+      if (currentNode.type.name !== 'reference') {
+        return
+      }
+      positions.push(position)
+      entries.push({
+        key: referenceAliasTargetKey(currentNode.attrs),
+        kind: String(currentNode.attrs.previewKind || ''),
+        deferred:
+          String(currentNode.attrs.origin || '').trim().toLowerCase() ===
+          'edge',
+      })
+    })
+    const index = positions.indexOf(currentPosition)
+    return index >= 0 ? referenceMediaAliases(entries)[index] || '' : ''
+  }, [editor, enabled, getPos])
+  const [alias, setAlias] = useState(readAlias)
+
+  useEffect(() => {
+    const syncAlias = () => setAlias(readAlias())
+    syncAlias()
+    editor.on('transaction', syncAlias)
+    return () => {
+      editor.off('transaction', syncAlias)
+    }
+  }, [editor, readAlias])
+
+  return alias
 }
 
 function useReferenceNodeDisabled(editor: NodeViewProps['editor']) {

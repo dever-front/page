@@ -39,6 +39,10 @@ import { ReferencePicker } from './picker'
 import { ReferenceNode } from './reference-node'
 import { ReferenceTag } from './reference-tag'
 import {
+  referenceAliasTargetKey,
+  referenceMediaAliases,
+} from './reference-alias'
+import {
   compatibleReferenceUsageOptions,
   referenceUsageAvailable,
 } from './reference-usage'
@@ -681,6 +685,7 @@ export function ReferenceEditor({
   loadReferences,
   loadPreview,
   usageOptions = [],
+  showMediaAliases = false,
   pickerRequest,
   onPickerRequestConsumed,
   onReferenceDelete,
@@ -774,6 +779,7 @@ export function ReferenceEditor({
       placeholder,
       (request) => loadPreviewRef.current(request),
       usageOptions,
+      showMediaAliases,
       (reference) => onReferenceDeleteRef.current?.(reference),
       (reference, usage) =>
         onReferenceUsageChangeRef.current?.(reference, usage)
@@ -1193,6 +1199,7 @@ function referenceEditorExtensions(
   placeholder: string,
   loadPreview: ReferencePreviewLoader,
   usageOptions: ReferenceUsageOption[] = [],
+  showMediaAliases = false,
   onDeleteReference?: ReferenceEditorProps['onReferenceDelete'],
   onUsageChange?: ReferenceEditorProps['onReferenceUsageChange']
 ) {
@@ -1210,6 +1217,7 @@ function referenceEditorExtensions(
     ReferenceNode.configure({
       loadPreview,
       usageOptions,
+      showMediaAliases,
       onDeleteReference,
       onUsageChange,
     }),
@@ -1407,15 +1415,35 @@ export function ReferenceContentView({
   fallback = '',
   references = [],
   loadPreview,
+  showMediaAliases = false,
 }: {
   content?: ReferenceContent
   fallback?: string
   references?: ReferenceOption[]
   loadPreview?: ReferencePreviewLoader
+  showMediaAliases?: boolean
 }) {
   if (!content?.parts?.length) {
     return <>{fallback}</>
   }
+  const aliases = referenceMediaAliases(
+    content.parts.map((part) => {
+      if (part.type === 'text') {
+        return { key: '' }
+      }
+      const option = referenceOptionForPart(part, references)
+      return {
+        key: referenceAliasTargetKey({
+          refType: part.ref_type,
+          refId: part.ref_id,
+          versionId: part.ref_version_id,
+          usage: part.usage,
+        }),
+        kind: option?.preview?.kind,
+        deferred: part.ref_origin?.trim().toLowerCase() === 'edge',
+      }
+    })
+  )
   return (
     <>
       {content.parts.map((part, index) => {
@@ -1427,6 +1455,7 @@ export function ReferenceContentView({
           <ReferenceTag
             key={`ref-${part.ref_type}-${part.ref_id}-${index}`}
             label={referenceLabel(option?.label || part.label)}
+            alias={showMediaAliases ? aliases[index] : ''}
             refType={part.ref_type}
             refId={part.ref_id}
             trigger={referenceTrigger(option?.trigger || part.ref_trigger)}
