@@ -384,9 +384,15 @@ export function ReferenceComposer({
   ])
   submitRef.current = () => void submit()
 
-  const insertReference = useCallback(
-    (option: ReferenceOption) => {
-      if (!editor || option.selectable === false) {
+  const insertReferences = useCallback(
+    (options: ReferenceOption[]) => {
+      if (!editor) {
+        return
+      }
+      const selectableOptions = options.filter(
+        (option) => option.selectable !== false
+      )
+      if (selectableOptions.length === 0) {
         return
       }
       const provider = referenceProviderForTrigger(
@@ -397,15 +403,22 @@ export function ReferenceComposer({
         .chain()
         .focus()
         .insertContent(
-          referenceInsertionContent([
-            { ...option, trigger: option.trigger || provider?.trigger || '@' },
-          ])
+          referenceInsertionContent(
+            selectableOptions.map((option) => ({
+              ...option,
+              trigger: option.trigger || provider?.trigger || '@',
+            }))
+          )
         )
         .run()
       setPickerOpen(false)
       setPickerTrigger('')
     },
     [editor, pickerTrigger, referenceProviders]
+  )
+  const insertReference = useCallback(
+    (option: ReferenceOption) => insertReferences([option]),
+    [insertReferences]
   )
 
   const insertAttachments = useCallback(
@@ -547,6 +560,7 @@ export function ReferenceComposer({
         ? renderReferenceProviderPicker(activeProvider, {
             open: pickerOpen,
             onSelect: insertReference,
+            onSelectMany: insertReferences,
             onClose: () => setPickerOpen(false),
           })
         : null}
@@ -985,34 +999,39 @@ export function ReferenceEditor({
     }
   }, [pickerOpen])
 
-  const insertReference = useCallback(
-    (option: ReferenceOption) => {
-      if (disabled || !editor || option.selectable === false) {
+  const insertReferences = useCallback(
+    (options: ReferenceOption[]) => {
+      if (disabled || !editor) {
+        return
+      }
+      const selectableOptions = options.filter(
+        (option) => option.selectable !== false
+      )
+      if (selectableOptions.length === 0) {
         return
       }
       const provider = referenceProviderForTrigger(
         referenceProviders,
         pickerTrigger
       )
+      const document = editor.getJSON()
       editor
         .chain()
         .focus()
         .insertContent(
           referenceInsertionContent(
-            [
-              {
-                ...option,
-                trigger: option.trigger || provider?.trigger || '@',
-                usage:
-                  option.usage ||
-                  defaultReferenceUsage(
-                    option,
-                    usageOptions,
-                    editor.getJSON(),
-                    pickerPreferredUsage
-                  ),
-              },
-            ],
+            selectableOptions.map((option) => ({
+              ...option,
+              trigger: option.trigger || provider?.trigger || '@',
+              usage:
+                option.usage ||
+                defaultReferenceUsage(
+                  option,
+                  usageOptions,
+                  document,
+                  pickerPreferredUsage
+                ),
+            })),
             '',
             false
           )
@@ -1031,6 +1050,10 @@ export function ReferenceEditor({
       referenceProviders,
       usageOptions,
     ]
+  )
+  const insertReference = useCallback(
+    (option: ReferenceOption) => insertReferences([option]),
+    [insertReferences]
   )
 
   const activeProvider = referenceProviderForTrigger(
@@ -1062,6 +1085,7 @@ export function ReferenceEditor({
             maxSelection: pickerMaxSelection,
             selectedReferences: referenceParts(contentRef.current),
             onSelect: insertReference,
+            onSelectMany: insertReferences,
             onClose: () => {
               setPickerOpen(false)
               setPickerPreferredUsage('')

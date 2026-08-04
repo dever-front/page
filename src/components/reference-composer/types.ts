@@ -131,6 +131,7 @@ export type ReferenceProviderPickerProps = {
   maxSelection?: number
   selectedReferences?: Extract<ReferencePart, { type: 'reference' }>[]
   onSelect: (option: ReferenceOption) => void
+  onSelectMany?: (options: ReferenceOption[]) => void
   onClose: () => void
 }
 
