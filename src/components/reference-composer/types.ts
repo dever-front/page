@@ -51,6 +51,12 @@ export type ReferencePreviewLoader = (
   request: ReferencePreviewRequest
 ) => Promise<ReferencePreview>
 
+export type ReferenceMediaSelectionItem = {
+  url: string
+  index: number
+  usage?: string
+}
+
 export type ReferencePart =
   | { type: 'text'; text: string }
   | {
@@ -66,6 +72,7 @@ export type ReferencePart =
       ref_media_url?: string
       ref_media_index?: number
       ref_media_count?: number
+      ref_media_items?: ReferenceMediaSelectionItem[]
     }
 
 export type ReferenceContent = {
@@ -103,6 +110,7 @@ export type ReferenceOption = {
   mediaURL?: string
   mediaIndex?: number
   mediaCount?: number
+  mediaItems?: ReferenceMediaSelectionItem[]
 }
 
 export type ReferenceUsageOption = {
@@ -166,6 +174,8 @@ export type ReferenceComposerProps = {
   uploadBizKey?: string
   uploadBizName?: string
   allowResourceLibrary?: boolean
+  showMediaAliases?: boolean
+  allowMultiMediaSelection?: boolean
   onUploadedFiles?: (files: UploadFileItem[]) => void | Promise<void>
   parameters?: ReferenceComposerParam[]
   providers?: ReferenceProvider[]
@@ -196,6 +206,7 @@ export type ReferenceEditorProps = {
   loadPreview?: ReferencePreviewLoader
   usageOptions?: ReferenceUsageOption[]
   showMediaAliases?: boolean
+  allowMultiMediaSelection?: boolean
   pickerRequest?: ReferencePickerRequest
   onPickerRequestConsumed?: (requestID: ReferencePickerRequest['id']) => void
   onReferenceDelete?: (

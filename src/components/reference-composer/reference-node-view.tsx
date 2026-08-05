@@ -5,8 +5,12 @@ import {
   referenceTypeFromValue,
   type ReferenceNodeOptions,
 } from './reference-node'
+import { normalizeReferenceMediaSelectionItems } from './media-selection'
 import { ReferenceTag } from './reference-tag'
-import type { ReferencePreviewHint } from './types'
+import type {
+  ReferenceMediaSelectionItem,
+  ReferencePreviewHint,
+} from './types'
 import { loadReferencePreview } from './reference-preview-cache'
 import { compatibleReferenceUsageOptions } from './reference-usage'
 import { referenceTrigger } from './text'
@@ -57,7 +61,11 @@ export function ReferenceNodeView({
     usageOptions.find((option) => option.key === usage) ||
     (usageOptions.length === 1 ? usageOptions[0] : undefined)
   const mediaCount = Number(node.attrs.mediaCount || 0)
+  const mediaItems = normalizeReferenceMediaSelectionItems(
+    node.attrs.mediaItems
+  )
   const mediaCapacity = Number(activeUsage?.maxFiles || 0)
+  const mediaSelectable = refType === 'asset'
   const reference = referencePartFromAttributes(node.attrs)
   const disabled = useReferenceNodeDisabled(editor)
 
@@ -78,13 +86,29 @@ export function ReferenceNodeView({
   }
 
   const selectMedia = (url: string, index: number, count: number) => {
-    if (disabled || refType !== 'asset') {
+    if (disabled || !mediaSelectable) {
       return
     }
     updateAttributes({
       mediaUrl: url,
       mediaIndex: index,
       mediaCount: count,
+      mediaItems: [],
+    })
+  }
+
+  const selectMediaItems = (
+    items: ReferenceMediaSelectionItem[],
+    count: number
+  ) => {
+    if (disabled || !mediaSelectable) {
+      return
+    }
+    updateAttributes({
+      mediaUrl: '',
+      mediaIndex: 0,
+      mediaCount: count,
+      mediaItems: items,
     })
   }
 
@@ -112,8 +136,15 @@ export function ReferenceNodeView({
         mediaURL={String(node.attrs.mediaUrl || '')}
         mediaIndex={Number(node.attrs.mediaIndex || 0)}
         mediaCount={mediaCount}
+        mediaItems={mediaItems}
         mediaCapacity={mediaCapacity}
-        onMediaSelect={selectMedia}
+        allowMultiMediaSelection={Boolean(
+          mediaSelectable &&
+            options.allowMultiMediaSelection &&
+            mediaCapacity !== 1
+        )}
+        onMediaSelect={mediaSelectable ? selectMedia : undefined}
+        onMediaItemsSelect={mediaSelectable ? selectMediaItems : undefined}
         onUsageChange={changeUsage}
         onDelete={deleteReference}
       />

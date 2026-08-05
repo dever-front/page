@@ -35,6 +35,10 @@ import {
   type PowerParam,
 } from '@/components/agent/stream-request-params'
 import { ReferenceAttachmentMenu } from './attachment-menu'
+import {
+  normalizeReferenceMediaSelectionItems,
+  referenceMediaSelectionSignature,
+} from './media-selection'
 import { ReferencePicker } from './picker'
 import { ReferenceNode } from './reference-node'
 import { ReferenceTag } from './reference-tag'
@@ -79,6 +83,7 @@ export type {
   ReferenceLoadRequest,
   ReferenceLoadResult,
   ReferenceOption,
+  ReferenceMediaSelectionItem,
   ReferencePart,
   ReferencePreview,
   ReferencePreviewHint,
@@ -106,6 +111,8 @@ export function ReferenceComposer({
   uploadBizKey,
   uploadBizName,
   allowResourceLibrary = true,
+  showMediaAliases = false,
+  allowMultiMediaSelection = false,
   onUploadedFiles,
   parameters = [],
   providers,
@@ -196,8 +203,12 @@ export function ReferenceComposer({
     disabled || running || submitting || uploadingClipboardImages
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: referenceEditorExtensions(placeholder, (request) =>
-      loadPreviewRef.current(request)
+    extensions: referenceEditorExtensions(
+      placeholder,
+      (request) => loadPreviewRef.current(request),
+      [],
+      showMediaAliases,
+      allowMultiMediaSelection
     ),
     editorProps: {
       attributes: {
@@ -686,6 +697,7 @@ export function ReferenceEditor({
   loadPreview,
   usageOptions = [],
   showMediaAliases = false,
+  allowMultiMediaSelection = false,
   pickerRequest,
   onPickerRequestConsumed,
   onReferenceDelete,
@@ -768,6 +780,7 @@ export function ReferenceEditor({
             item.mediaURL,
             item.mediaIndex,
             item.mediaCount,
+            referenceMediaSelectionSignature(item.mediaItems),
           ].join(':')
         )
         .join('|'),
@@ -783,6 +796,7 @@ export function ReferenceEditor({
       (request) => loadPreviewRef.current(request),
       usageOptions,
       showMediaAliases,
+      allowMultiMediaSelection,
       (reference) => onReferenceDeleteRef.current?.(reference),
       (reference, usage) =>
         onReferenceUsageChangeRef.current?.(reference, usage)
@@ -1195,7 +1209,7 @@ function referenceContentSignature(content: ReferenceContent | undefined) {
             part.ref_origin_id || ''
           }:${part.ref_media_url || ''}:${part.ref_media_index || 0}:${
             part.ref_media_count || 0
-          }`
+          }:${referenceMediaSelectionSignature(part.ref_media_items)}`
     )
     .join('|')
 }
@@ -1205,6 +1219,7 @@ function referenceEditorExtensions(
   loadPreview: ReferencePreviewLoader,
   usageOptions: ReferenceUsageOption[] = [],
   showMediaAliases = false,
+  allowMultiMediaSelection = false,
   onDeleteReference?: ReferenceEditorProps['onReferenceDelete'],
   onUsageChange?: ReferenceEditorProps['onReferenceUsageChange']
 ) {
@@ -1223,6 +1238,7 @@ function referenceEditorExtensions(
       loadPreview,
       usageOptions,
       showMediaAliases,
+      allowMultiMediaSelection,
       onDeleteReference,
       onUsageChange,
     }),
@@ -1322,6 +1338,7 @@ function referenceInsertionContent(
         mediaUrl: option.mediaURL || '',
         mediaIndex: Number(option.mediaIndex || 0),
         mediaCount: Number(option.mediaCount || 0),
+        mediaItems: normalizeReferenceMediaSelectionItems(option.mediaItems),
       },
     })
   })
@@ -1413,10 +1430,17 @@ function walkReferenceNodes(
       const mediaIndex = Number(node.attrs?.mediaIndex || 0)
       const mediaURL = String(node.attrs?.mediaUrl || '').trim()
       const mediaCount = Number(node.attrs?.mediaCount || 0)
+      const mediaItems = normalizeReferenceMediaSelectionItems(
+        node.attrs?.mediaItems
+      )
       visit(
         usage,
         String(node.attrs?.refId || ''),
-        mediaURL || mediaIndex > 0 ? 1 : Math.max(1, mediaCount)
+        mediaItems.length > 0
+          ? mediaItems.length
+          : mediaURL || mediaIndex > 0
+            ? 1
+            : Math.max(1, mediaCount)
       )
     }
   }
@@ -1480,6 +1504,7 @@ export function ReferenceContentView({
             mediaURL={part.ref_media_url}
             mediaIndex={part.ref_media_index}
             mediaCount={part.ref_media_count || option?.mediaCount}
+            mediaItems={part.ref_media_items || option?.mediaItems}
           />
         )
       })}

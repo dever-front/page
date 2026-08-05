@@ -5,6 +5,7 @@ import {
   referenceTrigger,
 } from './text'
 import type { ReferenceInput, ReferencePart, ReferenceType } from './types'
+import { normalizeReferenceMediaSelectionItems } from './media-selection'
 
 export function serializeReferenceDocument(
   document: JSONContent,
@@ -71,6 +72,9 @@ function appendNodes(parts: ReferencePart[], nodes: JSONContent[]) {
       const versionID = Number(node.attrs?.versionId || 0)
       const mediaIndex = Number(node.attrs?.mediaIndex || 0)
       const mediaCount = Number(node.attrs?.mediaCount || 0)
+      const mediaItems = normalizeReferenceMediaSelectionItems(
+        node.attrs?.mediaItems
+      )
       if (isReferenceType(refType) && refId > 0 && label) {
         parts.push({
           type: 'reference',
@@ -87,6 +91,7 @@ function appendNodes(parts: ReferencePart[], nodes: JSONContent[]) {
             String(node.attrs?.mediaUrl || '').trim() || undefined,
           ref_media_index: mediaIndex > 0 ? mediaIndex : undefined,
           ref_media_count: mediaCount > 0 ? mediaCount : undefined,
+          ref_media_items: mediaItems.length > 0 ? mediaItems : undefined,
         })
       }
       continue

@@ -5,7 +5,15 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react'
-import { Check, ExternalLink, FileText, Loader2, Trash2 } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ExternalLink,
+  FileText,
+  Loader2,
+  Trash2,
+} from 'lucide-react'
 import { FirstFrameVideo } from '@/components/media/first-frame-video'
 import {
   Popover,
@@ -18,10 +26,18 @@ import type {
   ReferencePreview,
   ReferencePreviewHint,
   ReferencePreviewLoader,
+  ReferenceMediaSelectionItem,
   ReferencePreviewMedia,
   ReferenceType,
 } from './types'
 import { loadReferencePreview } from './reference-preview-cache'
+import {
+  referenceMediaSelectionItem,
+  referenceMediaSelectionKey,
+  referencePreviewMediaIndex,
+  referencePreviewMediaMatchesSelection,
+  resolveReferencePreviewMediaSelections,
+} from './media-selection'
 
 const CLOSE_DELAY = 140
 const GENERIC_MEDIA_DESCRIPTIONS: Record<string, string> = {
@@ -47,8 +63,14 @@ type ReferencePreviewPopoverProps = {
   hoverOnly?: boolean
   selectedMediaURL?: string
   selectedMediaIndex?: number
+  selectedMediaItems?: ReferenceMediaSelectionItem[]
   mediaCapacity?: number
+  allowMultiMediaSelection?: boolean
   onMediaSelect?: (url: string, index: number, count: number) => void
+  onMediaItemsSelect?: (
+    items: ReferenceMediaSelectionItem[],
+    count: number
+  ) => void
   onDelete?: () => void
   children: ReactNode | ((preview?: ReferencePreview) => ReactNode)
 }
@@ -69,8 +91,11 @@ export function ReferencePreviewPopover({
   hoverOnly = false,
   selectedMediaURL = '',
   selectedMediaIndex = 0,
+  selectedMediaItems = [],
   mediaCapacity = 0,
+  allowMultiMediaSelection = false,
   onMediaSelect,
+  onMediaItemsSelect,
   onDelete,
   children,
 }: ReferencePreviewPopoverProps) {
@@ -248,8 +273,11 @@ export function ReferencePreviewPopover({
             content={previewContent}
             selectedMediaURL={selectedMediaURL}
             selectedMediaIndex={selectedMediaIndex}
+            selectedMediaItems={selectedMediaItems}
             mediaCapacity={mediaCapacity}
+            allowMultiMediaSelection={allowMultiMediaSelection}
             onMediaSelect={onMediaSelect}
+            onMediaItemsSelect={onMediaItemsSelect}
           />
         ) : null}
       </PopoverContent>
@@ -275,59 +303,159 @@ function ReferencePreviewBody({
   content,
   selectedMediaURL,
   selectedMediaIndex,
+  selectedMediaItems,
   mediaCapacity,
+  allowMultiMediaSelection,
   onMediaSelect,
+  onMediaItemsSelect,
 }: {
   text?: string
   media: ReferencePreviewMedia[]
   content?: unknown
   selectedMediaURL?: string
   selectedMediaIndex?: number
+  selectedMediaItems?: ReferenceMediaSelectionItem[]
   mediaCapacity?: number
+  allowMultiMediaSelection?: boolean
   onMediaSelect?: (url: string, index: number, count: number) => void
+  onMediaItemsSelect?: (
+    items: ReferenceMediaSelectionItem[],
+    count: number
+  ) => void
 }) {
-  if (hasReferencePreviewContent(content)) {
-    return (
-      <div className='max-h-[min(420px,62vh)] overflow-y-auto overscroll-contain px-4 py-4 text-left'>
-        <ContentView
-          output={content}
-          emptyText=''
-          mediaLayout='chat'
-          className='break-words [overflow-wrap:anywhere] [&_img]:mx-auto [&_video]:mx-auto'
-        />
-      </div>
-    )
-  }
+  const hasContent = hasReferencePreviewContent(content)
   const selectionRequired =
     Number(mediaCapacity || 0) > 0 && media.length > Number(mediaCapacity || 0)
+  const multiSelectionEnabled = Boolean(
+    allowMultiMediaSelection &&
+      onMediaItemsSelect &&
+      media.length > 1 &&
+      Number(mediaCapacity || 0) !== 1
+  )
+  const selectedItems = resolveReferencePreviewMediaSelections(
+    media,
+    selectedMediaItems || []
+  )
+  const selectedMediaIndexes = new Set(
+    selectedItems.map(({ mediaIndex }) => mediaIndex)
+  )
+  const showMediaGallery =
+    media.length > 0 &&
+    (!hasContent || Boolean(onMediaSelect) || multiSelectionEnabled)
+
+  const selectAllMedia = () => onMediaItemsSelect?.([], media.length)
+  const startCustomSelection = () => {
+    if (selectedItems.length > 0 || media.length === 0) {
+      return
+    }
+    onMediaItemsSelect?.(
+      [referenceMediaSelectionItem(media[0], 0)],
+      media.length
+    )
+  }
+  const toggleMediaItem = (item: ReferencePreviewMedia, index: number) => {
+    if (!multiSelectionEnabled) {
+      onMediaSelect?.(
+        item.url,
+        referencePreviewMediaIndex(item, index),
+        media.length
+      )
+      return
+    }
+    const selection = referenceMediaSelectionItem(item, index)
+    const current = selectedItems.map((entry) => entry.selection)
+    const selectedIndex = selectedItems.findIndex(
+      (entry) => entry.mediaIndex === index
+    )
+    if (selectedIndex >= 0) {
+      if (current.length === 1) {
+        return
+      }
+      onMediaItemsSelect?.(
+        current.filter((_, currentIndex) => currentIndex !== selectedIndex),
+        media.length
+      )
+      return
+    }
+    const capacity = Number(mediaCapacity || 0)
+    if (capacity > 0 && current.length >= capacity) {
+      return
+    }
+    onMediaItemsSelect?.([...current, selection], media.length)
+  }
+  const moveSelectedItem = (index: number, offset: number) => {
+    const targetIndex = index + offset
+    if (targetIndex < 0 || targetIndex >= selectedItems.length) {
+      return
+    }
+    const next = selectedItems.map((entry) => entry.selection)
+    ;[next[index], next[targetIndex]] = [next[targetIndex], next[index]]
+    onMediaItemsSelect?.(next, media.length)
+  }
+
   return (
     <div className='max-h-[min(420px,62vh)] overflow-y-auto overscroll-contain'>
-      {media.length > 0 ? (
+      {showMediaGallery ? (
         <div className='border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950/50'>
-          {onMediaSelect && media.length > 1 ? (
+          {(onMediaSelect || multiSelectionEnabled) && media.length > 1 ? (
             <div className='flex items-center justify-between gap-3 px-4 pt-3 text-xs text-slate-600 dark:text-slate-300'>
               <span>
-                {selectionRequired ? '请选择具体素材' : '可选择具体素材'}
+                {multiSelectionEnabled
+                  ? '选择素材并调整使用顺序'
+                  : selectionRequired
+                    ? '请选择具体素材'
+                    : '可选择具体素材'}
               </span>
-              {!selectionRequired &&
-              (selectedMediaURL || Number(selectedMediaIndex || 0) > 0) ? (
-                <button
-                  type='button'
-                  className='rounded-md px-2 py-1 text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800'
-                  onClick={() => onMediaSelect('', 0, media.length)}
-                >
-                  使用全部
-                </button>
-              ) : null}
+              {multiSelectionEnabled ? (
+                <div className='flex items-center gap-1 rounded-md bg-slate-200/75 p-0.5 dark:bg-slate-800'>
+                  <button
+                    type='button'
+                    className={`rounded px-2 py-1 ${
+                      selectedItems.length === 0
+                        ? 'bg-white font-medium text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                        : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+                    }`}
+                    onClick={selectAllMedia}
+                  >
+                    全部
+                  </button>
+                  <button
+                    type='button'
+                    className={`rounded px-2 py-1 ${
+                      selectedItems.length > 0
+                        ? 'bg-white font-medium text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                        : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+                    }`}
+                    onClick={startCustomSelection}
+                  >
+                    自选 {selectedItems.length || 0}/{media.length}
+                  </button>
+                </div>
+              ) : !selectionRequired &&
+                (selectedMediaURL || Number(selectedMediaIndex || 0) > 0) ? (
+                  <button
+                    type='button'
+                    className='rounded-md px-2 py-1 text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800'
+                    onClick={() => onMediaSelect?.('', 0, media.length)}
+                  >
+                    使用全部
+                  </button>
+                ) : null}
             </div>
           ) : null}
           <div className='flex flex-wrap items-center justify-center gap-3 p-4'>
             {media.map((item, index) => {
-              const mediaIndex = Number(item.index || 0) || index + 1
-              const selected =
-                (selectedMediaURL && item.url === selectedMediaURL) ||
-                (!selectedMediaURL &&
-                  Number(selectedMediaIndex || 0) === mediaIndex)
+              const mediaIndex = referencePreviewMediaIndex(item, index)
+              const selection = referenceMediaSelectionItem(item, index)
+              const selected = multiSelectionEnabled
+                ? selectedMediaIndexes.has(index)
+                : referencePreviewMediaMatchesSelection(item, index, {
+                    url: selectedMediaURL,
+                    index: Number(selectedMediaIndex || 0),
+                  })
+              const selectedOrder = selectedItems.findIndex(
+                (entry) => entry.mediaIndex === index
+              )
               return (
                 <div
                   key={`${item.refType || item.kind}-${item.refId || 0}-${item.url}-${index}`}
@@ -337,7 +465,8 @@ function ReferencePreviewBody({
                     media={item}
                     compact={media.length > 1}
                   />
-                  {onMediaSelect && media.length > 1 ? (
+                  {(onMediaSelect || multiSelectionEnabled) &&
+                  media.length > 1 ? (
                     <button
                       type='button'
                       aria-label={`选择${item.label || `第 ${mediaIndex} 项素材`}`}
@@ -347,14 +476,18 @@ function ReferencePreviewBody({
                           ? 'border-emerald-600 bg-emerald-950/10'
                           : 'border-transparent hover:border-emerald-500/70'
                       }`}
-                      onClick={() =>
-                        onMediaSelect(item.url, mediaIndex, media.length)
-                      }
+                      onClick={() => toggleMediaItem(item, index)}
                     >
                       <span className='sr-only'>选择第 {mediaIndex} 项素材</span>
                       {selected ? (
                         <span className='absolute top-1.5 right-1.5 inline-flex size-6 items-center justify-center rounded-full bg-emerald-700 text-white shadow'>
-                          <Check className='size-4' />
+                          {multiSelectionEnabled && selectedOrder >= 0 ? (
+                            <span className='text-xs font-semibold'>
+                              {selectedOrder + 1}
+                            </span>
+                          ) : (
+                            <Check className='size-4' />
+                          )}
                         </span>
                       ) : null}
                     </button>
@@ -363,9 +496,55 @@ function ReferencePreviewBody({
               )
             })}
           </div>
+          {multiSelectionEnabled && selectedItems.length > 0 ? (
+            <div className='space-y-1 border-t border-slate-200 px-4 py-3 dark:border-slate-700'>
+              {selectedItems.map(({ selection, media: item }, index) => (
+                <div
+                  key={referenceMediaSelectionKey(selection)}
+                  className='flex items-center gap-2 rounded-md bg-white px-2 py-1.5 text-xs shadow-sm dark:bg-slate-900'
+                >
+                  <span className='inline-flex size-5 shrink-0 items-center justify-center rounded bg-emerald-700 font-semibold text-white'>
+                    {index + 1}
+                  </span>
+                  <span className='min-w-0 flex-1 truncate'>
+                    {item.label || `第 ${selection.index} 项素材`}
+                  </span>
+                  <button
+                    type='button'
+                    title='前移'
+                    aria-label={`前移${item.label || `第 ${selection.index} 项素材`}`}
+                    disabled={index === 0}
+                    className='inline-flex size-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-slate-800'
+                    onClick={() => moveSelectedItem(index, -1)}
+                  >
+                    <ArrowUp className='size-3.5' />
+                  </button>
+                  <button
+                    type='button'
+                    title='后移'
+                    aria-label={`后移${item.label || `第 ${selection.index} 项素材`}`}
+                    disabled={index === selectedItems.length - 1}
+                    className='inline-flex size-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100 disabled:opacity-30 dark:hover:bg-slate-800'
+                    onClick={() => moveSelectedItem(index, 1)}
+                  >
+                    <ArrowDown className='size-3.5' />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
-      {text ? (
+      {hasContent ? (
+        <div className='px-4 py-4 text-left'>
+          <ContentView
+            output={content}
+            emptyText=''
+            mediaLayout='chat'
+            className='break-words [overflow-wrap:anywhere] [&_img]:mx-auto [&_video]:mx-auto'
+          />
+        </div>
+      ) : text ? (
         <div className='px-4 py-4 text-left'>
           <ContentView
             output={text}

@@ -12,9 +12,14 @@ import {
   referencePreviewKind,
 } from './reference-preview-popover'
 import { referenceLabel } from './text'
+import {
+  findReferencePreviewMediaIndex,
+  resolveReferencePreviewMediaSelections,
+} from './media-selection'
 import type {
   ReferencePreviewHint,
   ReferencePreviewLoader,
+  ReferenceMediaSelectionItem,
   ReferenceType,
   ReferenceUsageOption,
 } from './types'
@@ -36,8 +41,14 @@ type ReferenceTagProps = {
   mediaURL?: string
   mediaIndex?: number
   mediaCount?: number
+  mediaItems?: ReferenceMediaSelectionItem[]
   mediaCapacity?: number
+  allowMultiMediaSelection?: boolean
   onMediaSelect?: (url: string, index: number, count: number) => void
+  onMediaItemsSelect?: (
+    items: ReferenceMediaSelectionItem[],
+    count: number
+  ) => void
   onUsageChange?: (usage: string) => void
   onDelete?: () => void
 }
@@ -59,8 +70,11 @@ export function ReferenceTag({
   mediaURL = '',
   mediaIndex = 0,
   mediaCount = 0,
+  mediaItems = [],
   mediaCapacity = 0,
+  allowMultiMediaSelection = false,
   onMediaSelect,
+  onMediaItemsSelect,
   onUsageChange,
   onDelete,
 }: ReferenceTagProps) {
@@ -76,39 +90,58 @@ export function ReferenceTag({
       loadPreview={loadPreview}
       selectedMediaURL={mediaURL}
       selectedMediaIndex={mediaIndex}
+      selectedMediaItems={mediaItems}
       mediaCapacity={mediaCapacity}
+      allowMultiMediaSelection={allowMultiMediaSelection}
       onMediaSelect={onMediaSelect}
+      onMediaItemsSelect={onMediaItemsSelect}
       onDelete={disabled ? undefined : onDelete}
       triggerClassName='inline'
     >
       {(preview) => {
         const resolvedMediaCount = preview?.media.length || mediaCount
-        const selectedMediaPosition = preview?.media.findIndex(
-          (media, index) =>
-            (mediaURL && media.url === mediaURL) ||
-            (!mediaURL &&
-              mediaIndex > 0 &&
-              (Number(media.index || 0) || index + 1) === mediaIndex)
-        )
+        const selectedMediaPosition = preview
+          ? findReferencePreviewMediaIndex(preview.media, {
+              url: mediaURL,
+              index: mediaIndex,
+            })
+          : -1
         const selectedMedia =
           selectedMediaPosition != null && selectedMediaPosition >= 0
             ? preview?.media[selectedMediaPosition]
             : undefined
-        const primaryMedia = selectedMedia || preview?.media[0]
+        const selectedMediaList = preview
+          ? resolveReferencePreviewMediaSelections(
+              preview.media,
+              mediaItems
+            ).map(({ media }) => media)
+          : []
+        const primaryMedia =
+          selectedMediaList[0] || selectedMedia || preview?.media[0]
         const kind = referencePreviewKind(refType, hint, preview)
         const thumbnail =
           selectedMedia?.url || mediaURL || primaryMedia?.url || hint?.url
-        const hasMediaSelection = Boolean(mediaURL || mediaIndex > 0)
+        const hasMultipleMediaSelection = mediaItems.length > 0
+        const hasMediaSelection = Boolean(
+          hasMultipleMediaSelection || mediaURL || mediaIndex > 0
+        )
         const mediaSelectionRequired =
           mediaCapacity > 0 && resolvedMediaCount > mediaCapacity
         const mediaSelectionInvalid = Boolean(
-          preview && hasMediaSelection && !selectedMedia
+          preview &&
+            ((hasMultipleMediaSelection &&
+              selectedMediaList.length !== mediaItems.length) ||
+              (!hasMultipleMediaSelection &&
+                hasMediaSelection &&
+                !selectedMedia))
         )
         const selectionMissing =
           mediaSelectionInvalid ||
           (mediaSelectionRequired &&
             resolvedMediaCount > 1 &&
-            !hasMediaSelection)
+            (!hasMediaSelection ||
+              (mediaCapacity > 0 &&
+                mediaItems.length > mediaCapacity)))
         const displayedMediaIndex =
           mediaIndex ||
           Number(selectedMedia?.index || 0) ||
@@ -139,7 +172,9 @@ export function ReferenceTag({
             {resolvedMediaCount > 1 ? (
               <span className='shrink-0 text-[0.76em] font-medium text-slate-500 dark:text-slate-300'>
                 {hasMediaSelection
-                  ? displayedMediaIndex > 0
+                  ? hasMultipleMediaSelection
+                    ? `${mediaItems.length}/${resolvedMediaCount}`
+                    : displayedMediaIndex > 0
                     ? `${displayedMediaIndex}/${resolvedMediaCount}`
                     : '已选择'
                   : `${resolvedMediaCount}项`}

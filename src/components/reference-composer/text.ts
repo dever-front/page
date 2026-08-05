@@ -60,6 +60,7 @@ export function referenceContentFromText(
       ref_media_url: match.item.option.mediaURL,
       ref_media_index: match.item.option.mediaIndex,
       ref_media_count: match.item.option.mediaCount,
+      ref_media_items: match.item.option.mediaItems,
     })
     cursor = match.index + match.item.mention.length
   }
@@ -101,6 +102,7 @@ export function referenceDocumentFromContent(
           mediaUrl: part.ref_media_url || option?.mediaURL || '',
           mediaIndex: part.ref_media_index || option?.mediaIndex || 0,
           mediaCount: part.ref_media_count || option?.mediaCount || 0,
+          mediaItems: part.ref_media_items || option?.mediaItems || [],
         },
       })
       continue

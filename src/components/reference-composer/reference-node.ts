@@ -1,6 +1,7 @@
 import { mergeAttributes, Node } from '@tiptap/core'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { ReferenceNodeView } from './reference-node-view'
+import { normalizeReferenceMediaSelectionItems } from './media-selection'
 import type {
   ReferencePart,
   ReferencePreviewLoader,
@@ -11,6 +12,7 @@ export type ReferenceNodeOptions = {
   loadPreview?: ReferencePreviewLoader
   usageOptions?: ReferenceUsageOption[]
   showMediaAliases?: boolean
+  allowMultiMediaSelection?: boolean
   onDeleteReference?: (
     reference: Extract<ReferencePart, { type: 'reference' }>
   ) => void
@@ -33,6 +35,7 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
       loadPreview: undefined,
       usageOptions: [],
       showMediaAliases: false,
+      allowMultiMediaSelection: false,
       onDeleteReference: undefined,
       onUsageChange: undefined,
     }
@@ -54,6 +57,7 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
       mediaUrl: { default: '' },
       mediaIndex: { default: 0 },
       mediaCount: { default: 0 },
+      mediaItems: { default: [], rendered: false },
     }
   },
 
@@ -141,6 +145,7 @@ export function referencePartFromAttributes(
   const versionID = Number(attrs.versionId || 0)
   const mediaIndex = Number(attrs.mediaIndex || 0)
   const mediaCount = Number(attrs.mediaCount || 0)
+  const mediaItems = normalizeReferenceMediaSelectionItems(attrs.mediaItems)
   return {
     type: 'reference',
     ref_type: referenceTypeFromValue(attrs.refType),
@@ -154,6 +159,7 @@ export function referencePartFromAttributes(
     ref_media_url: String(attrs.mediaUrl || '').trim() || undefined,
     ref_media_index: mediaIndex > 0 ? mediaIndex : undefined,
     ref_media_count: mediaCount > 0 ? mediaCount : undefined,
+    ref_media_items: mediaItems.length > 0 ? mediaItems : undefined,
   }
 }
 
