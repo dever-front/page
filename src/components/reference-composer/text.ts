@@ -57,6 +57,9 @@ export function referenceContentFromText(
       ref_version_id: match.item.option.versionID,
       ref_origin: match.item.option.origin,
       ref_origin_id: match.item.option.originID,
+      ref_media_url: match.item.option.mediaURL,
+      ref_media_index: match.item.option.mediaIndex,
+      ref_media_count: match.item.option.mediaCount,
     })
     cursor = match.index + match.item.mention.length
   }
@@ -95,6 +98,9 @@ export function referenceDocumentFromContent(
           previewUrl: option?.preview?.url || '',
           origin: part.ref_origin || option?.origin || '',
           originId: part.ref_origin_id || option?.originID || '',
+          mediaUrl: part.ref_media_url || option?.mediaURL || '',
+          mediaIndex: part.ref_media_index || option?.mediaIndex || 0,
+          mediaCount: part.ref_media_count || option?.mediaCount || 0,
         },
       })
       continue

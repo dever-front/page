@@ -83,6 +83,7 @@ export type PowerParam = {
   required?: boolean
   upload_rule_id?: string | number
   max_files?: number
+  accepted_kinds?: string[]
   asset_kinds?: string[]
   sort?: number
   options?: PowerParamOption[]
@@ -1401,6 +1402,7 @@ function normalizePowerParam(row: unknown): PowerParam | null {
     required: normalizeRequiredFlag(row.required),
     upload_rule_id: row.upload_rule_id,
     max_files: Number(row.max_files || 0),
+    accepted_kinds: normalizeStringArray(row.accepted_kinds),
     asset_kinds: normalizeStringArray(row.asset_kinds),
     sort: Number(row.sort || 0),
     options,

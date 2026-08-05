@@ -53,6 +53,11 @@ export function ReferenceNodeView({
     hint?.kind
   )
   const usageSupported = usageOptions.some((option) => option.key === usage)
+  const activeUsage =
+    usageOptions.find((option) => option.key === usage) ||
+    (usageOptions.length === 1 ? usageOptions[0] : undefined)
+  const mediaCount = Number(node.attrs.mediaCount || 0)
+  const mediaCapacity = Number(activeUsage?.maxFiles || 0)
   const reference = referencePartFromAttributes(node.attrs)
   const disabled = useReferenceNodeDisabled(editor)
 
@@ -70,6 +75,17 @@ export function ReferenceNodeView({
     }
     options.onUsageChange?.(reference, nextUsage)
     updateAttributes({ usage: nextUsage })
+  }
+
+  const selectMedia = (url: string, index: number, count: number) => {
+    if (disabled || refType !== 'asset') {
+      return
+    }
+    updateAttributes({
+      mediaUrl: url,
+      mediaIndex: index,
+      mediaCount: count,
+    })
   }
 
   return (
@@ -93,6 +109,11 @@ export function ReferenceNodeView({
         disabled={disabled}
         usage={usageSupported ? usage : ''}
         usageOptions={usageOptions}
+        mediaURL={String(node.attrs.mediaUrl || '')}
+        mediaIndex={Number(node.attrs.mediaIndex || 0)}
+        mediaCount={mediaCount}
+        mediaCapacity={mediaCapacity}
+        onMediaSelect={selectMedia}
         onUsageChange={changeUsage}
         onDelete={deleteReference}
       />

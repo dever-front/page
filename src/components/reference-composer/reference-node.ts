@@ -51,6 +51,9 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
       previewUrl: { default: '' },
       origin: { default: '' },
       originId: { default: '' },
+      mediaUrl: { default: '' },
+      mediaIndex: { default: 0 },
+      mediaCount: { default: 0 },
     }
   },
 
@@ -136,6 +139,8 @@ export function referencePartFromAttributes(
   attrs: Record<string, unknown>
 ): Extract<ReferencePart, { type: 'reference' }> {
   const versionID = Number(attrs.versionId || 0)
+  const mediaIndex = Number(attrs.mediaIndex || 0)
+  const mediaCount = Number(attrs.mediaCount || 0)
   return {
     type: 'reference',
     ref_type: referenceTypeFromValue(attrs.refType),
@@ -146,6 +151,9 @@ export function referencePartFromAttributes(
     ref_version_id: versionID > 0 ? versionID : undefined,
     ref_origin: String(attrs.origin || '').trim() || undefined,
     ref_origin_id: String(attrs.originId || '').trim() || undefined,
+    ref_media_url: String(attrs.mediaUrl || '').trim() || undefined,
+    ref_media_index: mediaIndex > 0 ? mediaIndex : undefined,
+    ref_media_count: mediaCount > 0 ? mediaCount : undefined,
   }
 }
 

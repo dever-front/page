@@ -5,7 +5,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react'
-import { ExternalLink, FileText, Loader2, Trash2 } from 'lucide-react'
+import { Check, ExternalLink, FileText, Loader2, Trash2 } from 'lucide-react'
 import { FirstFrameVideo } from '@/components/media/first-frame-video'
 import {
   Popover,
@@ -45,6 +45,10 @@ type ReferencePreviewPopoverProps = {
   avoidCollisions?: boolean
   triggerClassName?: string
   hoverOnly?: boolean
+  selectedMediaURL?: string
+  selectedMediaIndex?: number
+  mediaCapacity?: number
+  onMediaSelect?: (url: string, index: number, count: number) => void
   onDelete?: () => void
   children: ReactNode | ((preview?: ReferencePreview) => ReactNode)
 }
@@ -63,6 +67,10 @@ export function ReferencePreviewPopover({
   avoidCollisions = true,
   triggerClassName,
   hoverOnly = false,
+  selectedMediaURL = '',
+  selectedMediaIndex = 0,
+  mediaCapacity = 0,
+  onMediaSelect,
   onDelete,
   children,
 }: ReferencePreviewPopoverProps) {
@@ -238,6 +246,10 @@ export function ReferencePreviewPopover({
             text={bodyText}
             media={previewMedia}
             content={previewContent}
+            selectedMediaURL={selectedMediaURL}
+            selectedMediaIndex={selectedMediaIndex}
+            mediaCapacity={mediaCapacity}
+            onMediaSelect={onMediaSelect}
           />
         ) : null}
       </PopoverContent>
@@ -261,10 +273,18 @@ function ReferencePreviewBody({
   text,
   media,
   content,
+  selectedMediaURL,
+  selectedMediaIndex,
+  mediaCapacity,
+  onMediaSelect,
 }: {
   text?: string
   media: ReferencePreviewMedia[]
   content?: unknown
+  selectedMediaURL?: string
+  selectedMediaIndex?: number
+  mediaCapacity?: number
+  onMediaSelect?: (url: string, index: number, count: number) => void
 }) {
   if (hasReferencePreviewContent(content)) {
     return (
@@ -278,17 +298,71 @@ function ReferencePreviewBody({
       </div>
     )
   }
+  const selectionRequired =
+    Number(mediaCapacity || 0) > 0 && media.length > Number(mediaCapacity || 0)
   return (
     <div className='max-h-[min(420px,62vh)] overflow-y-auto overscroll-contain'>
       {media.length > 0 ? (
-        <div className='flex flex-wrap items-center justify-center gap-3 border-b border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/50'>
-          {media.map((item, index) => (
-            <ReferencePreviewMediaView
-              key={`${item.refType || item.kind}-${item.refId || index}`}
-              media={item}
-              compact={media.length > 1}
-            />
-          ))}
+        <div className='border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950/50'>
+          {onMediaSelect && media.length > 1 ? (
+            <div className='flex items-center justify-between gap-3 px-4 pt-3 text-xs text-slate-600 dark:text-slate-300'>
+              <span>
+                {selectionRequired ? '请选择具体素材' : '可选择具体素材'}
+              </span>
+              {!selectionRequired &&
+              (selectedMediaURL || Number(selectedMediaIndex || 0) > 0) ? (
+                <button
+                  type='button'
+                  className='rounded-md px-2 py-1 text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800'
+                  onClick={() => onMediaSelect('', 0, media.length)}
+                >
+                  使用全部
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          <div className='flex flex-wrap items-center justify-center gap-3 p-4'>
+            {media.map((item, index) => {
+              const mediaIndex = Number(item.index || 0) || index + 1
+              const selected =
+                (selectedMediaURL && item.url === selectedMediaURL) ||
+                (!selectedMediaURL &&
+                  Number(selectedMediaIndex || 0) === mediaIndex)
+              return (
+                <div
+                  key={`${item.refType || item.kind}-${item.refId || 0}-${item.url}-${index}`}
+                  className='relative'
+                >
+                  <ReferencePreviewMediaView
+                    media={item}
+                    compact={media.length > 1}
+                  />
+                  {onMediaSelect && media.length > 1 ? (
+                    <button
+                      type='button'
+                      aria-label={`选择${item.label || `第 ${mediaIndex} 项素材`}`}
+                      aria-pressed={selected}
+                      className={`absolute inset-0 rounded-md border-2 transition-colors ${
+                        selected
+                          ? 'border-emerald-600 bg-emerald-950/10'
+                          : 'border-transparent hover:border-emerald-500/70'
+                      }`}
+                      onClick={() =>
+                        onMediaSelect(item.url, mediaIndex, media.length)
+                      }
+                    >
+                      <span className='sr-only'>选择第 {mediaIndex} 项素材</span>
+                      {selected ? (
+                        <span className='absolute top-1.5 right-1.5 inline-flex size-6 items-center justify-center rounded-full bg-emerald-700 text-white shadow'>
+                          <Check className='size-4' />
+                        </span>
+                      ) : null}
+                    </button>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
         </div>
       ) : null}
       {text ? (

@@ -27,6 +27,7 @@ export type ReferencePreviewMedia = {
   name?: string
   label: string
   url: string
+  index?: number
 }
 
 export type ReferencePreview = {
@@ -62,6 +63,9 @@ export type ReferencePart =
       ref_version_id?: number
       ref_origin?: string
       ref_origin_id?: string
+      ref_media_url?: string
+      ref_media_index?: number
+      ref_media_count?: number
     }
 
 export type ReferenceContent = {
@@ -96,6 +100,9 @@ export type ReferenceOption = {
   versionID?: number
   origin?: string
   originID?: string
+  mediaURL?: string
+  mediaIndex?: number
+  mediaCount?: number
 }
 
 export type ReferenceUsageOption = {

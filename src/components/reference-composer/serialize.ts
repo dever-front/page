@@ -69,6 +69,8 @@ function appendNodes(parts: ReferencePart[], nodes: JSONContent[]) {
       const label = referenceLabel(String(node.attrs?.label || ''))
       const trigger = referenceTrigger(String(node.attrs?.trigger || ''))
       const versionID = Number(node.attrs?.versionId || 0)
+      const mediaIndex = Number(node.attrs?.mediaIndex || 0)
+      const mediaCount = Number(node.attrs?.mediaCount || 0)
       if (isReferenceType(refType) && refId > 0 && label) {
         parts.push({
           type: 'reference',
@@ -81,6 +83,10 @@ function appendNodes(parts: ReferencePart[], nodes: JSONContent[]) {
           ref_origin: String(node.attrs?.origin || '').trim() || undefined,
           ref_origin_id:
             String(node.attrs?.originId || '').trim() || undefined,
+          ref_media_url:
+            String(node.attrs?.mediaUrl || '').trim() || undefined,
+          ref_media_index: mediaIndex > 0 ? mediaIndex : undefined,
+          ref_media_count: mediaCount > 0 ? mediaCount : undefined,
         })
       }
       continue

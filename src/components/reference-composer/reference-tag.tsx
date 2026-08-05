@@ -33,6 +33,11 @@ type ReferenceTagProps = {
   className?: string
   usage?: string
   usageOptions?: ReferenceUsageOption[]
+  mediaURL?: string
+  mediaIndex?: number
+  mediaCount?: number
+  mediaCapacity?: number
+  onMediaSelect?: (url: string, index: number, count: number) => void
   onUsageChange?: (usage: string) => void
   onDelete?: () => void
 }
@@ -51,6 +56,11 @@ export function ReferenceTag({
   className,
   usage = '',
   usageOptions = [],
+  mediaURL = '',
+  mediaIndex = 0,
+  mediaCount = 0,
+  mediaCapacity = 0,
+  onMediaSelect,
   onUsageChange,
   onDelete,
 }: ReferenceTagProps) {
@@ -64,13 +74,47 @@ export function ReferenceTag({
       versionId={versionId}
       hint={hint}
       loadPreview={loadPreview}
+      selectedMediaURL={mediaURL}
+      selectedMediaIndex={mediaIndex}
+      mediaCapacity={mediaCapacity}
+      onMediaSelect={onMediaSelect}
       onDelete={disabled ? undefined : onDelete}
       triggerClassName='inline'
     >
       {(preview) => {
-        const primaryMedia = preview?.media[0]
+        const resolvedMediaCount = preview?.media.length || mediaCount
+        const selectedMediaPosition = preview?.media.findIndex(
+          (media, index) =>
+            (mediaURL && media.url === mediaURL) ||
+            (!mediaURL &&
+              mediaIndex > 0 &&
+              (Number(media.index || 0) || index + 1) === mediaIndex)
+        )
+        const selectedMedia =
+          selectedMediaPosition != null && selectedMediaPosition >= 0
+            ? preview?.media[selectedMediaPosition]
+            : undefined
+        const primaryMedia = selectedMedia || preview?.media[0]
         const kind = referencePreviewKind(refType, hint, preview)
-        const thumbnail = primaryMedia?.url || hint?.url
+        const thumbnail =
+          selectedMedia?.url || mediaURL || primaryMedia?.url || hint?.url
+        const hasMediaSelection = Boolean(mediaURL || mediaIndex > 0)
+        const mediaSelectionRequired =
+          mediaCapacity > 0 && resolvedMediaCount > mediaCapacity
+        const mediaSelectionInvalid = Boolean(
+          preview && hasMediaSelection && !selectedMedia
+        )
+        const selectionMissing =
+          mediaSelectionInvalid ||
+          (mediaSelectionRequired &&
+            resolvedMediaCount > 1 &&
+            !hasMediaSelection)
+        const displayedMediaIndex =
+          mediaIndex ||
+          Number(selectedMedia?.index || 0) ||
+          (selectedMediaPosition != null && selectedMediaPosition >= 0
+            ? selectedMediaPosition + 1
+            : 0)
         return (
           <span
             data-reference-tag=''
@@ -78,17 +122,29 @@ export function ReferenceTag({
             data-reference-id={refId}
             data-selected={selected || undefined}
             data-disabled={disabled || undefined}
+            data-invalid={selectionMissing || undefined}
             tabIndex={disabled ? -1 : 0}
             aria-disabled={disabled || undefined}
             aria-label={`引用：${displayLabel}${alias ? `，${alias}` : ''}`}
             className={cn(
               'mx-1 inline-flex max-w-[min(22rem,78vw)] cursor-default items-center gap-1.5 rounded-md border border-slate-300/80 bg-slate-100/90 px-2 py-0.5 align-baseline text-[0.9em] leading-6 text-slate-800 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors select-none hover:border-slate-400 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-slate-400/45 focus-visible:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-700',
               selected && 'border-slate-500 ring-2 ring-slate-400/35',
+              selectionMissing &&
+                'border-red-400 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950/40 dark:text-red-300',
               className
             )}
           >
             <ReferenceTagIcon kind={kind} url={thumbnail} />
             <span className='truncate'>{displayLabel}</span>
+            {resolvedMediaCount > 1 ? (
+              <span className='shrink-0 text-[0.76em] font-medium text-slate-500 dark:text-slate-300'>
+                {hasMediaSelection
+                  ? displayedMediaIndex > 0
+                    ? `${displayedMediaIndex}/${resolvedMediaCount}`
+                    : '已选择'
+                  : `${resolvedMediaCount}项`}
+              </span>
+            ) : null}
             {alias ? (
               <span className='shrink-0 border-l border-slate-300 pl-1.5 text-[0.78em] font-medium text-slate-500 dark:border-slate-600 dark:text-slate-300'>
                 {alias}

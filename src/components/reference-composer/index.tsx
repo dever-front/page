@@ -765,6 +765,9 @@ export function ReferenceEditor({
             item.versionID,
             item.origin,
             item.originID,
+            item.mediaURL,
+            item.mediaIndex,
+            item.mediaCount,
           ].join(':')
         )
         .join('|'),
@@ -1190,6 +1193,8 @@ function referenceContentSignature(content: ReferenceContent | undefined) {
             part.ref_trigger || '@'
           }:${part.ref_version_id || 0}:${part.ref_origin || ''}:${
             part.ref_origin_id || ''
+          }:${part.ref_media_url || ''}:${part.ref_media_index || 0}:${
+            part.ref_media_count || 0
           }`
     )
     .join('|')
@@ -1314,6 +1319,9 @@ function referenceInsertionContent(
         previewUrl: option.preview?.url || '',
         origin: option.origin || '',
         originId: option.originID || '',
+        mediaUrl: option.mediaURL || '',
+        mediaIndex: Number(option.mediaIndex || 0),
+        mediaCount: Number(option.mediaCount || 0),
       },
     })
   })
@@ -1376,8 +1384,8 @@ function removeReferenceUsages(
 
 function referenceUsageCounts(document: import('@tiptap/core').JSONContent) {
   const result: Record<string, number> = {}
-  walkReferenceNodes(document, (usage) => {
-    result[usage] = (result[usage] || 0) + 1
+  walkReferenceNodes(document, (usage, _refID, amount) => {
+    result[usage] = (result[usage] || 0) + amount
   })
   return result
 }
@@ -1397,12 +1405,19 @@ function referenceIDsForUsage(
 
 function walkReferenceNodes(
   node: import('@tiptap/core').JSONContent,
-  visit: (usage: string, refID: string) => void
+  visit: (usage: string, refID: string, amount: number) => void
 ) {
   if (node.type === 'reference') {
     const usage = String(node.attrs?.usage || '').trim()
     if (usage) {
-      visit(usage, String(node.attrs?.refId || ''))
+      const mediaIndex = Number(node.attrs?.mediaIndex || 0)
+      const mediaURL = String(node.attrs?.mediaUrl || '').trim()
+      const mediaCount = Number(node.attrs?.mediaCount || 0)
+      visit(
+        usage,
+        String(node.attrs?.refId || ''),
+        mediaURL || mediaIndex > 0 ? 1 : Math.max(1, mediaCount)
+      )
     }
   }
   for (const child of node.content || []) {
@@ -1462,6 +1477,9 @@ export function ReferenceContentView({
             versionId={option?.versionID || part.ref_version_id}
             hint={option?.preview}
             loadPreview={loadPreview}
+            mediaURL={part.ref_media_url}
+            mediaIndex={part.ref_media_index}
+            mediaCount={part.ref_media_count || option?.mediaCount}
           />
         )
       })}
