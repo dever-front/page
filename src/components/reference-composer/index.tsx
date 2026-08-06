@@ -733,6 +733,8 @@ export function ReferenceEditor({
   const pickerLayerRef = useRef<HTMLDivElement>(null)
   const pickerOpenRef = useRef(false)
   const synchronizingRef = useRef(false)
+  const composingRef = useRef(false)
+  const pendingCompositionUpdateRef = useRef(false)
   const valueRef = useRef(value)
   const contentRef = useRef(content)
   const onChangeRef = useRef(onChange)
@@ -788,6 +790,27 @@ export function ReferenceEditor({
   )
   const appliedReferenceSignatureRef = useRef('')
   const controlledContentSignature = referenceContentSignature(content)
+  const commitDocumentChange = (
+    document: import('@tiptap/core').JSONContent
+  ) => {
+    pendingCompositionUpdateRef.current = false
+    if (synchronizingRef.current) {
+      return
+    }
+    const input = serializeReferenceDocument(document, {
+      trimBoundary: false,
+    })
+    if (
+      input.text === valueRef.current &&
+      referenceContentSignature(input.content) ===
+        referenceContentSignature(contentRef.current)
+    ) {
+      return
+    }
+    valueRef.current = input.text
+    contentRef.current = input.content
+    onChangeRef.current(input.text, input.content)
+  }
   const editor = useEditor({
     immediatelyRender: false,
     content: referenceEditorDocument(value, content, references),
@@ -850,6 +873,23 @@ export function ReferenceEditor({
         return !textEditableRef.current
       },
       handleDOMEvents: {
+        compositionstart() {
+          composingRef.current = true
+          return false
+        },
+        compositionend(view) {
+          composingRef.current = false
+          if (!pendingCompositionUpdateRef.current) {
+            return false
+          }
+          queueMicrotask(() => {
+            if (!pendingCompositionUpdateRef.current) {
+              return
+            }
+            commitDocumentChange(view.state.doc.toJSON())
+          })
+          return false
+        },
         beforeinput(_view, event) {
           if (textEditableRef.current) {
             return false
@@ -863,19 +903,11 @@ export function ReferenceEditor({
       if (synchronizingRef.current) {
         return
       }
-      const input = serializeReferenceDocument(currentEditor.getJSON(), {
-        trimBoundary: false,
-      })
-      if (
-        input.text === valueRef.current &&
-        referenceContentSignature(input.content) ===
-          referenceContentSignature(contentRef.current)
-      ) {
+      if (composingRef.current) {
+        pendingCompositionUpdateRef.current = true
         return
       }
-      valueRef.current = input.text
-      contentRef.current = input.content
-      onChangeRef.current(input.text, input.content)
+      commitDocumentChange(currentEditor.getJSON())
     },
   })
 

@@ -51,6 +51,18 @@ export function ReferenceNodeView({
     loadPreview,
   })
   const hint = mergePreviewHints(staticHint, loadedHint)
+
+  useEffect(() => {
+    const resolvedKind = String(hint?.kind || '').trim()
+    const storedKind = String(node.attrs.previewKind || '').trim()
+    if (!resolvedKind || storedKind) {
+      return
+    }
+    // Alias numbering reads the shared editor document, so async preview
+    // metadata must be reflected there for every reference node to see it.
+    updateAttributes({ previewKind: resolvedKind })
+  }, [hint?.kind, node.attrs.previewKind, updateAttributes])
+
   const usage = String(node.attrs.usage || '')
   const usageOptions = compatibleReferenceUsageOptions(
     options.usageOptions || [],
