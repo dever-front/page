@@ -8,7 +8,11 @@ import {
   type KeyboardEvent,
 } from 'react'
 import Placeholder from '@tiptap/extension-placeholder'
-import { EditorContent, useEditor } from '@tiptap/react'
+import {
+  EditorContent,
+  useEditor,
+  type UseEditorOptions,
+} from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { ArrowUp, AtSign, Hash, Loader2, Square } from 'lucide-react'
 import { createPortal } from 'react-dom'
@@ -73,6 +77,7 @@ import type {
 
 const EMPTY_PARAM_FILES: UploadFileItem[] = []
 const CURRENT_REFERENCE_SCOPES: ReferenceScope[] = ['current']
+const EMPTY_REFERENCE_USAGE_OPTIONS: ReferenceUsageOption[] = []
 
 export type {
   ReferenceComposerParam,
@@ -695,7 +700,7 @@ export function ReferenceEditor({
   providers,
   loadReferences,
   loadPreview,
-  usageOptions = [],
+  usageOptions = EMPTY_REFERENCE_USAGE_OPTIONS,
   showMediaAliases = false,
   allowMultiMediaSelection = false,
   pickerRequest,
@@ -735,8 +740,14 @@ export function ReferenceEditor({
   const synchronizingRef = useRef(false)
   const composingRef = useRef(false)
   const pendingCompositionUpdateRef = useRef(false)
+  const pendingControlledSyncRef = useRef(false)
+  const pendingCommittedValueRef = useRef<string | null>(null)
+  const controlledSyncFrameRef = useRef<number | null>(null)
+  const [controlledSyncRevision, setControlledSyncRevision] = useState(0)
   const valueRef = useRef(value)
   const contentRef = useRef(content)
+  const controlledContentRef = useRef(content)
+  const referencesRef = useRef(references)
   const onChangeRef = useRef(onChange)
   const onSubmitRef = useRef(onSubmit)
   const onPickerRequestConsumedRef = useRef(onPickerRequestConsumed)
@@ -753,9 +764,18 @@ export function ReferenceEditor({
     text: '',
     media: [],
   }))
+  const referenceProvidersRef = useRef(referenceProviders)
   pickerOpenRef.current = pickerOpen
-  valueRef.current = value
-  contentRef.current = content
+  referenceProvidersRef.current = referenceProviders
+  controlledContentRef.current = content
+  referencesRef.current = references
+  if (
+    pendingCommittedValueRef.current === null ||
+    pendingCommittedValueRef.current === value
+  ) {
+    valueRef.current = value
+    contentRef.current = content
+  }
   onChangeRef.current = onChange
   onSubmitRef.current = onSubmit
   onPickerRequestConsumedRef.current = onPickerRequestConsumed
@@ -764,67 +784,93 @@ export function ReferenceEditor({
   textEditableRef.current = textEditable
   loadPreviewRef.current = referencePreviewDispatcher(referenceProviders)
   const referenceSignature = useMemo(
-    () =>
-      references
-        .map((item) =>
-          [
-            item.key,
-            item.refType,
-            item.refId,
-            item.label,
-            item.preview?.kind,
-            item.preview?.url,
-            item.preview?.text,
-            item.usage,
-            item.versionID,
-            item.origin,
-            item.originID,
-            item.mediaURL,
-            item.mediaIndex,
-            item.mediaCount,
-            referenceMediaSelectionSignature(item.mediaItems),
-          ].join(':')
-        )
-        .join('|'),
+    () => referenceOptionsSignature(references),
     [references]
   )
-  const appliedReferenceSignatureRef = useRef('')
-  const controlledContentSignature = referenceContentSignature(content)
-  const commitDocumentChange = (
-    document: import('@tiptap/core').JSONContent
-  ) => {
-    pendingCompositionUpdateRef.current = false
-    if (synchronizingRef.current) {
-      return
+  const appliedReferenceSignatureRef = useRef(referenceSignature)
+  const controlledContentSignature = useMemo(
+    () => referenceContentSignature(content),
+    [content]
+  )
+  const usageOptionsSignature = useMemo(
+    () => referenceUsageOptionsSignature(usageOptions),
+    [usageOptions]
+  )
+  const stableUsageOptionsRef = useRef({
+    signature: usageOptionsSignature,
+    options: usageOptions,
+  })
+  if (stableUsageOptionsRef.current.signature !== usageOptionsSignature) {
+    stableUsageOptionsRef.current = {
+      signature: usageOptionsSignature,
+      options: usageOptions,
     }
-    const input = serializeReferenceDocument(document, {
-      trimBoundary: false,
-    })
+  }
+  const [initialEditorDocument] = useState(() =>
+    referenceEditorDocument(value, content, references)
+  )
+  const commitDocumentChange = useCallback(
+    (document: import('@tiptap/core').JSONContent) => {
+      pendingCompositionUpdateRef.current = false
+      if (synchronizingRef.current) {
+        return
+      }
+      const input = serializeReferenceDocument(document, {
+        trimBoundary: false,
+      })
+      if (
+        input.text === valueRef.current &&
+        referenceContentSignature(input.content) ===
+          referenceContentSignature(contentRef.current)
+      ) {
+        return
+      }
+      pendingCommittedValueRef.current = input.text
+      valueRef.current = input.text
+      contentRef.current = input.content
+      onChangeRef.current(input.text, input.content)
+    },
+    []
+  )
+  const schedulePendingControlledSync = useCallback(() => {
     if (
-      input.text === valueRef.current &&
-      referenceContentSignature(input.content) ===
-        referenceContentSignature(contentRef.current)
+      !pendingControlledSyncRef.current ||
+      controlledSyncFrameRef.current !== null
     ) {
       return
     }
-    valueRef.current = input.text
-    contentRef.current = input.content
-    onChangeRef.current(input.text, input.content)
-  }
-  const editor = useEditor({
-    immediatelyRender: false,
-    content: referenceEditorDocument(value, content, references),
-    extensions: referenceEditorExtensions(
-      placeholder,
-      (request) => loadPreviewRef.current(request),
-      usageOptions,
-      showMediaAliases,
+    if (typeof window === 'undefined') {
+      setControlledSyncRevision((current) => current + 1)
+      return
+    }
+    controlledSyncFrameRef.current = window.requestAnimationFrame(() => {
+      controlledSyncFrameRef.current = null
+      if (pendingControlledSyncRef.current) {
+        setControlledSyncRevision((current) => current + 1)
+      }
+    })
+  }, [])
+  const editorExtensions = useMemo(
+    () =>
+      referenceEditorExtensions(
+        placeholder,
+        (request) => loadPreviewRef.current(request),
+        stableUsageOptionsRef.current.options,
+        showMediaAliases,
+        allowMultiMediaSelection,
+        (reference) => onReferenceDeleteRef.current?.(reference),
+        (reference, usage) =>
+          onReferenceUsageChangeRef.current?.(reference, usage)
+      ),
+    [
       allowMultiMediaSelection,
-      (reference) => onReferenceDeleteRef.current?.(reference),
-      (reference, usage) =>
-        onReferenceUsageChangeRef.current?.(reference, usage)
-    ),
-    editorProps: {
+      placeholder,
+      showMediaAliases,
+      usageOptionsSignature,
+    ]
+  )
+  const editorProps = useMemo<NonNullable<UseEditorOptions['editorProps']>>(
+    () => ({
       attributes: {
         class: 'reference-composer-editor reference-text-editor-input',
         'aria-label': placeholder,
@@ -833,7 +879,10 @@ export function ReferenceEditor({
         if (!textEditableRef.current) {
           return true
         }
-        const provider = referenceProviderForTrigger(referenceProviders, text)
+        const provider = referenceProviderForTrigger(
+          referenceProvidersRef.current,
+          text
+        )
         if (!provider) {
           return false
         }
@@ -879,14 +928,11 @@ export function ReferenceEditor({
         },
         compositionend(view) {
           composingRef.current = false
-          if (!pendingCompositionUpdateRef.current) {
-            return false
-          }
           queueMicrotask(() => {
-            if (!pendingCompositionUpdateRef.current) {
-              return
+            if (pendingCompositionUpdateRef.current) {
+              commitDocumentChange(view.state.doc.toJSON())
             }
-            commitDocumentChange(view.state.doc.toJSON())
+            schedulePendingControlledSync()
           })
           return false
         },
@@ -898,7 +944,14 @@ export function ReferenceEditor({
           return true
         },
       },
-    },
+    }),
+    [commitDocumentChange, placeholder, schedulePendingControlledSync]
+  )
+  const editor = useEditor({
+    immediatelyRender: false,
+    content: initialEditorDocument,
+    extensions: editorExtensions,
+    editorProps,
     onUpdate({ editor: currentEditor }) {
       if (synchronizingRef.current) {
         return
@@ -910,6 +963,18 @@ export function ReferenceEditor({
       commitDocumentChange(currentEditor.getJSON())
     },
   })
+
+  useEffect(
+    () => () => {
+      if (
+        controlledSyncFrameRef.current !== null &&
+        typeof window !== 'undefined'
+      ) {
+        window.cancelAnimationFrame(controlledSyncFrameRef.current)
+      }
+    },
+    []
+  )
 
   useEffect(() => {
     editor?.setEditable(!disabled)
@@ -929,6 +994,17 @@ export function ReferenceEditor({
     if (!editor) {
       return
     }
+    if (composingRef.current) {
+      pendingControlledSyncRef.current = true
+      return
+    }
+    if (pendingCommittedValueRef.current !== null) {
+      if (value !== pendingCommittedValueRef.current) {
+        pendingControlledSyncRef.current = true
+        return
+      }
+      pendingCommittedValueRef.current = null
+    }
     const currentInput = serializeReferenceDocument(editor.getJSON(), {
       trimBoundary: false,
     })
@@ -938,23 +1014,31 @@ export function ReferenceEditor({
         controlledContentSignature &&
       appliedReferenceSignatureRef.current === referenceSignature
     ) {
+      pendingControlledSyncRef.current = false
       return
     }
     synchronizingRef.current = true
-    editor.commands.setContent(
-      referenceEditorDocument(value, content, references),
-      { emitUpdate: false }
-    )
-    synchronizingRef.current = false
+    try {
+      editor.commands.setContent(
+        referenceEditorDocument(
+          value,
+          controlledContentRef.current,
+          referencesRef.current
+        ),
+        { emitUpdate: false }
+      )
+    } finally {
+      synchronizingRef.current = false
+    }
+    pendingControlledSyncRef.current = false
     valueRef.current = value
-    contentRef.current = content
+    contentRef.current = controlledContentRef.current
     appliedReferenceSignatureRef.current = referenceSignature
   }, [
-    content,
     controlledContentSignature,
+    controlledSyncRevision,
     editor,
     referenceSignature,
-    references,
     value,
   ])
 
@@ -1225,6 +1309,39 @@ function referenceEditorDocument(
   return content?.version === 1
     ? referenceDocumentFromContent(content, references)
     : referenceDocumentFromText(value, references)
+}
+
+function referenceOptionsSignature(references: ReferenceOption[]) {
+  return JSON.stringify(
+    references.map((item) => [
+      item.key,
+      item.refType,
+      item.refId,
+      item.label,
+      item.preview?.kind,
+      item.preview?.url,
+      item.preview?.text,
+      item.usage,
+      item.versionID,
+      item.origin,
+      item.originID,
+      item.mediaURL,
+      item.mediaIndex,
+      item.mediaCount,
+      referenceMediaSelectionSignature(item.mediaItems),
+    ])
+  )
+}
+
+function referenceUsageOptionsSignature(options: ReferenceUsageOption[]) {
+  return JSON.stringify(
+    options.map((option) => [
+      option.key,
+      option.label,
+      option.maxFiles || 0,
+      option.acceptedKinds || [],
+    ])
+  )
 }
 
 function referenceContentSignature(content: ReferenceContent | undefined) {

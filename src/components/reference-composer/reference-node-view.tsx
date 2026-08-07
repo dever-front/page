@@ -14,10 +14,7 @@ import type {
 import { loadReferencePreview } from './reference-preview-cache'
 import { compatibleReferenceUsageOptions } from './reference-usage'
 import { referenceTrigger } from './text'
-import {
-  referenceAliasTargetKey,
-  referenceMediaAliases,
-} from './reference-alias'
+import { referenceMediaAliasAtPosition } from './reference-alias'
 
 export function ReferenceNodeView({
   node,
@@ -180,27 +177,7 @@ function useReferenceNodeMediaAlias(
     } catch {
       return ''
     }
-    const positions: number[] = []
-    const entries: Array<{
-      key: string
-      kind?: string
-      deferred?: boolean
-    }> = []
-    editor.state.doc.descendants((currentNode, position) => {
-      if (currentNode.type.name !== 'reference') {
-        return
-      }
-      positions.push(position)
-      entries.push({
-        key: referenceAliasTargetKey(currentNode.attrs),
-        kind: String(currentNode.attrs.previewKind || ''),
-        deferred:
-          String(currentNode.attrs.origin || '').trim().toLowerCase() ===
-          'edge',
-      })
-    })
-    const index = positions.indexOf(currentPosition)
-    return index >= 0 ? referenceMediaAliases(entries)[index] || '' : ''
+    return referenceMediaAliasAtPosition(editor.state.doc, currentPosition)
   }, [editor, enabled, getPos])
   const [alias, setAlias] = useState(readAlias)
 

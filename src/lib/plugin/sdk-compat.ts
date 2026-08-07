@@ -1,87 +1,73 @@
 import { useNavigate, useSearch } from '@tanstack/react-router'
+import {
+  assistantCompatSources,
+  contentCompatSources,
+  directCompatSources,
+  editorCompatSources,
+  pageCompatSources,
+  runtimeCompatSources,
+  uiCompatSources,
+} from './compat/sources'
 import { defineFrontPlugin, lazyNode, mergePluginNodes } from './types'
 
 type CompatModule = Record<string, any>
 type CompatModuleLoader = () => Promise<unknown>
+type CompatModuleGroup = {
+  compatModules: Record<string, CompatModule>
+}
+
+function createCompatGroupLoaders(
+  sources: Readonly<Record<string, string>>,
+  loader: () => Promise<CompatModuleGroup>
+) {
+  let groupPromise: Promise<CompatModuleGroup> | undefined
+  const loadGroup = () => {
+    if (!groupPromise) {
+      groupPromise = loader().catch((error) => {
+        groupPromise = undefined
+        throw error
+      })
+    }
+    return groupPromise
+  }
+
+  const moduleLoaders: Record<string, CompatModuleLoader> = {}
+  for (const source of Object.values(sources)) {
+    moduleLoaders[source] = async () => {
+      const group = await loadGroup()
+      const module = group.compatModules[source]
+      if (!module) {
+        throw new Error(`宿主兼容模块组未注册 ${source}`)
+      }
+      return module
+    }
+  }
+  return moduleLoaders
+}
 
 const compatModuleLoaders = {
-  '@/components/agent/interaction-panel': () =>
-    import('@/components/agent/interaction-panel'),
-  '@/components/agent/stream-request-params': () =>
-    import('@/components/agent/stream-request-params'),
-  '@/components/assistant/form-actions': () =>
-    import('@/components/assistant/form-actions'),
-  '@/components/assistant/memory-dialog': () =>
-    import('@/components/assistant/memory-dialog'),
-  '@/components/assistant/reference-picker': () =>
-    import('@/components/assistant/reference-picker'),
-  '@/components/assistant/session-history-dialog': () =>
-    import('@/components/assistant/session-history-dialog'),
-  '@/components/assistant/task-popover': () =>
-    import('@/components/assistant/task-popover'),
-  '@/components/confirm-dialog': () => import('@/components/confirm-dialog'),
-  '@/components/energon/content-view': () =>
-    import('@/components/energon/content-view'),
-  '@/components/energon/progress': () =>
-    import('@/components/energon/progress'),
-  '@/components/layout/site-logo': () =>
-    import('@/components/layout/site-logo'),
-  '@/components/reference-composer': () =>
-    import('@/components/reference-composer'),
-  '@/components/rich-text-editor': () =>
-    import('@/components/rich-text-editor'),
-  '@/components/rich-text-view': () => import('@/components/rich-text-view'),
-  '@/components/searchable-option-picker': () =>
-    import('@/components/searchable-option-picker'),
-  '@/components/stream-timing': () => import('@/components/stream-timing'),
-  '@/components/ui/button': () => import('@/components/ui/button'),
-  '@/components/ui/card': () => import('@/components/ui/card'),
-  '@/components/ui/dialog': () => import('@/components/ui/dialog'),
-  '@/components/ui/dropdown-menu': () =>
-    import('@/components/ui/dropdown-menu'),
-  '@/components/ui/input': () => import('@/components/ui/input'),
-  '@/components/ui/radio-group': () => import('@/components/ui/radio-group'),
-  '@/components/ui/select': () => import('@/components/ui/select'),
-  '@/components/ui/sheet': () => import('@/components/ui/sheet'),
-  '@/components/ui/switch': () => import('@/components/ui/switch'),
-  '@/components/ui/table': () => import('@/components/ui/table'),
-  '@/components/ui/textarea': () => import('@/components/ui/textarea'),
-  '@/config/app-config': () =>
-    import('@/config/app-config').then(({ getSiteConfig }) => ({ getSiteConfig })),
-  '@/context/theme-provider': () => import('@/context/theme-provider'),
-  '@/hooks/use-upload-rule-metas': () =>
-    import('@/hooks/use-upload-rule-metas'),
-  '@/lib/agent-result-protocol': () => import('@/lib/agent-result-protocol'),
-  '@/lib/agent/runner': () => import('@/lib/agent/runner'),
-  '@/lib/assistant/context': () => import('@/lib/assistant/context'),
-  '@/lib/assistant/reference': () => import('@/lib/assistant/reference'),
-  '@/lib/auth-redirect': () => import('@/lib/auth-redirect'),
-  '@/lib/floating-layer': () => import('@/lib/floating-layer'),
-  '@/lib/icon': () => import('@/lib/icon'),
-  '@/lib/page-data-reload': () => import('@/lib/page-data-reload'),
-  '@/lib/page-schema-reload': () => import('@/lib/page-schema-reload'),
-  '@/lib/plugin/types': async () => ({
+  ...createCompatGroupLoaders(assistantCompatSources, () =>
+    import('./compat/assistant')
+  ),
+  ...createCompatGroupLoaders(contentCompatSources, () =>
+    import('./compat/content')
+  ),
+  ...createCompatGroupLoaders(editorCompatSources, () =>
+    import('./compat/editor')
+  ),
+  ...createCompatGroupLoaders(pageCompatSources, () =>
+    import('./compat/page')
+  ),
+  ...createCompatGroupLoaders(runtimeCompatSources, () =>
+    import('./compat/runtime')
+  ),
+  ...createCompatGroupLoaders(uiCompatSources, () => import('./compat/ui')),
+  [directCompatSources.pluginTypes]: async () => ({
     defineFrontPlugin,
     lazyNode,
     mergePluginNodes,
   }),
-  '@/lib/request': () => import('@/lib/request'),
-  '@/lib/resource': () => import('@/lib/resource'),
-  '@/lib/rich-text-html': () => import('@/lib/rich-text-html'),
-  '@/lib/runtime-stream-output': () => import('@/lib/runtime-stream-output'),
-  '@/lib/runtime-stream-runner': () => import('@/lib/runtime-stream-runner'),
-  '@/lib/store': () => import('@/lib/store'),
-  '@/lib/stream': () => import('@/lib/stream'),
-  '@/lib/upload': () => import('@/lib/upload'),
-  '@/lib/utils': () => import('@/lib/utils'),
-  '@/page/nodes/form/date': () => import('@/page/nodes/form/date'),
-  '@/page/nodes/form/icon': () => import('@/page/nodes/form/icon'),
-  '@/page/nodes/form/upload': () => import('@/page/nodes/form/upload'),
-  '@/page/nodes/show/table/inline-edit': () =>
-    import('@/page/nodes/show/table/inline-edit'),
-  '@/page/nodes/show/tooltip': () => import('@/page/nodes/show/tooltip'),
-  '@/page/nodes': async () => ({}),
-  '@/stores/auth-store': () => import('@/stores/auth-store'),
+  [directCompatSources.pageNodes]: async () => ({}),
 } satisfies Record<string, CompatModuleLoader>
 
 const compatModules = new Map<string, CompatModule>()

@@ -1,8 +1,12 @@
+import type { Editor } from '@tiptap/core'
+
 export type ReferenceAliasEntry = {
   key: string
   kind?: string
   deferred?: boolean
 }
+
+type ReferenceAliasDocument = Editor['state']['doc']
 
 const REFERENCE_ALIAS_PREFIX: Record<string, string> = {
   image: '图',
@@ -10,6 +14,11 @@ const REFERENCE_ALIAS_PREFIX: Record<string, string> = {
   audio: '音频',
   file: '文件',
 }
+
+const documentAliasCache = new WeakMap<
+  object,
+  ReadonlyMap<number, string>
+>()
 
 // Aliases are derived from the current request order. Repeated references keep
 // the same alias, so mentioning one asset more than once does not renumber it.
@@ -43,6 +52,38 @@ export function referenceMediaAliases(entries: ReferenceAliasEntry[]) {
   }
 
   return result
+}
+
+export function referenceMediaAliasAtPosition(
+  document: ReferenceAliasDocument,
+  position: number
+) {
+  let aliases = documentAliasCache.get(document)
+  if (!aliases) {
+    const positions: number[] = []
+    const entries: ReferenceAliasEntry[] = []
+    document.descendants((node, nodePosition) => {
+      if (node.type.name !== 'reference') {
+        return
+      }
+      positions.push(nodePosition)
+      entries.push({
+        key: referenceAliasTargetKey(node.attrs),
+        kind: String(node.attrs.previewKind || ''),
+        deferred:
+          String(node.attrs.origin || '').trim().toLowerCase() === 'edge',
+      })
+    })
+    const calculated = referenceMediaAliases(entries)
+    aliases = new Map(
+      positions.map((nodePosition, index) => [
+        nodePosition,
+        calculated[index] || '',
+      ])
+    )
+    documentAliasCache.set(document, aliases)
+  }
+  return aliases.get(position) || ''
 }
 
 export function referenceAliasTargetKey(value: {

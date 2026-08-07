@@ -17,6 +17,7 @@ type EnergonAudioPlayerProps = {
   detailed?: boolean
   compact?: boolean
   autoPlay?: boolean
+  preload?: 'none' | 'metadata' | 'auto'
   className?: string
 }
 
@@ -25,6 +26,7 @@ export function EnergonAudioPlayer({
   detailed = false,
   compact = false,
   autoPlay = false,
+  preload = 'metadata',
   className,
 }: EnergonAudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -223,7 +225,7 @@ export function EnergonAudioPlayer({
         ref={audioRef}
         src={src || undefined}
         autoPlay={autoPlay}
-        preload={autoPlay ? 'auto' : 'metadata'}
+        preload={autoPlay ? 'auto' : preload}
         className="hidden"
         onLoadedMetadata={updateDuration}
         onDurationChange={updateDuration}
