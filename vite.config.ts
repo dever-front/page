@@ -25,48 +25,6 @@ function isSingleBundleMode(value: string | undefined) {
 }
 
 const minimumSplitChunkSize = 24 * 1024
-const coreDependencies = new Set([
-  '@tanstack/history',
-  '@tanstack/query-core',
-  '@tanstack/react-query',
-  '@tanstack/react-router',
-  '@tanstack/router-core',
-  'react',
-  'react-dom',
-  'scheduler',
-])
-
-function packageNameFromModuleID(id: string) {
-  const normalizedID = id.replaceAll('\\', '/')
-  const marker = '/node_modules/'
-  const markerIndex = normalizedID.lastIndexOf(marker)
-  if (markerIndex === -1) {
-    return ''
-  }
-
-  const packagePath = normalizedID.slice(markerIndex + marker.length)
-  const segments = packagePath.split('/')
-  return segments[0]?.startsWith('@')
-    ? `${segments[0]}/${segments[1] || ''}`
-    : segments[0] || ''
-}
-
-function frontManualChunk(id: string) {
-  const dependency = packageNameFromModuleID(id)
-  if (!dependency) return undefined
-
-  if (coreDependencies.has(dependency)) {
-    return 'vendor-core'
-  }
-  if (
-    dependency.startsWith('@tiptap/') ||
-    dependency.startsWith('prosemirror-') ||
-    ['highlight.js', 'lowlight'].includes(dependency)
-  ) {
-    return 'vendor-editor'
-  }
-  return undefined
-}
 
 const renderFrontBuiltAssetUrl: RenderBuiltAssetUrl = (
   _filename,
@@ -129,9 +87,9 @@ export default defineConfig(async () => {
         }
         : {
           output: {
+            // React/TanStack share generated helpers with the entry; forcing
+            // them into vendor chunks creates a circular entry dependency.
             experimentalMinChunkSize: minimumSplitChunkSize,
-            manualChunks: frontManualChunk,
-            onlyExplicitManualChunks: true,
           },
         },
     },
