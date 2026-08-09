@@ -6,6 +6,7 @@ const GLOBAL_KEY = 'DeverFront'
 
 type FrontPluginRuntimeGlobal = {
   registerPlugin?: (plugin: DeverFrontPlugin) => void
+  ensureCompat?: (sources?: string[]) => Promise<void>
   sdk?: FrontPluginSDK
 }
 
@@ -13,6 +14,7 @@ type RuntimeManifestEntry = {
   file?: string
   css?: string[]
   compat?: string[]
+  compatMode?: 'module'
   isEntry?: boolean
   module?: boolean
 }
@@ -39,11 +41,13 @@ export function getRuntimeNodeLoadError(nodeType: string) {
 export function installRuntimeGlobal() {
   if (window[GLOBAL_KEY]) {
     window[GLOBAL_KEY]!.registerPlugin ||= registerRuntimePlugin
+    window[GLOBAL_KEY]!.ensureCompat ||= ensureRuntimeSDK
     return
   }
 
   window[GLOBAL_KEY] = {
     registerPlugin: registerRuntimePlugin,
+    ensureCompat: ensureRuntimeSDK,
   }
 }
 
@@ -142,6 +146,7 @@ async function loadRuntimePlugin(plugin: RuntimePluginConfig) {
         file: plugin.entry,
         css: plugin.css,
         compat: plugin.compat,
+        compatMode: plugin.compatMode,
         module: plugin.module,
       }
     : await loadManifestEntry(plugin.manifest || '')
@@ -151,7 +156,9 @@ async function loadRuntimePlugin(plugin: RuntimePluginConfig) {
       `插件 ${plugin.name || plugin.manifest || plugin.entry} 缺少前端入口`
     )
   }
-  await ensureRuntimeSDK(entry.compat)
+  // Module-scoped plugins resolve compat from their own lazy chunks. Older
+  // manifests retain the eager list so existing published plugins still work.
+  await ensureRuntimeSDK(entry.compatMode === 'module' ? [] : entry.compat)
 
   const baseUrl = plugin.manifest
     ? plugin.manifest.slice(0, plugin.manifest.lastIndexOf('/') + 1)
@@ -182,6 +189,7 @@ async function loadManifestEntry(manifestUrl: string) {
   return {
     ...entry,
     compat: manifestCompatSources(manifest),
+    compatMode: manifestCompatMode(manifest),
   }
 }
 
@@ -248,6 +256,19 @@ function manifestCompatSources(manifest: unknown) {
     return undefined
   }
   return uniqueStrings(compat.map((source) => String(source || '')))
+}
+
+function manifestCompatMode(manifest: unknown): 'module' | undefined {
+  if (!manifest || typeof manifest !== 'object') {
+    return undefined
+  }
+  const metadata = (manifest as Record<string, unknown>).__plugin
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return undefined
+  }
+  return (metadata as Record<string, unknown>).compatMode === 'module'
+    ? 'module'
+    : undefined
 }
 
 function resolveRuntimeAsset(baseUrl: string, file: string) {

@@ -33,6 +33,7 @@ function seekToFirstFrame(video: HTMLVideoElement) {
 export function FirstFrameVideo({
   src,
   videoRef,
+  poster,
   preload = 'metadata',
   onLoadedMetadata,
   onLoadedData,
@@ -41,6 +42,7 @@ export function FirstFrameVideo({
   ...props
 }: FirstFrameVideoProps) {
   const readySrcRef = useRef('')
+  const hasPoster = Boolean(poster?.trim())
 
   function notifyFirstFrameReady(video: HTMLVideoElement) {
     const currentSrc = src || video.currentSrc
@@ -51,13 +53,17 @@ export function FirstFrameVideo({
 
   function handleLoadedMetadata(event: SyntheticEvent<HTMLVideoElement>) {
     onLoadedMetadata?.(event)
-    seekToFirstFrame(event.currentTarget)
+    if (!hasPoster) {
+      seekToFirstFrame(event.currentTarget)
+    }
   }
 
   function handleLoadedData(event: SyntheticEvent<HTMLVideoElement>) {
     onLoadedData?.(event)
     const video = event.currentTarget
-    seekToFirstFrame(video)
+    if (!hasPoster) {
+      seekToFirstFrame(video)
+    }
     notifyFirstFrameReady(video)
   }
 
@@ -71,6 +77,7 @@ export function FirstFrameVideo({
       {...props}
       ref={videoRef}
       src={src}
+      poster={poster}
       preload={preload}
       onLoadedMetadata={handleLoadedMetadata}
       onLoadedData={handleLoadedData}

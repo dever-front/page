@@ -65,6 +65,7 @@ export function ResourceCard({
       : previewVisible && previewKind === 'video'
         ? String(item.url || item.download || item.open_url || '').trim()
         : ''
+  const videoPoster = String(item.thumbnail || '').trim()
   const categoryLabel = resolveCategoryLabel(item.category_id, categories)
   const previewable = isPreviewableResource(item) && !!onPreview
   const previewButtonClassName =
@@ -123,9 +124,10 @@ export function ResourceCard({
           ) : previewKind === 'video' && previewUrl ? (
             <FirstFrameVideo
               src={previewUrl}
+              poster={videoPoster || undefined}
               muted
               playsInline
-              preload="metadata"
+              preload={videoPoster ? 'none' : 'metadata'}
               className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
             />
           ) : (

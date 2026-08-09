@@ -14,6 +14,7 @@ export const assistantCompatSources = {
 
 export const contentCompatSources = {
   contentView: '@/components/energon/content-view',
+  firstFrameVideo: '@/components/media/first-frame-video',
   progress: '@/components/energon/progress',
   referenceComposer: '@/components/reference-composer',
   richTextView: '@/components/rich-text-view',
@@ -74,3 +75,14 @@ export const directCompatSources = {
   pluginTypes: '@/lib/plugin/types',
   pageNodes: '@/page/nodes',
 } as const
+
+type CompatSourceValues<T> = T[keyof T]
+
+export type CompatSource =
+  | CompatSourceValues<typeof assistantCompatSources>
+  | CompatSourceValues<typeof contentCompatSources>
+  | CompatSourceValues<typeof editorCompatSources>
+  | CompatSourceValues<typeof pageCompatSources>
+  | CompatSourceValues<typeof runtimeCompatSources>
+  | CompatSourceValues<typeof uiCompatSources>
+  | CompatSourceValues<typeof directCompatSources>

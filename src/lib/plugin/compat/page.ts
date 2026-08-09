@@ -1,14 +1,9 @@
-import * as formDate from '@/page/nodes/form/date'
-import * as formIcon from '@/page/nodes/form/icon'
-import * as formUpload from '@/page/nodes/form/upload'
-import * as tableInlineEdit from '@/page/nodes/show/table/inline-edit'
-import * as showTooltip from '@/page/nodes/show/tooltip'
 import { pageCompatSources as source } from './sources'
 
-export const compatModules = {
-  [source.formDate]: formDate,
-  [source.formIcon]: formIcon,
-  [source.formUpload]: formUpload,
-  [source.tableInlineEdit]: tableInlineEdit,
-  [source.showTooltip]: showTooltip,
+export const pageCompatModuleLoaders = {
+  [source.formDate]: () => import('@/page/nodes/form/date'),
+  [source.formIcon]: () => import('@/page/nodes/form/icon'),
+  [source.formUpload]: () => import('@/page/nodes/form/upload'),
+  [source.tableInlineEdit]: () => import('@/page/nodes/show/table/inline-edit'),
+  [source.showTooltip]: () => import('@/page/nodes/show/tooltip'),
 }

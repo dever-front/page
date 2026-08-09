@@ -217,5 +217,6 @@ export type ReferenceEditorProps = {
     usage: string
   ) => void
   onChange: (value: string, content: ReferenceContent) => void
+  onBlur?: () => void
   onSubmit?: () => void
 }

@@ -58,6 +58,7 @@ export type RuntimePluginConfig = {
   entry?: string
   css?: string[]
   compat?: string[]
+  compatMode?: 'module'
   nodes?: string[]
   depends?: string[]
   module?: boolean
@@ -391,6 +392,7 @@ function normalizeRuntimePlugin(
       plugin.compat === undefined
         ? undefined
         : normalizeStringList(plugin.compat),
+    compatMode: plugin.compatMode === 'module' ? 'module' : undefined,
     nodes: normalizeStringList(plugin.nodes),
     depends: normalizeStringList(plugin.depends),
     module: plugin.module === true,

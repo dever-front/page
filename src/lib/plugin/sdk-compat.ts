@@ -1,74 +1,30 @@
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import {
-  assistantCompatSources,
-  contentCompatSources,
-  directCompatSources,
-  editorCompatSources,
-  pageCompatSources,
-  runtimeCompatSources,
-  uiCompatSources,
-} from './compat/sources'
+import { assistantCompatModuleLoaders } from './compat/assistant'
+import { contentCompatModuleLoaders } from './compat/content'
+import { editorCompatModuleLoaders } from './compat/editor'
+import { pageCompatModuleLoaders } from './compat/page'
+import { runtimeCompatModuleLoaders } from './compat/runtime'
+import { type CompatSource, directCompatSources } from './compat/sources'
+import { uiCompatModuleLoaders } from './compat/ui'
 import { defineFrontPlugin, lazyNode, mergePluginNodes } from './types'
 
 type CompatModule = Record<string, any>
 type CompatModuleLoader = () => Promise<unknown>
-type CompatModuleGroup = {
-  compatModules: Record<string, CompatModule>
-}
-
-function createCompatGroupLoaders(
-  sources: Readonly<Record<string, string>>,
-  loader: () => Promise<CompatModuleGroup>
-) {
-  let groupPromise: Promise<CompatModuleGroup> | undefined
-  const loadGroup = () => {
-    if (!groupPromise) {
-      groupPromise = loader().catch((error) => {
-        groupPromise = undefined
-        throw error
-      })
-    }
-    return groupPromise
-  }
-
-  const moduleLoaders: Record<string, CompatModuleLoader> = {}
-  for (const source of Object.values(sources)) {
-    moduleLoaders[source] = async () => {
-      const group = await loadGroup()
-      const module = group.compatModules[source]
-      if (!module) {
-        throw new Error(`宿主兼容模块组未注册 ${source}`)
-      }
-      return module
-    }
-  }
-  return moduleLoaders
-}
 
 const compatModuleLoaders = {
-  ...createCompatGroupLoaders(assistantCompatSources, () =>
-    import('./compat/assistant')
-  ),
-  ...createCompatGroupLoaders(contentCompatSources, () =>
-    import('./compat/content')
-  ),
-  ...createCompatGroupLoaders(editorCompatSources, () =>
-    import('./compat/editor')
-  ),
-  ...createCompatGroupLoaders(pageCompatSources, () =>
-    import('./compat/page')
-  ),
-  ...createCompatGroupLoaders(runtimeCompatSources, () =>
-    import('./compat/runtime')
-  ),
-  ...createCompatGroupLoaders(uiCompatSources, () => import('./compat/ui')),
+  ...assistantCompatModuleLoaders,
+  ...contentCompatModuleLoaders,
+  ...editorCompatModuleLoaders,
+  ...pageCompatModuleLoaders,
+  ...runtimeCompatModuleLoaders,
+  ...uiCompatModuleLoaders,
   [directCompatSources.pluginTypes]: async () => ({
     defineFrontPlugin,
     lazyNode,
     mergePluginNodes,
   }),
   [directCompatSources.pageNodes]: async () => ({}),
-} satisfies Record<string, CompatModuleLoader>
+} satisfies Record<CompatSource, CompatModuleLoader>
 
 const compatModules = new Map<string, CompatModule>()
 const loadingCompatModules = new Map<string, Promise<void>>()
@@ -117,9 +73,8 @@ async function ensureCompatModule(source: string) {
     return
   }
 
-  const loader = compatModuleLoaders[
-    normalizedSource as keyof typeof compatModuleLoaders
-  ]
+  const loader =
+    compatModuleLoaders[normalizedSource as keyof typeof compatModuleLoaders]
   if (!loader) {
     throw new Error(`宿主未注册兼容模块 ${normalizedSource}`)
   }

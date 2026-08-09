@@ -600,7 +600,7 @@ function InlineVideoPreview({
           poster={poster}
           controls
           playsInline
-          preload="metadata"
+          preload={poster ? 'none' : 'metadata'}
           className={cn(
             detailLayout
               ? 'mx-auto block w-full max-h-[calc(100dvh-9rem)] bg-transparent object-contain'
@@ -645,7 +645,7 @@ function InlineVideoPreview({
         poster={poster}
         controls={playing}
         playsInline
-        preload="metadata"
+        preload={poster ? 'none' : 'metadata'}
         className={cn(
           'block w-full bg-black object-cover',
           aspectRatio && 'h-full'

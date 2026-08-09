@@ -33,6 +33,11 @@ type CascaderOption = {
   leaf?: boolean
 } & Record<string, any>
 
+type SelectedOptionTarget = {
+  field: string
+  path: string
+}
+
 export function FormCascader({
   item,
   value,
@@ -71,6 +76,10 @@ export function FormCascader({
       : item.meta?.searchPlaceholder || ''
   ).trim()
   const labelTarget = String(item.meta?.labelTarget || '').trim()
+  const selectedOptionTargets = useMemo(
+    () => normalizeSelectedOptionTargets(item.meta?.selectedOptionTargets),
+    [item.meta?.selectedOptionTargets]
+  )
   const searchable = item.meta?.searchable !== false
   const childParentField = useMemo(
     () =>
@@ -276,6 +285,19 @@ export function FormCascader({
     [labelTarget, store]
   )
 
+  const syncSelectedOptionTargets = useCallback(
+    (selected?: CascaderOption) => {
+      for (const target of selectedOptionTargets) {
+        const nextValue = selected ? getByPath(selected, target.field) ?? '' : ''
+        const currentValue = store.getState().getValueByPath(target.path)
+        if (!Object.is(currentValue, nextValue)) {
+          store.getState().setValueByPath(target.path, nextValue)
+        }
+      }
+    },
+    [selectedOptionTargets, store]
+  )
+
   useEffect(() => {
     let cancelled = false
 
@@ -283,6 +305,7 @@ export function FormCascader({
       if (!api || !hasCascaderOptionSource(item.meta)) {
         setLevels([])
         syncSelectedLabels(fallbackLabels)
+        syncSelectedOptionTargets()
         return
       }
 
@@ -290,6 +313,7 @@ export function FormCascader({
       const nextLevels: CascaderOption[][] = []
       const validValues: Array<string | number> = []
       const labels: string[] = []
+      let selectedLeaf: CascaderOption | undefined
 
       const rootOptions = await fetchLevelOptions(rootParent, 0)
       if (cancelled) {
@@ -314,6 +338,7 @@ export function FormCascader({
         labels.push(selected.value)
 
         if (selected.leaf === true) {
+          selectedLeaf = selected
           break
         }
 
@@ -330,6 +355,7 @@ export function FormCascader({
       const nextLabels = labels.length > 0 ? labels : fallbackLabels
       setLevels(nextLevels)
       syncSelectedLabels(nextLabels)
+      syncSelectedOptionTargets(selectedLeaf)
       if (
         nextLevels[0]?.length &&
         !isSameCascaderValues(selectedValues, validValues)
@@ -357,6 +383,7 @@ export function FormCascader({
     selectedKeys,
     setValue,
     syncSelectedLabels,
+    syncSelectedOptionTargets,
   ])
 
   const allowWrap = item.meta?.wrap !== false
@@ -364,10 +391,27 @@ export function FormCascader({
 
   const clearLevelValue = (level: number) => {
     const nextValues = selectedValues.slice(0, level)
+    syncSelectedOptionTargets()
     if (leafValueMode) {
       setLeafPathValues(nextValues)
       keepParentOnEmptyRef.current = nextValues.length > 0
       setValue('')
+      return
+    }
+    setValue(nextValues)
+  }
+
+  const selectOptionAtLevel = (selected: CascaderOption, level: number) => {
+    const nextValues = [
+      ...selectedValues.slice(0, level),
+      selected.id,
+    ]
+    syncSelectedOptionTargets(selected.leaf === true ? selected : undefined)
+    if (leafValueMode) {
+      setLeafPathValues(nextValues)
+      keepParentOnEmptyRef.current =
+        level === 0 && selected.leaf !== true
+      setValue(level === 0 && selected.leaf !== true ? '' : selected.id)
       return
     }
     setValue(nextValues)
@@ -438,20 +482,7 @@ export function FormCascader({
                 if (!selected) {
                   return
                 }
-                const nextValues = [
-                  ...selectedValues.slice(0, level),
-                  selected.id,
-                ]
-                if (leafValueMode) {
-                  setLeafPathValues(nextValues)
-                  keepParentOnEmptyRef.current =
-                    level === 0 && selected.leaf !== true
-                  setValue(
-                    level === 0 && selected.leaf !== true ? '' : selected.id
-                  )
-                  return
-                }
-                setValue(nextValues)
+                selectOptionAtLevel(selected, level)
               }}
             />
           )
@@ -469,20 +500,7 @@ export function FormCascader({
               if (!selected) {
                 return
               }
-              const nextValues = [
-                ...selectedValues.slice(0, level),
-                selected.id,
-              ]
-              if (leafValueMode) {
-                setLeafPathValues(nextValues)
-                keepParentOnEmptyRef.current =
-                  level === 0 && selected.leaf !== true
-                setValue(
-                  level === 0 && selected.leaf !== true ? '' : selected.id
-                )
-                return
-              }
-              setValue(nextValues)
+              selectOptionAtLevel(selected, level)
             }}
           >
             <SelectTrigger
@@ -639,6 +657,19 @@ function resolveLeafValueMode(meta: Record<string, any> | undefined) {
     .trim()
     .toLowerCase()
   return mode === 'leaf' || mode === 'last'
+}
+
+function normalizeSelectedOptionTargets(value: unknown): SelectedOptionTarget[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return []
+  }
+
+  return Object.entries(value)
+    .map(([field, path]) => ({
+      field: String(field || '').trim(),
+      path: String(path || '').trim(),
+    }))
+    .filter((target) => target.field && target.path)
 }
 
 function resolveCascaderOptionApi(meta: Record<string, any> | undefined) {

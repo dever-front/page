@@ -351,7 +351,7 @@ export function normalizeUploadItem(value: any): UploadFileItem {
     download:
       resolveAssetUrl(String(value?.download || fallbackOpenUrl || '').trim()) || undefined,
     thumbnail:
-      resolveAssetUrl(String(value?.thumbnail || fallbackOpenUrl || '').trim()) || undefined,
+      resolveAssetUrl(String(value?.thumbnail || '').trim()) || undefined,
     created_at: String(value?.created_at || '').trim() || undefined,
   }
 }

@@ -24,8 +24,6 @@ function isSingleBundleMode(value: string | undefined) {
   )
 }
 
-const minimumSplitChunkSize = 24 * 1024
-
 const renderFrontBuiltAssetUrl: RenderBuiltAssetUrl = (
   _filename,
   { hostType }
@@ -83,15 +81,9 @@ export default defineConfig(async () => {
         ? {
           output: {
             inlineDynamicImports: true,
-          },
+          }
         }
-        : {
-          output: {
-            // React/TanStack share generated helpers with the entry; forcing
-            // them into vendor chunks creates a circular entry dependency.
-            experimentalMinChunkSize: minimumSplitChunkSize,
-          },
-        },
+        : undefined,
     },
     resolve: {
       dedupe: ['react', 'react-dom'],

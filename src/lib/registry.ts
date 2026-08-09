@@ -29,10 +29,7 @@ import {
 import { lazyNode } from '@/lib/plugin/types'
 import type { LazyNodeComponent } from '@/lib/plugin/types'
 import type { PageSchemaType } from '@/lib/schema'
-import {
-  collectImmediateSchemaNodeTypes,
-  collectSchemaNodeTypes,
-} from '@/lib/schema-nodes'
+import { collectSchemaNodeTypes } from '@/lib/schema-nodes'
 
 export const layoutRegistry: Record<
   string,
@@ -220,13 +217,6 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
 
 export function getNodeComponent(type: string) {
   return coreNodeRegistry[type] || getRuntimePluginNodes()[type]
-}
-
-export function preloadImmediateNodeComponents(schema: PageSchemaType) {
-  const nodeTypes = collectImmediateSchemaNodeTypes(schema)
-  return Promise.allSettled(
-    nodeTypes.map((type) => getNodeComponent(type)?.preload?.())
-  )
 }
 
 export function ensureNodePluginsForSchema(schema: PageSchemaType) {

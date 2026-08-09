@@ -47,6 +47,8 @@ import { ReferencePicker } from './picker'
 import { ReferenceNode } from './reference-node'
 import { ReferenceTag } from './reference-tag'
 import {
+  referenceAliasKind,
+  referenceAliasMediaCount,
   referenceAliasTargetKey,
   referenceMediaAliases,
 } from './reference-alias'
@@ -708,6 +710,7 @@ export function ReferenceEditor({
   onReferenceDelete,
   onReferenceUsageChange,
   onChange,
+  onBlur,
   onSubmit,
 }: ReferenceEditorProps) {
   const referenceProviders = useMemo(
@@ -749,6 +752,7 @@ export function ReferenceEditor({
   const controlledContentRef = useRef(content)
   const referencesRef = useRef(references)
   const onChangeRef = useRef(onChange)
+  const onBlurRef = useRef(onBlur)
   const onSubmitRef = useRef(onSubmit)
   const onPickerRequestConsumedRef = useRef(onPickerRequestConsumed)
   const onReferenceDeleteRef = useRef(onReferenceDelete)
@@ -777,6 +781,7 @@ export function ReferenceEditor({
     contentRef.current = content
   }
   onChangeRef.current = onChange
+  onBlurRef.current = onBlur
   onSubmitRef.current = onSubmit
   onPickerRequestConsumedRef.current = onPickerRequestConsumed
   onReferenceDeleteRef.current = onReferenceDelete
@@ -922,6 +927,14 @@ export function ReferenceEditor({
         return !textEditableRef.current
       },
       handleDOMEvents: {
+        blur(view) {
+          if (pendingCompositionUpdateRef.current) {
+            composingRef.current = false
+            commitDocumentChange(view.state.doc.toJSON())
+          }
+          onBlurRef.current?.()
+          return false
+        },
         compositionstart() {
           composingRef.current = true
           return false
@@ -1620,14 +1633,28 @@ export function ReferenceContentView({
         return { key: '' }
       }
       const option = referenceOptionForPart(part, references)
+      const mediaSelection = {
+        mediaURL: part.ref_media_url || option?.mediaURL,
+        mediaIndex: part.ref_media_index || option?.mediaIndex,
+        mediaCount: part.ref_media_count || option?.mediaCount,
+        mediaItems: part.ref_media_items || option?.mediaItems,
+      }
       return {
         key: referenceAliasTargetKey({
           refType: part.ref_type,
           refId: part.ref_id,
           versionId: part.ref_version_id,
           usage: part.usage,
+          ...mediaSelection,
         }),
-        kind: option?.preview?.kind,
+        kind: referenceAliasKind({
+          kind: option?.preview?.kind,
+          usage: part.usage,
+          label: option?.label || part.label,
+          mediaURL: mediaSelection.mediaURL,
+          previewURL: option?.preview?.url,
+        }),
+        count: referenceAliasMediaCount(mediaSelection),
         deferred: part.ref_origin?.trim().toLowerCase() === 'edge',
       }
     })
