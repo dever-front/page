@@ -1,4 +1,4 @@
-import * as LucideIcons from 'lucide-react'
+import * as LucideIcons from 'lucide-react/dist/esm/icons/index.js'
 
 export type LucideIconCategoryKey =
   | 'layout'

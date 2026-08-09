@@ -7,6 +7,7 @@ const GLOBAL_KEY = 'DeverFront'
 type FrontPluginRuntimeGlobal = {
   registerPlugin?: (plugin: DeverFrontPlugin) => void
   ensureCompat?: (sources?: string[]) => Promise<void>
+  ensureStyles?: (urls: string[]) => Promise<void>
   sdk?: FrontPluginSDK
 }
 
@@ -28,6 +29,7 @@ declare global {
 const runtimeNodes: NodeComponentRegistry = {}
 const runtimeNodeLoadErrors = new Map<string, string>()
 const loadingPlugins = new Map<string, Promise<void>>()
+const loadingStyles = new Map<string, Promise<void>>()
 let sdkModulePromise: Promise<typeof import('./sdk-compat')> | null = null
 
 export function getRuntimePluginNodes() {
@@ -42,12 +44,14 @@ export function installRuntimeGlobal() {
   if (window[GLOBAL_KEY]) {
     window[GLOBAL_KEY]!.registerPlugin ||= registerRuntimePlugin
     window[GLOBAL_KEY]!.ensureCompat ||= ensureRuntimeSDK
+    window[GLOBAL_KEY]!.ensureStyles ||= ensureRuntimeStyles
     return
   }
 
   window[GLOBAL_KEY] = {
     registerPlugin: registerRuntimePlugin,
     ensureCompat: ensureRuntimeSDK,
+    ensureStyles: ensureRuntimeStyles,
   }
 }
 
@@ -163,9 +167,9 @@ async function loadRuntimePlugin(plugin: RuntimePluginConfig) {
   const baseUrl = plugin.manifest
     ? plugin.manifest.slice(0, plugin.manifest.lastIndexOf('/') + 1)
     : entry.file.slice(0, entry.file.lastIndexOf('/') + 1)
-  await Promise.all(
+  await ensureRuntimeStyles(
     (entry.css || []).map((file: string) =>
-      loadStyle(resolveRuntimeAsset(baseUrl, file))
+      resolveRuntimeAsset(baseUrl, file)
     )
   )
   await loadScript(resolveRuntimeAsset(baseUrl, entry.file), !!entry.module)
@@ -278,24 +282,39 @@ function resolveRuntimeAsset(baseUrl: string, file: string) {
   return baseUrl + file
 }
 
-function loadStyle(url: string) {
-  return new Promise<void>((resolve) => {
-    if (hasHeadAsset('link', 'href', url)) {
-      resolve()
-      return
-    }
+export async function ensureRuntimeStyles(urls: string[]) {
+  const normalizedUrls = uniqueStrings(urls).map(normalizeHeadAssetUrl)
+  await Promise.all(normalizedUrls.map(loadStyle))
+}
 
+function loadStyle(url: string) {
+  const normalizedUrl = normalizeHeadAssetUrl(url)
+  const pendingStyle = loadingStyles.get(normalizedUrl)
+  if (pendingStyle) {
+    return pendingStyle
+  }
+  if (hasHeadAsset('link', 'href', normalizedUrl)) {
+    return Promise.resolve()
+  }
+
+  const stylePromise = new Promise<void>((resolve) => {
     const link = document.createElement('link')
     link.rel = 'stylesheet'
-    link.href = url
-    link.onload = () => resolve()
+    link.href = normalizedUrl
+    link.onload = () => {
+      loadingStyles.delete(normalizedUrl)
+      resolve()
+    }
     link.onerror = () => {
-      console.warn('[plugin] 样式加载失败:', url)
+      loadingStyles.delete(normalizedUrl)
+      console.warn('[plugin] 样式加载失败:', normalizedUrl)
       link.remove()
       resolve()
     }
     document.head.appendChild(link)
   })
+  loadingStyles.set(normalizedUrl, stylePromise)
+  return stylePromise
 }
 
 function loadScript(url: string, module: boolean) {
@@ -325,9 +344,20 @@ function hasHeadAsset(
   attribute: string,
   url: string
 ) {
+  const normalizedUrl = normalizeHeadAssetUrl(url)
   return Array.from(document.head.getElementsByTagName(tagName)).some(
-    (element) => element.getAttribute(attribute) === url
+    (element) =>
+      normalizeHeadAssetUrl(element.getAttribute(attribute) || '') ===
+      normalizedUrl
   )
+}
+
+function normalizeHeadAssetUrl(url: string) {
+  try {
+    return new URL(url, document.baseURI).href
+  } catch {
+    return url
+  }
 }
 
 function markMissingPluginNodes(

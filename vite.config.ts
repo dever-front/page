@@ -24,6 +24,8 @@ function isSingleBundleMode(value: string | undefined) {
   )
 }
 
+const minimumSplitChunkSize = 24 * 1024
+
 const renderFrontBuiltAssetUrl: RenderBuiltAssetUrl = (
   _filename,
   { hostType }
@@ -83,7 +85,12 @@ export default defineConfig(async () => {
             inlineDynamicImports: true,
           }
         }
-        : undefined,
+        : {
+          output: {
+            // Keep route/page boundaries, but merge their tiny internal helpers.
+            experimentalMinChunkSize: minimumSplitChunkSize,
+          },
+        },
     },
     resolve: {
       dedupe: ['react', 'react-dom'],
