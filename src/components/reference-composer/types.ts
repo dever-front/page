@@ -10,6 +10,8 @@ export type ReferenceType =
   | 'canvas_node'
   | 'asset'
 
+export type ReferenceUsageField = 'usage' | 'purpose'
+
 export type ReferencePreviewHint = {
   text?: string
   kind?: string
@@ -65,6 +67,7 @@ export type ReferencePart =
       ref_id: number
       label: string
       usage?: string
+      purpose?: string
       ref_trigger?: string
       ref_version_id?: number
       ref_origin?: string
@@ -103,6 +106,7 @@ export type ReferenceOption = {
   selectable?: boolean
   hasChildren?: boolean
   usage?: string
+  purpose?: string
   trigger?: string
   versionID?: number
   origin?: string
@@ -205,6 +209,9 @@ export type ReferenceEditorProps = {
   ) => Promise<ReferenceLoadResult>
   loadPreview?: ReferencePreviewLoader
   usageOptions?: ReferenceUsageOption[]
+  usageField?: ReferenceUsageField
+  mediaUsageOptions?: ReferenceUsageOption[]
+  autoAssignUsage?: boolean
   showMediaAliases?: boolean
   allowMultiMediaSelection?: boolean
   pickerRequest?: ReferencePickerRequest

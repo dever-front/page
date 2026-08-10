@@ -6,9 +6,9 @@ import { runActionsWithResult } from '@/lib/action'
 import { toastActionResult } from '@/lib/action-toast'
 import { cn } from '@/lib/utils'
 import { FormInput } from '../../form/input'
-import { FormSelect } from '../../form/select'
 import { FormNumber } from '../../form/number'
 import { FormSwitch } from '../../form/switch'
+import { LazyFormSelect } from '../../form/lazy-fields'
 import { resolveColumnOptionList } from './options'
 
 type InlineCellProps = {
@@ -98,7 +98,7 @@ export function EditableFormCell({
   if (column.type === 'form-select') {
     return (
       <div className={cn('min-w-[9rem]', saving && 'opacity-70')}>
-        <FormSelect
+        <LazyFormSelect
           item={formItem}
           value={draftValue}
           setValue={(nextValue) => {
@@ -296,7 +296,7 @@ export function EditableShowCell({
   if (editorType === 'form-select') {
     return (
       <div className={cn('max-w-full', saving && 'opacity-70')} style={editorStyle}>
-        <FormSelect
+        <LazyFormSelect
           item={formItem}
           value={draftValue}
           setValue={(nextValue) => {

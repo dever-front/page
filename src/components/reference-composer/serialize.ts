@@ -82,6 +82,7 @@ function appendNodes(parts: ReferencePart[], nodes: JSONContent[]) {
           ref_id: refId,
           label,
           usage: String(node.attrs?.usage || '').trim() || undefined,
+          purpose: String(node.attrs?.purpose || '').trim() || undefined,
           ref_trigger: trigger,
           ref_version_id: versionID > 0 ? versionID : undefined,
           ref_origin: String(node.attrs?.origin || '').trim() || undefined,

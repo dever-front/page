@@ -5,12 +5,15 @@ import { normalizeReferenceMediaSelectionItems } from './media-selection'
 import type {
   ReferencePart,
   ReferencePreviewLoader,
+  ReferenceUsageField,
   ReferenceUsageOption,
 } from './types'
 
 export type ReferenceNodeOptions = {
   loadPreview?: ReferencePreviewLoader
   usageOptions?: ReferenceUsageOption[]
+  usageField?: ReferenceUsageField
+  mediaUsageOptions?: ReferenceUsageOption[]
   showMediaAliases?: boolean
   allowMultiMediaSelection?: boolean
   onDeleteReference?: (
@@ -34,6 +37,8 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
     return {
       loadPreview: undefined,
       usageOptions: [],
+      usageField: 'usage',
+      mediaUsageOptions: undefined,
       showMediaAliases: false,
       allowMultiMediaSelection: false,
       onDeleteReference: undefined,
@@ -47,6 +52,7 @@ export const ReferenceNode = Node.create<ReferenceNodeOptions>({
       refId: { default: 0 },
       label: { default: '' },
       usage: { default: '' },
+      purpose: { default: '' },
       trigger: { default: '@' },
       versionId: { default: 0 },
       previewText: { default: '' },
@@ -152,6 +158,7 @@ export function referencePartFromAttributes(
     ref_id: Number(attrs.refId || 0),
     label: String(attrs.label || '').trim(),
     usage: String(attrs.usage || '').trim() || undefined,
+    purpose: String(attrs.purpose || '').trim() || undefined,
     ref_trigger: String(attrs.trigger || '').trim() || undefined,
     ref_version_id: versionID > 0 ? versionID : undefined,
     ref_origin: String(attrs.origin || '').trim() || undefined,

@@ -60,20 +60,26 @@ export function ReferenceNodeView({
     updateAttributes({ previewKind: resolvedKind })
   }, [hint?.kind, node.attrs.previewKind, updateAttributes])
 
-  const usage = String(node.attrs.usage || '')
+  const usageField = options.usageField === 'purpose' ? 'purpose' : 'usage'
+  const usage = String(node.attrs[usageField] || '')
   const usageOptions = compatibleReferenceUsageOptions(
     options.usageOptions || [],
     hint?.kind
   )
   const usageSupported = usageOptions.some((option) => option.key === usage)
-  const activeUsage =
-    usageOptions.find((option) => option.key === usage) ||
-    (usageOptions.length === 1 ? usageOptions[0] : undefined)
+  const mediaUsage = String(node.attrs.usage || '')
+  const mediaUsageOptions = compatibleReferenceUsageOptions(
+    options.mediaUsageOptions || options.usageOptions || [],
+    hint?.kind
+  )
+  const activeMediaUsage =
+    mediaUsageOptions.find((option) => option.key === mediaUsage) ||
+    (mediaUsageOptions.length === 1 ? mediaUsageOptions[0] : undefined)
   const mediaCount = Number(node.attrs.mediaCount || 0)
   const mediaItems = normalizeReferenceMediaSelectionItems(
     node.attrs.mediaItems
   )
-  const mediaCapacity = Number(activeUsage?.maxFiles || 0)
+  const mediaCapacity = Number(activeMediaUsage?.maxFiles || 0)
   const mediaSelectable = refType === 'asset'
   const reference = referencePartFromAttributes(node.attrs)
   const disabled = useReferenceNodeDisabled(editor)
@@ -91,7 +97,7 @@ export function ReferenceNodeView({
       return
     }
     options.onUsageChange?.(reference, nextUsage)
-    updateAttributes({ usage: nextUsage })
+    updateAttributes({ [usageField]: nextUsage })
   }
 
   const selectMedia = (url: string, index: number, count: number) => {

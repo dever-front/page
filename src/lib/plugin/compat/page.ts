@@ -1,9 +1,13 @@
+import * as showTooltip from '@/page/nodes/show/tooltip'
 import { pageCompatSources as source } from './sources'
 
+const loadFormPicker = () => import('@/page/nodes/groups/form-picker')
+const loadShowTable = () => import('@/page/nodes/show/table')
+
 export const pageCompatModuleLoaders = {
-  [source.formDate]: () => import('@/page/nodes/form/date'),
-  [source.formIcon]: () => import('@/page/nodes/form/icon'),
-  [source.formUpload]: () => import('@/page/nodes/form/upload'),
-  [source.tableInlineEdit]: () => import('@/page/nodes/show/table/inline-edit'),
-  [source.showTooltip]: () => import('@/page/nodes/show/tooltip'),
+  [source.formDate]: loadFormPicker,
+  [source.formIcon]: loadFormPicker,
+  [source.formUpload]: loadFormPicker,
+  [source.tableInlineEdit]: loadShowTable,
+  [source.showTooltip]: async () => showTooltip,
 }

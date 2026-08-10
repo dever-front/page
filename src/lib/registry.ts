@@ -54,6 +54,7 @@ export const layoutRegistry: Record<
 const loadAppShellNodes = () => import('@/page/nodes/groups/app-shell')
 const loadShowNodes = () => import('@/page/nodes/groups/show')
 const loadFormBasicNodes = () => import('@/page/nodes/groups/form-basic')
+const loadFormPickerNodes = () => import('@/page/nodes/groups/form-picker')
 const loadFormTextNodes = () => import('@/page/nodes/groups/form-text')
 const loadMediaNodes = () => import('@/page/nodes/groups/media')
 const loadFeedbackNodes = () => import('@/page/nodes/groups/feedback')
@@ -70,6 +71,7 @@ function createLazyNodeGroup<T>(loadGroup: () => Promise<T>) {
 const appShellNode = createLazyNodeGroup(loadAppShellNodes)
 const showNode = createLazyNodeGroup(loadShowNodes)
 const formBasicNode = createLazyNodeGroup(loadFormBasicNodes)
+const formPickerNode = createLazyNodeGroup(loadFormPickerNodes)
 const formTextNode = createLazyNodeGroup(loadFormTextNodes)
 const mediaNode = createLazyNodeGroup(loadMediaNodes)
 const feedbackNode = createLazyNodeGroup(loadFeedbackNodes)
@@ -144,16 +146,10 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
   // Form
   'form-input': formTextNode('FormInput'),
   'form-color': formBasicNode('FormColor'),
-  'form-icon': lazyNode(() =>
-    import('@/page/nodes/form/icon').then((mod) => ({ default: mod.FormIcon }))
-  ),
+  'form-icon': formPickerNode('FormIcon'),
   'form-password': formBasicNode('FormPassword'),
   'form-textarea': formTextNode('FormTextarea'),
-  'form-upload': lazyNode(() =>
-    import('@/page/nodes/form/upload').then((mod) => ({
-      default: mod.FormUpload,
-    }))
-  ),
+  'form-upload': formPickerNode('FormUpload'),
   'form-editor': lazyNode(() =>
     import('@/page/nodes/form/editor').then((mod) => ({
       default: mod.FormEditor,
@@ -176,9 +172,7 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
       default: mod.FormCascader,
     }))
   ),
-  'form-date': lazyNode(() =>
-    import('@/page/nodes/form/date').then((mod) => ({ default: mod.FormDate }))
-  ),
+  'form-date': formPickerNode('FormDate'),
   'form-array': lazyNode(() =>
     import('@/page/nodes/form/array').then((mod) => ({
       default: mod.FormArray,

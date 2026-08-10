@@ -74,6 +74,7 @@ import type {
   ReferenceProvider,
   ReferencePreviewLoader,
   ReferenceScope,
+  ReferenceUsageField,
   ReferenceUsageOption,
 } from './types'
 
@@ -102,6 +103,7 @@ export type {
   ReferenceProviderPickerProps,
   ReferenceScope,
   ReferenceType,
+  ReferenceUsageField,
   ReferenceUsageOption,
 } from './types'
 export { referenceContentFromText } from './text'
@@ -703,6 +705,9 @@ export function ReferenceEditor({
   loadReferences,
   loadPreview,
   usageOptions = EMPTY_REFERENCE_USAGE_OPTIONS,
+  usageField = 'usage',
+  mediaUsageOptions,
+  autoAssignUsage = true,
   showMediaAliases = false,
   allowMultiMediaSelection = false,
   pickerRequest,
@@ -801,6 +806,11 @@ export function ReferenceEditor({
     () => referenceUsageOptionsSignature(usageOptions),
     [usageOptions]
   )
+  const resolvedMediaUsageOptions = mediaUsageOptions ?? usageOptions
+  const mediaUsageOptionsSignature = useMemo(
+    () => referenceUsageOptionsSignature(resolvedMediaUsageOptions),
+    [resolvedMediaUsageOptions]
+  )
   const stableUsageOptionsRef = useRef({
     signature: usageOptionsSignature,
     options: usageOptions,
@@ -809,6 +819,18 @@ export function ReferenceEditor({
     stableUsageOptionsRef.current = {
       signature: usageOptionsSignature,
       options: usageOptions,
+    }
+  }
+  const stableMediaUsageOptionsRef = useRef({
+    signature: mediaUsageOptionsSignature,
+    options: resolvedMediaUsageOptions,
+  })
+  if (
+    stableMediaUsageOptionsRef.current.signature !== mediaUsageOptionsSignature
+  ) {
+    stableMediaUsageOptionsRef.current = {
+      signature: mediaUsageOptionsSignature,
+      options: resolvedMediaUsageOptions,
     }
   }
   const [initialEditorDocument] = useState(() =>
@@ -861,6 +883,8 @@ export function ReferenceEditor({
         placeholder,
         (request) => loadPreviewRef.current(request),
         stableUsageOptionsRef.current.options,
+        usageField,
+        stableMediaUsageOptionsRef.current.options,
         showMediaAliases,
         allowMultiMediaSelection,
         (reference) => onReferenceDeleteRef.current?.(reference),
@@ -869,8 +893,10 @@ export function ReferenceEditor({
       ),
     [
       allowMultiMediaSelection,
+      mediaUsageOptionsSignature,
       placeholder,
       showMediaAliases,
+      usageField,
       usageOptionsSignature,
     ]
   )
@@ -1172,20 +1198,27 @@ export function ReferenceEditor({
         .focus()
         .insertContent(
           referenceInsertionContent(
-            selectableOptions.map((option) => ({
-              ...option,
-              trigger: option.trigger || provider?.trigger || '@',
-              usage:
-                option.usage ||
-                defaultReferenceUsage(
-                  option,
-                  usageOptions,
-                  document,
-                  pickerPreferredUsage
-                ),
-            })),
+            selectableOptions.map((option) => {
+              const defaultUsage = autoAssignUsage
+                ? defaultReferenceUsage(
+                    option,
+                    usageOptions,
+                    document,
+                    pickerPreferredUsage,
+                    usageField
+                  )
+                : ''
+              return {
+                ...option,
+                trigger: option.trigger || provider?.trigger || '@',
+                ...(usageField === 'purpose'
+                  ? { purpose: option.purpose || defaultUsage }
+                  : { usage: option.usage || defaultUsage }),
+              }
+            }),
             '',
-            false
+            false,
+            usageField
           )
         )
         .run()
@@ -1197,9 +1230,11 @@ export function ReferenceEditor({
     [
       disabled,
       editor,
+      autoAssignUsage,
       pickerPreferredUsage,
       pickerTrigger,
       referenceProviders,
+      usageField,
       usageOptions,
     ]
   )
@@ -1214,8 +1249,9 @@ export function ReferenceEditor({
   )
   const pickerMaxSelection = referencePickerSelectionLimit(
     pickerPreferredUsage,
-    usageOptions,
-    editor?.getJSON()
+    stableMediaUsageOptionsRef.current.options,
+    editor?.getJSON(),
+    mediaUsageOptions === undefined ? usageField : 'usage'
   )
 
   return (
@@ -1335,6 +1371,7 @@ function referenceOptionsSignature(references: ReferenceOption[]) {
       item.preview?.url,
       item.preview?.text,
       item.usage,
+      item.purpose,
       item.versionID,
       item.origin,
       item.originID,
@@ -1366,10 +1403,12 @@ function referenceContentSignature(content: ReferenceContent | undefined) {
       part.type === 'text'
         ? `text:${part.text}`
         : `${part.ref_type}:${part.ref_id}:${part.usage || ''}:${
-            part.ref_trigger || '@'
-          }:${part.ref_version_id || 0}:${part.ref_origin || ''}:${
-            part.ref_origin_id || ''
-          }:${part.ref_media_url || ''}:${part.ref_media_index || 0}:${
+            part.purpose || ''
+          }:${part.ref_trigger || '@'}:${part.ref_version_id || 0}:${
+            part.ref_origin || ''
+          }:${part.ref_origin_id || ''}:${part.ref_media_url || ''}:${
+            part.ref_media_index || 0
+          }:${
             part.ref_media_count || 0
           }:${referenceMediaSelectionSignature(part.ref_media_items)}`
     )
@@ -1380,6 +1419,8 @@ function referenceEditorExtensions(
   placeholder: string,
   loadPreview: ReferencePreviewLoader,
   usageOptions: ReferenceUsageOption[] = [],
+  usageField: ReferenceUsageField = 'usage',
+  mediaUsageOptions: ReferenceUsageOption[] = usageOptions,
   showMediaAliases = false,
   allowMultiMediaSelection = false,
   onDeleteReference?: ReferenceEditorProps['onReferenceDelete'],
@@ -1399,6 +1440,8 @@ function referenceEditorExtensions(
     ReferenceNode.configure({
       loadPreview,
       usageOptions,
+      usageField,
+      mediaUsageOptions,
       showMediaAliases,
       allowMultiMediaSelection,
       onDeleteReference,
@@ -1411,13 +1454,14 @@ function defaultReferenceUsage(
   option: ReferenceOption,
   usageOptions: ReferenceUsageOption[],
   document: import('@tiptap/core').JSONContent,
-  preferredUsage = ''
+  preferredUsage = '',
+  usageField: ReferenceUsageField = 'usage'
 ) {
   const candidates = compatibleReferenceUsageOptions(
     usageOptions,
     option.preview?.kind
   )
-  const counts = referenceUsageCounts(document)
+  const counts = referenceUsageCounts(document, usageField)
   const preferred = candidates.find(
     (candidate) =>
       candidate.key === preferredUsage &&
@@ -1435,7 +1479,8 @@ function defaultReferenceUsage(
 function referencePickerSelectionLimit(
   preferredUsage: string,
   usageOptions: ReferenceUsageOption[],
-  document?: import('@tiptap/core').JSONContent
+  document?: import('@tiptap/core').JSONContent,
+  usageField: ReferenceUsageField = 'usage'
 ) {
   const option = usageOptions.find(
     (candidate) => candidate.key === preferredUsage
@@ -1447,7 +1492,7 @@ function referencePickerSelectionLimit(
   if (maxFiles <= 0) {
     return 8
   }
-  const counts = document ? referenceUsageCounts(document) : {}
+  const counts = document ? referenceUsageCounts(document, usageField) : {}
   return Math.max(1, maxFiles - (counts[option.key] || 0))
 }
 
@@ -1471,7 +1516,8 @@ function appendUniqueFiles(
 function referenceInsertionContent(
   options: ReferenceOption[],
   defaultUsage = '',
-  leadingSpace = true
+  leadingSpace = true,
+  usageField: ReferenceUsageField = 'usage'
 ) {
   if (options.length === 0) {
     return []
@@ -1489,7 +1535,10 @@ function referenceInsertionContent(
         refType: option.refType,
         refId: option.refId,
         label: referenceLabel(option.label),
-        usage: option.usage || defaultUsage,
+        usage:
+          option.usage || (usageField === 'usage' ? defaultUsage : ''),
+        purpose:
+          option.purpose || (usageField === 'purpose' ? defaultUsage : ''),
         trigger: referenceTrigger(option.trigger),
         versionId: Number(option.versionID || 0),
         previewText: option.preview?.text || option.description || '',
@@ -1561,11 +1610,18 @@ function removeReferenceUsages(
   return changed ? { ...node, content: nextContent } : node
 }
 
-function referenceUsageCounts(document: import('@tiptap/core').JSONContent) {
+function referenceUsageCounts(
+  document: import('@tiptap/core').JSONContent,
+  usageField: ReferenceUsageField = 'usage'
+) {
   const result: Record<string, number> = {}
-  walkReferenceNodes(document, (usage, _refID, amount) => {
-    result[usage] = (result[usage] || 0) + amount
-  })
+  walkReferenceNodes(
+    document,
+    (usage, _refID, amount) => {
+      result[usage] = (result[usage] || 0) + amount
+    },
+    usageField
+  )
   return result
 }
 
@@ -1584,10 +1640,11 @@ function referenceIDsForUsage(
 
 function walkReferenceNodes(
   node: import('@tiptap/core').JSONContent,
-  visit: (usage: string, refID: string, amount: number) => void
+  visit: (usage: string, refID: string, amount: number) => void,
+  usageField: ReferenceUsageField = 'usage'
 ) {
   if (node.type === 'reference') {
-    const usage = String(node.attrs?.usage || '').trim()
+    const usage = String(node.attrs?.[usageField] || '').trim()
     if (usage) {
       const mediaIndex = Number(node.attrs?.mediaIndex || 0)
       const mediaURL = String(node.attrs?.mediaUrl || '').trim()
@@ -1607,7 +1664,7 @@ function walkReferenceNodes(
     }
   }
   for (const child of node.content || []) {
-    walkReferenceNodes(child, visit)
+    walkReferenceNodes(child, visit, usageField)
   }
 }
 

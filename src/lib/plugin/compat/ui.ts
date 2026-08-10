@@ -1,19 +1,32 @@
+import * as confirmDialog from '@/components/confirm-dialog'
+import * as siteLogo from '@/components/layout/site-logo'
+import * as searchableOptionPicker from '@/components/searchable-option-picker'
+import * as button from '@/components/ui/button'
+import * as card from '@/components/ui/card'
+import * as dialog from '@/components/ui/dialog'
+import * as dropdownMenu from '@/components/ui/dropdown-menu'
+import * as input from '@/components/ui/input'
+import * as radioGroup from '@/components/ui/radio-group'
+import * as select from '@/components/ui/select'
+import * as sheet from '@/components/ui/sheet'
+import * as switchModule from '@/components/ui/switch'
+import * as table from '@/components/ui/table'
+import * as textarea from '@/components/ui/textarea'
 import { uiCompatSources as source } from './sources'
 
-export const uiCompatModuleLoaders = {
-  [source.confirmDialog]: () => import('@/components/confirm-dialog'),
-  [source.siteLogo]: () => import('@/components/layout/site-logo'),
-  [source.searchableOptionPicker]: () =>
-    import('@/components/searchable-option-picker'),
-  [source.button]: () => import('@/components/ui/button'),
-  [source.card]: () => import('@/components/ui/card'),
-  [source.dialog]: () => import('@/components/ui/dialog'),
-  [source.dropdownMenu]: () => import('@/components/ui/dropdown-menu'),
-  [source.input]: () => import('@/components/ui/input'),
-  [source.radioGroup]: () => import('@/components/ui/radio-group'),
-  [source.select]: () => import('@/components/ui/select'),
-  [source.sheet]: () => import('@/components/ui/sheet'),
-  [source.switch]: () => import('@/components/ui/switch'),
-  [source.table]: () => import('@/components/ui/table'),
-  [source.textarea]: () => import('@/components/ui/textarea'),
+export const compatModules = {
+  [source.confirmDialog]: confirmDialog,
+  [source.siteLogo]: siteLogo,
+  [source.searchableOptionPicker]: searchableOptionPicker,
+  [source.button]: button,
+  [source.card]: card,
+  [source.dialog]: dialog,
+  [source.dropdownMenu]: dropdownMenu,
+  [source.input]: input,
+  [source.radioGroup]: radioGroup,
+  [source.select]: select,
+  [source.sheet]: sheet,
+  [source.switch]: switchModule,
+  [source.table]: table,
+  [source.textarea]: textarea,
 }

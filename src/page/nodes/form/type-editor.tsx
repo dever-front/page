@@ -28,17 +28,16 @@ import type {
 import { useAssistantContextRegistration } from '@/lib/assistant/use-context-registration'
 import { FormInput } from './input'
 import { FormRadio } from './radio'
-import { FormSelect } from './select'
 import { FormTextarea } from './textarea'
-import { FormEditor } from './editor'
+import { LazyFormEditor, LazyFormSelect } from './lazy-fields'
 import type { NodeItemProps } from '../../nodes'
 
 const typeEditorFieldRegistry = {
   'form-input': FormInput,
   'form-radio': FormRadio,
-  'form-select': FormSelect,
+  'form-select': LazyFormSelect,
   'form-textarea': FormTextarea,
-  'form-editor': FormEditor,
+  'form-editor': LazyFormEditor,
 } as const
 
 type TypeOption = OptionItem & Record<string, any>

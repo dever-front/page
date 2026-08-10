@@ -81,6 +81,15 @@ import { resolveColumnOptionList } from './table/options'
 import { ShowTag } from './tag'
 import { InlineTip } from './tooltip'
 
+export {
+  EditableFormCell,
+  EditableShowCell,
+  applyInlineRowPatch,
+  applyInlineRowPatchByIndex,
+  buildInlineChangeAction,
+  canUseInlineEdit,
+}
+
 export function ShowTable({ item, value, runAction, store }: NodeItemProps) {
   const navigate = useNavigate()
   const columns: Column[] = item.meta?.columns || []

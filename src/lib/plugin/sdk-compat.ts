@@ -1,23 +1,71 @@
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { assistantCompatModuleLoaders } from './compat/assistant'
-import { contentCompatModuleLoaders } from './compat/content'
-import { editorCompatModuleLoaders } from './compat/editor'
 import { pageCompatModuleLoaders } from './compat/page'
-import { runtimeCompatModuleLoaders } from './compat/runtime'
-import { type CompatSource, directCompatSources } from './compat/sources'
-import { uiCompatModuleLoaders } from './compat/ui'
+import {
+  assistantCompatSources,
+  contentCompatSources,
+  directCompatSources,
+  editorCompatSources,
+  runtimeCompatSources,
+  type CompatSource,
+  uiCompatSources,
+} from './compat/sources'
 import { defineFrontPlugin, lazyNode, mergePluginNodes } from './types'
 
 type CompatModule = Record<string, any>
 type CompatModuleLoader = () => Promise<unknown>
+type CompatModuleGroup = {
+  compatModules: Partial<Record<CompatSource, CompatModule>>
+}
+
+function createCompatGroupLoaders<
+  Sources extends Readonly<Record<string, CompatSource>>,
+>(
+  sources: Sources,
+  loader: () => Promise<CompatModuleGroup>
+): Record<Sources[keyof Sources], CompatModuleLoader> {
+  let groupPromise: Promise<CompatModuleGroup> | undefined
+  const loadGroup = () => {
+    if (!groupPromise) {
+      groupPromise = loader().catch((error) => {
+        groupPromise = undefined
+        throw error
+      })
+    }
+    return groupPromise
+  }
+
+  const moduleLoaders = {} as Record<
+    Sources[keyof Sources],
+    CompatModuleLoader
+  >
+  for (const source of Object.values(sources) as Sources[keyof Sources][]) {
+    moduleLoaders[source] = async () => {
+      const group = await loadGroup()
+      const module = group.compatModules[source]
+      if (!module) {
+        throw new Error(`宿主兼容模块组未注册 ${source}`)
+      }
+      return module
+    }
+  }
+  return moduleLoaders
+}
 
 const compatModuleLoaders = {
-  ...assistantCompatModuleLoaders,
-  ...contentCompatModuleLoaders,
-  ...editorCompatModuleLoaders,
+  ...createCompatGroupLoaders(assistantCompatSources, () =>
+    import('./compat/assistant')
+  ),
+  ...createCompatGroupLoaders(contentCompatSources, () =>
+    import('./compat/content')
+  ),
+  ...createCompatGroupLoaders(editorCompatSources, () =>
+    import('./compat/editor')
+  ),
   ...pageCompatModuleLoaders,
-  ...runtimeCompatModuleLoaders,
-  ...uiCompatModuleLoaders,
+  ...createCompatGroupLoaders(runtimeCompatSources, () =>
+    import('./compat/runtime')
+  ),
+  ...createCompatGroupLoaders(uiCompatSources, () => import('./compat/ui')),
   [directCompatSources.pluginTypes]: async () => ({
     defineFrontPlugin,
     lazyNode,

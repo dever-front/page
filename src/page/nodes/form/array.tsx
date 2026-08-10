@@ -50,15 +50,17 @@ import {
 import { FormInput } from './input'
 import { FormNumber } from './number'
 import { FormPassword } from './password'
-import { FormSelect } from './select'
 import { FormSwitch } from './switch'
 import { FormRadio } from './radio'
 import { FormCheckbox } from './checkbox'
-import { FormCascader } from './cascader'
 import { FormTextarea } from './textarea'
-import { FormEditor } from './editor'
 import { FormUpload } from './upload'
 import { FormIcon } from './icon'
+import {
+  LazyFormCascader,
+  LazyFormEditor,
+  LazyFormSelect,
+} from './lazy-fields'
 import { InlineTip } from '../show/tooltip'
 import type { NodeItemProps } from '../../nodes'
 
@@ -66,13 +68,13 @@ const arrayEditorRegistry = {
   'form-input': FormInput,
   'form-number': FormNumber,
   'form-password': FormPassword,
-  'form-select': FormSelect,
+  'form-select': LazyFormSelect,
   'form-switch': FormSwitch,
   'form-radio': FormRadio,
   'form-checkbox': FormCheckbox,
-  'form-cascader': FormCascader,
+  'form-cascader': LazyFormCascader,
   'form-textarea': FormTextarea,
-  'form-editor': FormEditor,
+  'form-editor': LazyFormEditor,
   'form-upload': FormUpload,
   'form-icon': FormIcon,
 } as const

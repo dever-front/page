@@ -342,6 +342,9 @@ function ReferencePreviewBody({
   const showMediaGallery =
     media.length > 0 &&
     (!hasContent || Boolean(onMediaSelect) || multiSelectionEnabled)
+  const mediaSelectionEnabled = Boolean(
+    (onMediaSelect || multiSelectionEnabled) && media.length > 1
+  )
 
   const selectAllMedia = () => onMediaItemsSelect?.([], media.length)
   const startCustomSelection = () => {
@@ -397,7 +400,7 @@ function ReferencePreviewBody({
     <div className='max-h-[min(420px,62vh)] overflow-y-auto overscroll-contain'>
       {showMediaGallery ? (
         <div className='border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950/50'>
-          {(onMediaSelect || multiSelectionEnabled) && media.length > 1 ? (
+          {mediaSelectionEnabled ? (
             <div className='flex items-center justify-between gap-3 px-4 pt-3 text-xs text-slate-600 dark:text-slate-300'>
               <span>
                 {multiSelectionEnabled
@@ -456,17 +459,41 @@ function ReferencePreviewBody({
               const selectedOrder = selectedItems.findIndex(
                 (entry) => entry.mediaIndex === index
               )
+              const audioSelectable =
+                mediaSelectionEnabled && item.kind === 'audio'
               return (
                 <div
                   key={`${item.refType || item.kind}-${item.refId || 0}-${item.url}-${index}`}
-                  className='relative'
+                  className={
+                    item.kind === 'audio'
+                      ? 'relative flex w-[340px] max-w-full flex-col gap-2'
+                      : 'relative'
+                  }
                 >
                   <ReferencePreviewMediaView
                     media={item}
                     compact={media.length > 1}
                   />
-                  {(onMediaSelect || multiSelectionEnabled) &&
-                  media.length > 1 ? (
+                  {audioSelectable ? (
+                    <button
+                      type='button'
+                      aria-label={`选择${item.label || `第 ${mediaIndex} 项音频`}`}
+                      aria-pressed={selected}
+                      className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors ${
+                        selected
+                          ? 'border-emerald-600 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200'
+                          : 'border-slate-300 bg-white text-slate-700 hover:border-emerald-500 hover:text-emerald-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200'
+                      }`}
+                      onClick={() => toggleMediaItem(item, index)}
+                    >
+                      {selected ? <Check className='size-3.5' /> : null}
+                      {selected
+                        ? multiSelectionEnabled && selectedOrder >= 0
+                          ? `已选择音频 ${mediaIndex} · 顺序 ${selectedOrder + 1}`
+                          : `已选择音频 ${mediaIndex}`
+                        : `选择音频 ${mediaIndex}`}
+                    </button>
+                  ) : mediaSelectionEnabled ? (
                     <button
                       type='button'
                       aria-label={`选择${item.label || `第 ${mediaIndex} 项素材`}`}
@@ -611,7 +638,7 @@ function ReferencePreviewMediaView({
         src={media.url}
         controls
         preload='metadata'
-        className='w-full max-w-[340px]'
+        className='w-[340px] max-w-full'
       />
     )
   }
