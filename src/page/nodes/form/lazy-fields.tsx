@@ -1,13 +1,17 @@
 import { lazyRouteComponent } from '@/lib/lazy-route'
 
+const loadForm = () => import('@/page/nodes/groups/form')
+
 export const LazyFormSelect = lazyRouteComponent(() =>
-  import('./select').then((module) => ({ default: module.FormSelect }))
+  loadForm().then((module) => ({ default: module.FormSelect }))
 )
 
 export const LazyFormCascader = lazyRouteComponent(() =>
-  import('./cascader').then((module) => ({ default: module.FormCascader }))
+  loadForm().then((module) => ({ default: module.FormCascader }))
 )
 
 export const LazyFormEditor = lazyRouteComponent(() =>
-  import('./editor').then((module) => ({ default: module.FormEditor }))
+  import('@/page/nodes/groups/rich-editor').then((module) => ({
+    default: module.FormEditor,
+  }))
 )

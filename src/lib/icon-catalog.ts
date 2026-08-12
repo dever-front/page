@@ -1,4 +1,4 @@
-import * as LucideIcons from 'lucide-react/dist/esm/icons/index.js'
+import { lucideCatalogModule } from './lucide-catalog-runtime'
 
 export type LucideIconCategoryKey =
   | 'layout'
@@ -192,7 +192,7 @@ function resolveCategory(name: string): LucideIconCategoryKey {
 }
 
 export function getLucideIconCatalog(): LucideIconItem[] {
-  const names = Object.keys(LucideIcons)
+  const names = Object.keys(lucideCatalogModule)
     .filter((current) => /^[A-Z]/.test(current) && !current.endsWith('Icon'))
     .map(exportNameToOfficialName)
     .filter(Boolean)

@@ -1,11 +1,11 @@
 import path from 'path'
-import {
-  type PluginOption,
-  type RenderBuiltAssetUrl,
-  defineConfig,
-} from 'vite'
+import { type PluginOption, type RenderBuiltAssetUrl, defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
+import {
+  bundleAuditPlugin,
+  validateBundleBudget,
+} from '../backend/dever/compiler/front/src/bundle-audit'
 import { deverRuntimePlugin } from './vite-plugin-runtime'
 
 function frontDependency(name: string) {
@@ -24,7 +24,29 @@ function isSingleBundleMode(value: string | undefined) {
   )
 }
 
-const minimumSplitChunkSize = 24 * 1024
+const hostBundleBudget = validateBundleBudget(
+  {
+    maxJs: 40,
+    maxCss: 4,
+    tinyJsBytes: 2048,
+    maxTinyJs: 8,
+    roots: {
+      entry: {
+        facadeSuffix: '/index.html',
+        maxJs: 8,
+        maxCss: 2,
+      },
+      'json-page': {
+        facadeSuffix: '/page/json-page-route.tsx',
+        maxJs: 12,
+        maxCss: 3,
+      },
+    },
+  },
+  'host bundle budget'
+)
+
+const minimumSplitChunkSize = 64 * 1024
 
 const renderFrontBuiltAssetUrl: RenderBuiltAssetUrl = (
   _filename,
@@ -37,7 +59,7 @@ const renderFrontBuiltAssetUrl: RenderBuiltAssetUrl = (
 }
 
 // https://vite.dev/config/
-export default defineConfig(async () => {
+export default defineConfig(async ({ command }) => {
   const enableRouteGeneration = process.env.VITE_ROUTE_GENERATION !== '0'
   const frontBase = process.env.VITE_FRONT_BASE || '/'
   const frontOutDir = process.env.VITE_FRONT_OUT_DIR || 'dist'
@@ -65,6 +87,14 @@ export default defineConfig(async () => {
   }
 
   plugins.push(deverRuntimePlugin({ projectRoot }), react(), tailwindcss())
+  if (command === 'build') {
+    plugins.push(
+      bundleAuditPlugin({
+        label: 'host',
+        budget: singleBundle ? undefined : hostBundleBudget,
+      })
+    )
+  }
 
   return {
     base: frontBase,
@@ -81,16 +111,18 @@ export default defineConfig(async () => {
       modulePreload: singleBundle ? false : undefined,
       rollupOptions: singleBundle
         ? {
-          output: {
-            inlineDynamicImports: true,
+            output: {
+              inlineDynamicImports: true,
+            },
           }
-        }
         : {
-          output: {
-            // Keep route/page boundaries, but merge their tiny internal helpers.
-            experimentalMinChunkSize: minimumSplitChunkSize,
+            output: {
+              // Keep real dynamic entries, but coalesce sub-64KiB shared
+              // implementation chunks so a page does not fan out into many
+              // small synchronous requests.
+              experimentalMinChunkSize: minimumSplitChunkSize,
+            },
           },
-        },
     },
     resolve: {
       dedupe: ['react', 'react-dom'],
@@ -154,11 +186,11 @@ export default defineConfig(async () => {
         ],
         ...(enablePolling
           ? {
-            usePolling: true,
-            interval: Number.isFinite(pollingInterval)
-              ? pollingInterval
-              : 800,
-          }
+              usePolling: true,
+              interval: Number.isFinite(pollingInterval)
+                ? pollingInterval
+                : 800,
+            }
           : {}),
       },
     },

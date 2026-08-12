@@ -4,7 +4,6 @@
  * 所有组件都必须通过注册表使用
  */
 import { type ComponentType } from 'react'
-import type { NodeItemProps } from '@/page/nodes'
 import { Aside } from '@/page/layout/aside'
 import {
   CardContentLayout,
@@ -22,6 +21,7 @@ import { Main } from '@/page/layout/main'
 import { Row } from '@/page/layout/row'
 import { ShellSidebarInset } from '@/page/layout/shell-sidebar-inset'
 import type { LayoutComponentProps } from '@/page/layout/types'
+import type { NodeItemProps } from '@/page/nodes'
 import {
   ensurePluginsForNodes,
   getRuntimePluginNodes,
@@ -52,12 +52,14 @@ export const layoutRegistry: Record<
 // ========== Node 组件注册 ==========
 
 const loadAppShellNodes = () => import('@/page/nodes/groups/app-shell')
+const loadAppAuthNodes = () => import('@/page/nodes/groups/app-auth')
 const loadShowNodes = () => import('@/page/nodes/groups/show')
-const loadFormBasicNodes = () => import('@/page/nodes/groups/form-basic')
-const loadFormPickerNodes = () => import('@/page/nodes/groups/form-picker')
-const loadFormTextNodes = () => import('@/page/nodes/groups/form-text')
+const loadFormNodes = () => import('@/page/nodes/groups/form')
+const loadDataEditorNodes = () =>
+  import('@/page/nodes/groups/data-editor')
+const loadRichEditorNodes = () =>
+  import('@/page/nodes/groups/rich-editor')
 const loadMediaNodes = () => import('@/page/nodes/groups/media')
-const loadFeedbackNodes = () => import('@/page/nodes/groups/feedback')
 
 function createLazyNodeGroup<T>(loadGroup: () => Promise<T>) {
   return (componentName: keyof T) =>
@@ -69,25 +71,17 @@ function createLazyNodeGroup<T>(loadGroup: () => Promise<T>) {
 }
 
 const appShellNode = createLazyNodeGroup(loadAppShellNodes)
+const appAuthNode = createLazyNodeGroup(loadAppAuthNodes)
 const showNode = createLazyNodeGroup(loadShowNodes)
-const formBasicNode = createLazyNodeGroup(loadFormBasicNodes)
-const formPickerNode = createLazyNodeGroup(loadFormPickerNodes)
-const formTextNode = createLazyNodeGroup(loadFormTextNodes)
+const formNode = createLazyNodeGroup(loadFormNodes)
+const dataEditorNode = createLazyNodeGroup(loadDataEditorNodes)
+const richEditorNode = createLazyNodeGroup(loadRichEditorNodes)
 const mediaNode = createLazyNodeGroup(loadMediaNodes)
-const feedbackNode = createLazyNodeGroup(loadFeedbackNodes)
 
 const coreNodeRegistry: Record<string, LazyNodeComponent> = {
   // App shell/auth
-  'app-site-brand': lazyNode(() =>
-    import('@/page/nodes/app/site-brand').then((mod) => ({
-      default: mod.AppSiteBrand,
-    }))
-  ),
-  'app-login-form': lazyNode(() =>
-    import('@/page/nodes/app/login-form').then((mod) => ({
-      default: mod.AppLoginForm,
-    }))
-  ),
+  'app-site-brand': appAuthNode('AppSiteBrand'),
+  'app-login-form': appAuthNode('AppLoginForm'),
   'app-skip-to-main': appShellNode('AppSkipToMain'),
   'app-sidebar': appShellNode('AppSidebarNode'),
   'app-topbar': appShellNode('AppTopbarNode'),
@@ -102,11 +96,7 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
   'show-date': showNode('ShowDate'),
   'show-link': showNode('ShowLink'),
   'show-button': showNode('ShowButton'),
-  'show-button-group': lazyNode(() =>
-    import('@/page/nodes/show/button-group').then((mod) => ({
-      default: mod.ShowButtonGroup,
-    }))
-  ),
+  'show-button-group': showNode('ShowButtonGroup'),
   'show-tag': showNode('ShowTag'),
   'show-select': showNode('ShowSelect'),
   'show-status': showNode('ShowStatus'),
@@ -116,85 +106,37 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
       default: mod.ShowChart,
     }))
   ),
-  'show-table': lazyNode(() =>
-    import('@/page/nodes/show/table').then((mod) => ({
-      default: mod.ShowTable,
-    }))
-  ),
+  'show-table': dataEditorNode('ShowTable'),
   'show-page': showNode('ShowPage'),
   'show-icon': showNode('ShowIcon'),
   'show-tooltip': showNode('ShowTooltip'),
-  'show-category-list': lazyNode(() =>
-    import('@/page/nodes/show/category-list').then((mod) => ({
-      default: mod.ShowCategoryList,
-    }))
-  ),
-  'show-resource': lazyNode(() =>
-    import('@/page/nodes/show/resource').then((mod) => ({
-      default: mod.ShowResource,
-    }))
-  ),
-  'show-resource-browser': lazyNode(() =>
-    import('@/page/nodes/show/resource').then((mod) => ({
-      default: mod.ShowResource,
-    }))
-  ),
-  'nav-tab': lazyNode(() =>
-    import('@/page/nodes/nav/tab').then((mod) => ({ default: mod.NavTab }))
-  ),
+  'show-category-list': showNode('ShowCategoryList'),
+  'show-resource': showNode('ShowResource'),
+  'show-resource-browser': showNode('ShowResource'),
+  'nav-tab': showNode('NavTab'),
 
   // Form
-  'form-input': formTextNode('FormInput'),
-  'form-color': formBasicNode('FormColor'),
-  'form-icon': formPickerNode('FormIcon'),
-  'form-password': formBasicNode('FormPassword'),
-  'form-textarea': formTextNode('FormTextarea'),
-  'form-upload': formPickerNode('FormUpload'),
-  'form-editor': lazyNode(() =>
-    import('@/page/nodes/form/editor').then((mod) => ({
-      default: mod.FormEditor,
-    }))
-  ),
-  'form-number': formBasicNode('FormNumber'),
-  'form-switch': formBasicNode('FormSwitch'),
-  'form-radio': formBasicNode('FormRadio'),
-  'form-checkbox': formBasicNode('FormCheckbox'),
-  'form-select': lazyNode(() =>
-    import('@/page/nodes/form/select').then((mod) => ({
-      default: mod.FormSelect,
-    }))
-  ),
-  'form-tree': lazyNode(() =>
-    import('@/page/nodes/form/tree').then((mod) => ({ default: mod.FormTree }))
-  ),
-  'form-cascader': lazyNode(() =>
-    import('@/page/nodes/form/cascader').then((mod) => ({
-      default: mod.FormCascader,
-    }))
-  ),
-  'form-date': formPickerNode('FormDate'),
-  'form-array': lazyNode(() =>
-    import('@/page/nodes/form/array').then((mod) => ({
-      default: mod.FormArray,
-    }))
-  ),
-  'form-combo-mapping': lazyNode(() =>
-    import('@/page/nodes/form/combo-mapping').then((mod) => ({
-      default: mod.FormComboMapping,
-    }))
-  ),
-  'type-editor': lazyNode(() =>
-    import('@/page/nodes/form/type-editor').then((mod) => ({
-      default: mod.TypeEditor,
-    }))
-  ),
+  'form-input': formNode('FormInput'),
+  'form-color': formNode('FormColor'),
+  'form-icon': formNode('FormIcon'),
+  'form-password': formNode('FormPassword'),
+  'form-textarea': formNode('FormTextarea'),
+  'form-upload': formNode('FormUpload'),
+  'form-editor': richEditorNode('FormEditor'),
+  'form-number': formNode('FormNumber'),
+  'form-switch': formNode('FormSwitch'),
+  'form-radio': formNode('FormRadio'),
+  'form-checkbox': formNode('FormCheckbox'),
+  'form-select': formNode('FormSelect'),
+  'form-tree': formNode('FormTree'),
+  'form-cascader': formNode('FormCascader'),
+  'form-date': formNode('FormDate'),
+  'form-array': dataEditorNode('FormArray'),
+  'form-combo-mapping': formNode('FormComboMapping'),
+  'type-editor': dataEditorNode('TypeEditor'),
 
   // Data
-  'front-data-record-editor': lazyNode(() =>
-    import('@/page/nodes/data-record/editor').then((mod) => ({
-      default: mod.DataRecordEditor,
-    }))
-  ),
+  'front-data-record-editor': formNode('DataRecordEditor'),
 
   // Media
   'media-image': mediaNode('MediaImage'),
@@ -203,10 +145,10 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
   'media-file-list': mediaNode('MediaFileList'),
 
   // Feedback
-  'feedback-modal': feedbackNode('FeedbackModal'),
-  'feedback-alert': feedbackNode('FeedbackAlert'),
-  'feedback-confirm': feedbackNode('FeedbackConfirm'),
-  'feedback-drawer': feedbackNode('FeedbackDrawer'),
+  'feedback-modal': showNode('FeedbackModal'),
+  'feedback-alert': showNode('FeedbackAlert'),
+  'feedback-confirm': showNode('FeedbackConfirm'),
+  'feedback-drawer': showNode('FeedbackDrawer'),
 }
 
 export function getNodeComponent(type: string) {

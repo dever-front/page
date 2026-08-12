@@ -1,3 +1,5 @@
+export * from './feedback'
+export * from './show-data'
 export { ShowBase } from '../show/base'
 export { ShowButton } from '../show/button'
 export { ShowDate } from '../show/date'

@@ -52,20 +52,23 @@ function createCompatGroupLoaders<
 }
 
 const compatModuleLoaders = {
-  ...createCompatGroupLoaders(assistantCompatSources, () =>
-    import('./compat/assistant')
+  ...createCompatGroupLoaders(
+    { ...assistantCompatSources, ...contentCompatSources },
+    () => import('./compat/workbench')
   ),
-  ...createCompatGroupLoaders(contentCompatSources, () =>
-    import('./compat/content')
-  ),
-  ...createCompatGroupLoaders(editorCompatSources, () =>
-    import('./compat/editor')
-  ),
+  ...createCompatGroupLoaders(editorCompatSources, async () => {
+    const module = await import('@/page/nodes/groups/rich-editor')
+    return {
+      compatModules: {
+        [editorCompatSources.richTextEditor]: module.richTextEditorModule,
+      },
+    }
+  }),
   ...pageCompatModuleLoaders,
-  ...createCompatGroupLoaders(runtimeCompatSources, () =>
-    import('./compat/runtime')
+  ...createCompatGroupLoaders(
+    { ...runtimeCompatSources, ...uiCompatSources },
+    () => import('./compat/runtime-ui')
   ),
-  ...createCompatGroupLoaders(uiCompatSources, () => import('./compat/ui')),
   [directCompatSources.pluginTypes]: async () => ({
     defineFrontPlugin,
     lazyNode,

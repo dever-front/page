@@ -20,6 +20,7 @@ import {
   CalendarClock,
   CalendarDays,
   Check,
+  ChevronDown,
   CircleCheck,
   CircleDollarSign,
   CircleDot,
@@ -37,6 +38,7 @@ import {
   Database,
   Download,
   Eye,
+  EyeOff,
   FileCog,
   FileJson,
   FileStack,
@@ -48,6 +50,7 @@ import {
   Gift,
   GitBranch,
   Globe,
+  GripVertical,
   History,
   IdCard,
   Image as ImageIcon,
@@ -67,12 +70,14 @@ import {
   Network,
   PackageOpen,
   Palette,
+  Paperclip,
   Play,
   Plug,
   PlugZap,
   Plus,
   ReceiptText,
   RefreshCw,
+  RotateCcw,
   Route,
   Save,
   Send,
@@ -89,6 +94,8 @@ import {
   Trash2,
   TriangleAlert,
   Type,
+  Upload,
+  UserRound,
   Users,
   UsersRound,
   Video,
@@ -97,7 +104,8 @@ import {
 } from 'lucide-react'
 import type { LucideProps } from 'lucide-react'
 
-type LucideModule = typeof import('lucide-react/dist/esm/icons/index.js')
+import type { LucideCatalogModule } from './lucide-catalog-runtime'
+
 type LucideComponent = ComponentType<LucideProps>
 
 const commonLucideIcons: Record<string, LucideComponent> = {
@@ -121,6 +129,7 @@ const commonLucideIcons: Record<string, LucideComponent> = {
   'calendar-clock': CalendarClock,
   'calendar-days': CalendarDays,
   check: Check,
+  'chevron-down': ChevronDown,
   'circle-check': CircleCheck,
   'circle-dollar-sign': CircleDollarSign,
   'circle-dot': CircleDot,
@@ -138,6 +147,7 @@ const commonLucideIcons: Record<string, LucideComponent> = {
   database: Database,
   download: Download,
   eye: Eye,
+  'eye-off': EyeOff,
   'file-cog': FileCog,
   'file-json': FileJson,
   'file-stack': FileStack,
@@ -149,6 +159,7 @@ const commonLucideIcons: Record<string, LucideComponent> = {
   gift: Gift,
   'git-branch': GitBranch,
   globe: Globe,
+  'grip-vertical': GripVertical,
   history: History,
   'id-card': IdCard,
   image: ImageIcon,
@@ -168,12 +179,14 @@ const commonLucideIcons: Record<string, LucideComponent> = {
   network: Network,
   'package-open': PackageOpen,
   palette: Palette,
+  paperclip: Paperclip,
   play: Play,
   plug: Plug,
   'plug-zap': PlugZap,
   plus: Plus,
   'receipt-text': ReceiptText,
   'refresh-cw': RefreshCw,
+  'rotate-ccw': RotateCcw,
   route: Route,
   save: Save,
   send: Send,
@@ -190,6 +203,8 @@ const commonLucideIcons: Record<string, LucideComponent> = {
   'trash-2': Trash2,
   'triangle-alert': TriangleAlert,
   type: Type,
+  upload: Upload,
+  'user-round': UserRound,
   users: Users,
   'users-round': UsersRound,
   video: Video,
@@ -203,7 +218,7 @@ for (const [name, Icon] of Object.entries(commonLucideIcons)) {
 
 const resolvedIcons = new Map<string, LucideComponent>()
 const MissingIcon: LucideComponent = () => null
-let lucideModulePromise: Promise<LucideModule> | undefined
+let lucideModulePromise: Promise<LucideCatalogModule> | undefined
 
 function normalizeLucideIconName(name: string) {
   return name
@@ -261,13 +276,16 @@ function resolveCommonLucideIcon(iconName: string) {
   )
 }
 
-function resolveLucideModuleIcon(module: LucideModule, iconName: string) {
+function resolveLucideModuleIcon(
+  module: LucideCatalogModule,
+  iconName: string
+) {
   const exportName = iconName
     .split('-')
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join('')
-  return module[exportName as keyof LucideModule] as LucideComponent | undefined
+  return module[exportName]
 }
 
 function createIconPlaceholder(props: LucideProps) {
@@ -284,12 +302,12 @@ function createIconPlaceholder(props: LucideProps) {
 
 function loadLucideModule() {
   if (!lucideModulePromise) {
-    lucideModulePromise = import(
-      'lucide-react/dist/esm/icons/index.js'
-    ).catch((error) => {
-      lucideModulePromise = undefined
-      throw error
-    })
+    lucideModulePromise = import('./lucide-catalog-runtime')
+      .then((module) => module.lucideCatalogModule)
+      .catch((error) => {
+        lucideModulePromise = undefined
+        throw error
+      })
   }
   return lucideModulePromise
 }

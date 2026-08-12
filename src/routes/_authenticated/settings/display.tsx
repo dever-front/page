@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { JsonPageRoute } from '@/page/json-page-route'
+import { LazyJsonPageRoute } from '@/page/lazy-json-page-route'
 
 export const Route = createFileRoute('/_authenticated/settings/display')({
-  component: () => <JsonPageRoute route='/settings-display' />,
+  component: () => <LazyJsonPageRoute route='/settings-display' />,
 })

@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { JsonPageRoute } from '@/page/json-page-route'
+import { LazyJsonPageRoute } from '@/page/lazy-json-page-route'
 import { stripRouterBasePath } from '@/lib/router-path'
 import { stringifyRouterSearch } from '@/lib/router-search'
 
@@ -16,5 +16,5 @@ function DynamicNestedPage() {
     /^\/+/,
     ''
   )
-  return <JsonPageRoute route={`/${normalizedRoute}${query}`} />
+  return <LazyJsonPageRoute route={`/${normalizedRoute}${query}`} />
 }
