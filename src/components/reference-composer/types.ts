@@ -183,6 +183,8 @@ export type ReferenceComposerProps = {
   uploadBizName?: string
   allowResourceLibrary?: boolean
   renderFileLibrary?: ParamFileLibraryRenderer
+  toolbar?: ReactNode
+  parameterScopeKey?: string
   showMediaAliases?: boolean
   allowMultiMediaSelection?: boolean
   onUploadedFiles?: (files: UploadFileItem[]) => void | Promise<void>

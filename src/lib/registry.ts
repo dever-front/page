@@ -26,10 +26,12 @@ import {
   ensurePluginsForNodes,
   getRuntimePluginNodes,
 } from '@/lib/plugin/runtime'
-import { lazyNode } from '@/lib/plugin/types'
-import type { LazyNodeComponent } from '@/lib/plugin/types'
+import { lazyNode, type LazyNodeComponent } from '@/lib/plugin/types'
 import type { PageSchemaType } from '@/lib/schema'
-import { collectSchemaNodeTypes } from '@/lib/schema-nodes'
+import {
+  collectImmediateSchemaNodeTypes,
+  collectSchemaNodeTypes,
+} from '@/lib/schema-nodes'
 
 export const layoutRegistry: Record<
   string,
@@ -55,10 +57,8 @@ const loadAppShellNodes = () => import('@/page/nodes/groups/app-shell')
 const loadAppAuthNodes = () => import('@/page/nodes/groups/app-auth')
 const loadShowNodes = () => import('@/page/nodes/groups/show')
 const loadFormNodes = () => import('@/page/nodes/groups/form')
-const loadDataEditorNodes = () =>
-  import('@/page/nodes/groups/data-editor')
-const loadRichEditorNodes = () =>
-  import('@/page/nodes/groups/rich-editor')
+const loadDataEditorNodes = () => import('@/page/nodes/groups/data-editor')
+const loadRichEditorNodes = () => import('@/page/nodes/groups/rich-editor')
 const loadMediaNodes = () => import('@/page/nodes/groups/media')
 
 function createLazyNodeGroup<T>(loadGroup: () => Promise<T>) {
@@ -153,6 +153,15 @@ const coreNodeRegistry: Record<string, LazyNodeComponent> = {
 
 export function getNodeComponent(type: string) {
   return coreNodeRegistry[type] || getRuntimePluginNodes()[type]
+}
+
+export function preloadImmediatePluginNodeComponents(schema: PageSchemaType) {
+  const pluginNodes = getRuntimePluginNodes()
+  const loaders = collectImmediateSchemaNodeTypes(schema).flatMap((type) => {
+    const component = pluginNodes[type]
+    return component ? [component.preload()] : []
+  })
+  return Promise.allSettled(loaders)
 }
 
 export function ensureNodePluginsForSchema(schema: PageSchemaType) {

@@ -121,6 +121,8 @@ export function ReferenceComposer({
   uploadBizName,
   allowResourceLibrary = true,
   renderFileLibrary,
+  toolbar,
+  parameterScopeKey = '',
   showMediaAliases = false,
   allowMultiMediaSelection = false,
   onUploadedFiles,
@@ -279,7 +281,10 @@ export function ReferenceComposer({
   })
 
   useEffect(() => {
-    const nextContract = JSON.stringify(normalizedParams)
+    const nextContract = JSON.stringify({
+      scope: parameterScopeKey,
+      parameters: normalizedParams,
+    })
     if (configuredParamContractRef.current === nextContract) {
       return
     }
@@ -307,7 +312,7 @@ export function ReferenceComposer({
     setAttachmentFiles({})
     setAttachmentCounts(nextCounts)
     setMessage('')
-  }, [editor, normalizedParams])
+  }, [editor, normalizedParams, parameterScopeKey])
 
   useEffect(() => {
     if (inactiveFileParamKeys.length === 0) {
@@ -664,6 +669,7 @@ export function ReferenceComposer({
       ) : null}
       <div className='reference-composer-toolbar'>
         <div className='reference-composer-tools'>
+          {toolbar}
           <ReferenceAttachmentMenu
             params={fileParams}
             counts={attachmentCounts}
