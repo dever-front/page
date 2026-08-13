@@ -120,6 +120,7 @@ export function ReferenceComposer({
   uploadBizKey,
   uploadBizName,
   allowResourceLibrary = true,
+  renderFileLibrary,
   showMediaAliases = false,
   allowMultiMediaSelection = false,
   onUploadedFiles,
@@ -197,6 +198,8 @@ export function ReferenceComposer({
   )
   const clipboardUploadActiveRef = useRef(false)
   const clipboardPasteDisabledRef = useRef(false)
+  const configuredFileParamKeysRef = useRef<Set<string>>(new Set())
+  const configuredParamContractRef = useRef('')
   const rootRef = useRef<HTMLDivElement>(null)
   const pickerOpenRef = useRef(false)
   const loadPreviewRef = useRef<ReferencePreviewLoader>(async (request) => ({
@@ -215,6 +218,8 @@ export function ReferenceComposer({
     extensions: referenceEditorExtensions(
       placeholder,
       (request) => loadPreviewRef.current(request),
+      [],
+      'usage',
       [],
       showMediaAliases,
       allowMultiMediaSelection
@@ -274,11 +279,35 @@ export function ReferenceComposer({
   })
 
   useEffect(() => {
+    const nextContract = JSON.stringify(normalizedParams)
+    if (configuredParamContractRef.current === nextContract) {
+      return
+    }
+    configuredParamContractRef.current = nextContract
+    const previousFileParamKeys = configuredFileParamKeysRef.current
+    configuredFileParamKeysRef.current = new Set(
+      normalizedParams
+        .filter(isFileParam)
+        .map((param) => String(param.key || '').trim())
+        .filter(Boolean)
+    )
+    let nextCounts: Record<string, number> = {}
+    if (editor && previousFileParamKeys.size > 0) {
+      const currentDocument = editor.getJSON()
+      const nextDocument = removeReferenceUsages(
+        currentDocument,
+        previousFileParamKeys
+      )
+      if (nextDocument !== currentDocument) {
+        editor.commands.setContent(nextDocument)
+      }
+      nextCounts = referenceUsageCounts(nextDocument)
+    }
     setParamValues(buildDefaultParamValues(normalizedParams))
     setAttachmentFiles({})
-    setAttachmentCounts({})
+    setAttachmentCounts(nextCounts)
     setMessage('')
-  }, [normalizedParams])
+  }, [editor, normalizedParams])
 
   useEffect(() => {
     if (inactiveFileParamKeys.length === 0) {
@@ -473,7 +502,7 @@ export function ReferenceComposer({
         ...current,
         [key]: appendUniqueFiles(
           current[key] || [],
-          files.filter((file) => nextIDs.has(String(file.id)))
+          files.filter((file) => nextIDs.has(referenceIDForFile(file)))
         ),
       }))
       const content = referenceInsertionContent(
@@ -485,6 +514,38 @@ export function ReferenceComposer({
       if (content.length > 0) {
         editor.chain().focus().insertContent(content).run()
       }
+      setMessage('')
+    },
+    [editor, referenceProviders]
+  )
+
+  const replaceAttachments = useCallback(
+    (
+      param: PowerParam,
+      files: UploadFileItem[],
+      options: ReferenceOption[]
+    ) => {
+      const key = String(param.key || '').trim()
+      if (!key || !editor) {
+        return
+      }
+      const currentDocument = editor.getJSON()
+      const nextDocument = removeReferenceUsages(
+        currentDocument,
+        new Set([key])
+      )
+      editor.commands.setContent(nextDocument)
+      setAttachmentFiles((current) => ({ ...current, [key]: files }))
+      const content = referenceInsertionContent(
+        options.map((option) =>
+          referenceOptionWithProviderTrigger(option, referenceProviders)
+        ),
+        key
+      )
+      if (content.length > 0) {
+        editor.chain().focus().insertContent(content).run()
+      }
+      setAttachmentCounts(referenceUsageCounts(editor.getJSON()))
       setMessage('')
     },
     [editor, referenceProviders]
@@ -611,8 +672,11 @@ export function ReferenceComposer({
             uploadBizKey={uploadBizKey}
             uploadBizName={uploadBizName}
             allowResourceLibrary={allowResourceLibrary}
+            files={attachmentFiles}
+            renderFileLibrary={renderFileLibrary}
             onUploadedFiles={onUploadedFiles}
             onInsert={insertAttachments}
+            onReplace={replaceAttachments}
             onMessage={setMessage}
           />
           {referenceProviders.map((provider) => {
@@ -1581,9 +1645,16 @@ function activeParamFiles(content: ReferenceContent, files: ParamFileMap) {
   const result: ParamFileMap = {}
   for (const [key, values] of Object.entries(files)) {
     const ids = active.get(key)
-    result[key] = ids ? values.filter((file) => ids.has(String(file.id))) : []
+    result[key] = ids
+      ? values.filter((file) => ids.has(referenceIDForFile(file)))
+      : []
   }
   return result
+}
+
+function referenceIDForFile(file: UploadFileItem) {
+  const assetMatch = /^asset:(\d+):\d+$/.exec(String(file.id || ''))
+  return assetMatch ? assetMatch[1] : String(file.id || '')
 }
 
 function removeReferenceUsages(

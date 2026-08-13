@@ -23,6 +23,8 @@ import {
   isFilesParam,
   resolveMaxFiles,
   resolveParamResourceRule,
+  type ParamFileLibraryRenderer,
+  type ParamFileMap,
   type PowerParam,
 } from '@/components/agent/stream-request-params'
 import { ResourcePickerDialogLazy } from '@/components/resource/lazy-dialogs'
@@ -40,8 +42,11 @@ export function ReferenceAttachmentMenu({
   uploadBizKey,
   uploadBizName,
   allowResourceLibrary = true,
+  files,
+  renderFileLibrary,
   onUploadedFiles,
   onInsert,
+  onReplace,
   onMessage,
 }: {
   params: PowerParam[]
@@ -51,8 +56,15 @@ export function ReferenceAttachmentMenu({
   uploadBizKey?: string
   uploadBizName?: string
   allowResourceLibrary?: boolean
+  files: ParamFileMap
+  renderFileLibrary?: ParamFileLibraryRenderer
   onUploadedFiles?: (files: UploadFileItem[]) => void | Promise<void>
   onInsert: (
+    param: PowerParam,
+    files: UploadFileItem[],
+    options: ReferenceOption[]
+  ) => void
+  onReplace: (
     param: PowerParam,
     files: UploadFileItem[],
     options: ReferenceOption[]
@@ -97,7 +109,7 @@ export function ReferenceAttachmentMenu({
   }
 
   const openResource = (param: PowerParam) => {
-    if (!validateUploadRule(param)) {
+    if (!renderFileLibrary && !validateUploadRule(param)) {
       return
     }
     setResourceParam(param)
@@ -199,9 +211,12 @@ export function ReferenceAttachmentMenu({
                 <Upload />
                 上传
               </DropdownMenuItem>
-              {allowResourceLibrary ? (
+              {allowResourceLibrary || renderFileLibrary ? (
                 <DropdownMenuItem
-                  disabled={remainingFiles(fileParams[0], counts) <= 0}
+                  disabled={
+                    !renderFileLibrary &&
+                    remainingFiles(fileParams[0], counts) <= 0
+                  }
                   onSelect={() => openResource(fileParams[0])}
                 >
                   <FolderOpen />
@@ -218,12 +233,13 @@ export function ReferenceAttachmentMenu({
                 counts={counts}
                 onSelect={openUpload}
               />
-              {allowResourceLibrary ? (
+              {allowResourceLibrary || renderFileLibrary ? (
                 <ParamSubMenu
                   icon={<FolderOpen />}
                   label='从资源库选择'
                   params={fileParams}
                   counts={counts}
+                  allowFullSelection={Boolean(renderFileLibrary)}
                   onSelect={openResource}
                 />
               ) : null}
@@ -241,7 +257,28 @@ export function ReferenceAttachmentMenu({
         multiple={Boolean(uploadParam && isFilesParam(uploadParam))}
         onChange={handleUpload}
       />
-      {allowResourceLibrary ? (
+      {renderFileLibrary && resourceParam
+        ? renderFileLibrary({
+            open: true,
+            param: resourceParam,
+            files: files[String(resourceParam.key || '').trim()] || [],
+            resourceKind: resourceRule?.kind,
+            multiple: isFilesParam(resourceParam),
+            maxSelection: resolveMaxFiles(resourceParam),
+            onOpenChange: (open) => {
+              if (!open) setResourceParam(null)
+            },
+            onConfirm: (selected) => {
+              onReplace(
+                resourceParam,
+                selected,
+                referenceOptions(resourceParam, selected, resourceRule?.kind)
+              )
+              setResourceParam(null)
+            },
+          })
+        : null}
+      {!renderFileLibrary && allowResourceLibrary ? (
         <ResourcePickerDialogLazy
           open={Boolean(resourceParam)}
           title={`选择${resourceParam?.name || '资源'}`}
@@ -284,12 +321,14 @@ function ParamSubMenu({
   label,
   params,
   counts,
+  allowFullSelection = false,
   onSelect,
 }: {
   icon: ReactNode
   label: string
   params: PowerParam[]
   counts: Record<string, number>
+  allowFullSelection?: boolean
   onSelect: (param: PowerParam) => void
 }) {
   return (
@@ -302,7 +341,7 @@ function ParamSubMenu({
         {params.map((param) => (
           <DropdownMenuItem
             key={`${param.id}:${param.key}`}
-            disabled={remainingFiles(param, counts) <= 0}
+            disabled={!allowFullSelection && remainingFiles(param, counts) <= 0}
             onSelect={() => onSelect(param)}
           >
             {param.name}

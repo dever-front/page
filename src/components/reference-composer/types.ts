@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react'
-import type { PowerParam } from '@/components/agent/stream-request-params'
+import type {
+  ParamFileLibraryRenderer,
+  PowerParam,
+} from '@/components/agent/stream-request-params'
 import type { UploadFileItem } from '@/lib/upload'
 
 export type ReferenceType =
@@ -82,6 +85,7 @@ export type ReferenceContent = {
   version: 1
   parts: ReferencePart[]
   params?: Record<string, unknown>
+  execution?: Record<string, unknown>
 }
 
 export type ReferenceInput = {
@@ -178,6 +182,7 @@ export type ReferenceComposerProps = {
   uploadBizKey?: string
   uploadBizName?: string
   allowResourceLibrary?: boolean
+  renderFileLibrary?: ParamFileLibraryRenderer
   showMediaAliases?: boolean
   allowMultiMediaSelection?: boolean
   onUploadedFiles?: (files: UploadFileItem[]) => void | Promise<void>
