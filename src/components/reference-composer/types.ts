@@ -229,7 +229,7 @@ export type ReferenceEditorProps = {
   onReferenceUsageChange?: (
     reference: Extract<ReferencePart, { type: 'reference' }>,
     usage: string
-  ) => void
+  ) => boolean | void
   onChange: (value: string, content: ReferenceContent) => void
   onBlur?: () => void
   onSubmit?: () => void

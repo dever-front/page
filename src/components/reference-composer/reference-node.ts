@@ -22,7 +22,7 @@ export type ReferenceNodeOptions = {
   onUsageChange?: (
     reference: Extract<ReferencePart, { type: 'reference' }>,
     usage: string
-  ) => void
+  ) => boolean | void
 }
 
 export const ReferenceNode = Node.create<ReferenceNodeOptions>({

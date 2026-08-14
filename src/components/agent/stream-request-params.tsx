@@ -5,6 +5,7 @@ import {
   LayoutGrid,
   Loader2,
   Paperclip,
+  SlidersHorizontal,
   X,
 } from 'lucide-react'
 import { findFloatingLayerContainer } from '@/lib/floating-layer'
@@ -87,6 +88,18 @@ export type PowerParam = {
   asset_kinds?: string[]
   sort?: number
   options?: PowerParamOption[]
+}
+
+export type FilePowerParamContract = Pick<
+  PowerParam,
+  'name' | 'key' | 'type' | 'max_files' | 'accepted_kinds' | 'asset_kinds'
+>
+
+export type PowerParamFileUsageOption = {
+  key: string
+  label: string
+  acceptedKinds: string[]
+  maxFiles: number
 }
 
 export type ParamValueMap = Record<string, unknown>
@@ -253,6 +266,162 @@ export function PowerParamPopover({
       </PopoverContent>
     </Popover>
   )
+}
+
+export function PowerParamPanelPopover({
+  params,
+  values,
+  disabled,
+  triggerClassName,
+  onChange,
+}: {
+  params: PowerParam[]
+  values: ParamValueMap
+  disabled?: boolean
+  triggerClassName?: string
+  onChange: (param: PowerParam, nextValue: unknown) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
+    null
+  )
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
+  const summaries = params
+    .map((param) => {
+      const key = inputKeyForParam(param)
+      return paramSummary(param, displayParamValue(param, values[key]), [])
+    })
+    .filter(Boolean)
+  const summary = summaries.slice(0, 3).join(' · ')
+  const missingRequired = params.filter((param) => {
+    const key = inputKeyForParam(param)
+    return (
+      isRequiredParam(param) &&
+      isParamValueMissing(param, displayParamValue(param, values[key]))
+    )
+  }).length
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) {
+          setPortalContainer(findFloatingLayerContainer(triggerRef.current))
+        }
+        setOpen(nextOpen)
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          ref={triggerRef}
+          type='button'
+          variant='ghost'
+          size='sm'
+          disabled={disabled}
+          className={cn(
+            'h-[42px] max-w-[15rem] shrink-0 justify-start gap-1.5 rounded-lg px-2.5 font-normal',
+            triggerClassName
+          )}
+          title={summary ? `参数：${summary}` : '参数'}
+        >
+          <SlidersHorizontal className='size-4 shrink-0' />
+          <span className='shrink-0'>参数</span>
+          {summary ? (
+            <span className='min-w-0 truncate text-xs text-muted-foreground'>
+              {summary}
+            </span>
+          ) : null}
+          {missingRequired > 0 ? (
+            <span className='flex size-4 shrink-0 items-center justify-center rounded-full bg-destructive text-[10px] leading-none text-white'>
+              {missingRequired}
+            </span>
+          ) : null}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        ref={contentRef}
+        align='start'
+        side='top'
+        container={portalContainer}
+        className='z-[160] max-h-[min(32rem,65vh)] w-[min(26rem,calc(100vw-24px))] overflow-y-auto p-4'
+        onFocusOutside={(event) =>
+          preserveNestedParameterLayer(
+            event,
+            contentRef.current,
+            portalContainer
+          )
+        }
+        onInteractOutside={(event) =>
+          preserveNestedParameterLayer(
+            event,
+            contentRef.current,
+            portalContainer
+          )
+        }
+      >
+        <p className='mb-4 text-sm font-semibold'>参数设置</p>
+        <div className='space-y-4'>
+          {params.map((param, index) => {
+            const key = inputKeyForParam(param)
+            return (
+              <div
+                key={`${param.id}:${key}`}
+                className={cn(
+                  'space-y-2',
+                  index < params.length - 1 && 'border-b pb-4'
+                )}
+              >
+                <Label className='flex min-w-0 items-center gap-1.5 text-sm font-medium'>
+                  <PowerParamIcon
+                    name={param.icon}
+                    className='size-3.5 shrink-0 text-muted-foreground'
+                  />
+                  <span className='truncate'>{paramLabel(param)}</span>
+                  {isRequiredParam(param) ? (
+                    <span className='text-destructive'>*</span>
+                  ) : null}
+                </Label>
+                <PowerParamControl
+                  param={param}
+                  value={displayParamValue(param, values[key])}
+                  files={[]}
+                  disabled={disabled}
+                  surface='main'
+                  onChange={(nextValue) => onChange(param, nextValue)}
+                  onFilesChange={() => undefined}
+                />
+              </div>
+            )
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function preserveNestedParameterLayer(
+  event: {
+    target: EventTarget | null
+    preventDefault: () => void
+  },
+  parentContent: HTMLElement | null,
+  portalContainer: HTMLElement | null
+) {
+  if (!(event.target instanceof Element)) {
+    return
+  }
+  const floatingLayer = event.target.closest<HTMLElement>(
+    '[data-slot="popover-content"], [data-slot="dialog-layer"]'
+  )
+  if (
+    floatingLayer &&
+    floatingLayer !== parentContent &&
+    floatingLayer !== portalContainer &&
+    !parentContent?.contains(floatingLayer)
+  ) {
+    event.preventDefault()
+  }
 }
 
 function PowerParamControl({
@@ -1696,10 +1865,76 @@ export function isFilesParam(param: PowerParam) {
 }
 
 export function resolveMaxFiles(param: PowerParam) {
-  if (isFilesParam(param)) {
-    return Math.max(1, Number(param.max_files || DEFAULT_MAX_FILES))
+  return resolveFileParamMaxFiles(param)
+}
+
+export function buildPowerParamFileUsageOptions(
+  params: FilePowerParamContract[]
+): PowerParamFileUsageOption[] {
+  return params.flatMap((param) => {
+    const type = normalizeParamType(param.type)
+    const key = String(param.key || '').trim()
+    if ((type !== 'file' && type !== 'files') || !key) {
+      return []
+    }
+    return [
+      {
+        key,
+        label: String(param.name || key).trim() || key,
+        acceptedKinds: resolvePowerParamFileKinds(param),
+        maxFiles: resolveFileParamUsageCapacity(param),
+      },
+    ]
+  })
+}
+
+export function resolvePowerParamFileKinds(
+  param: FilePowerParamContract
+): string[] {
+  const supported = new Set(['image', 'video', 'audio', 'file'])
+  const configuredKinds =
+    param.accepted_kinds && param.accepted_kinds.length > 0
+      ? param.accepted_kinds
+      : param.asset_kinds || []
+  const configured = Array.from(
+    new Set(
+      configuredKinds
+        .map((kind) => normalizePowerParamFileKind(kind))
+        .filter((kind) => supported.has(kind))
+    )
+  )
+  if (configured.length > 0) {
+    return configured
   }
-  return 1
+
+  const identity = `${param.name || ''} ${param.key || ''}`.toLowerCase()
+  if (/video|视频/.test(identity)) return ['video']
+  if (/audio|music|音频|音乐/.test(identity)) return ['audio']
+  if (/image|img|photo|picture|图片|图像|参考图|首帧|尾帧/.test(identity)) {
+    return ['image']
+  }
+  return ['image', 'video', 'audio', 'file']
+}
+
+function resolveFileParamMaxFiles(param: Pick<PowerParam, 'type' | 'max_files'>) {
+  return normalizeParamType(param.type) === 'files'
+    ? Math.max(1, Number(param.max_files || DEFAULT_MAX_FILES))
+    : 1
+}
+
+function resolveFileParamUsageCapacity(
+  param: Pick<PowerParam, 'type' | 'max_files'>
+) {
+  return normalizeParamType(param.type) === 'files'
+    ? Math.max(0, Number(param.max_files || 0))
+    : 1
+}
+
+function normalizePowerParamFileKind(value: unknown) {
+  const kind = String(value || '')
+    .trim()
+    .toLowerCase()
+  return kind === 'music' ? 'audio' : kind
 }
 
 function convertValueByType(param: PowerParam, value: unknown) {

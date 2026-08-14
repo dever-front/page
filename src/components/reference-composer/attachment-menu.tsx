@@ -5,7 +5,14 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from 'react'
-import { FolderOpen, Loader2, Paperclip, Upload } from 'lucide-react'
+import {
+  AtSign,
+  FolderOpen,
+  Hash,
+  Loader2,
+  Paperclip,
+  Upload,
+} from 'lucide-react'
 import { findFloatingLayerContainer } from '@/lib/floating-layer'
 import { uploadFileByRule, type UploadFileItem } from '@/lib/upload'
 import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
@@ -13,6 +20,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -44,9 +53,11 @@ export function ReferenceAttachmentMenu({
   allowResourceLibrary = true,
   files,
   renderFileLibrary,
+  referenceActions = [],
   onUploadedFiles,
   onInsert,
   onReplace,
+  onReferenceSelect,
   onMessage,
 }: {
   params: PowerParam[]
@@ -58,6 +69,7 @@ export function ReferenceAttachmentMenu({
   allowResourceLibrary?: boolean
   files: ParamFileMap
   renderFileLibrary?: ParamFileLibraryRenderer
+  referenceActions?: Array<{ trigger: string; label: string }>
   onUploadedFiles?: (files: UploadFileItem[]) => void | Promise<void>
   onInsert: (
     param: PowerParam,
@@ -69,6 +81,7 @@ export function ReferenceAttachmentMenu({
     files: UploadFileItem[],
     options: ReferenceOption[]
   ) => void
+  onReferenceSelect?: (trigger: string) => void
   onMessage: (message: string) => void
 }) {
   const fileParams = useMemo(() => params.filter(isFileParam), [params])
@@ -87,7 +100,7 @@ export function ReferenceAttachmentMenu({
   const [resourceParam, setResourceParam] = useState<PowerParam | null>(null)
   const [uploading, setUploading] = useState(false)
 
-  if (fileParams.length === 0) {
+  if (fileParams.length === 0 && referenceActions.length === 0) {
     return null
   }
 
@@ -181,18 +194,19 @@ export function ReferenceAttachmentMenu({
         }}
       >
         <ReferenceComposerControlTooltip
-          label='添加附件'
+          label='添加'
           layerZIndex={layerZIndex}
         >
           <DropdownMenuTrigger asChild>
             <button
               ref={triggerRef}
               type='button'
-              className='reference-composer-tool'
-              aria-label='添加附件'
+              className='reference-composer-tool reference-composer-add-trigger'
+              aria-label='添加'
               disabled={disabled || uploading}
             >
               {uploading ? <Loader2 className='animate-spin' /> : <Paperclip />}
+              <span>添加</span>
             </button>
           </DropdownMenuTrigger>
         </ReferenceComposerControlTooltip>
@@ -202,49 +216,75 @@ export function ReferenceAttachmentMenu({
           container={portalContainer}
           className='z-[160] min-w-44'
         >
-          {fileParams.length === 1 ? (
+          {fileParams.length > 0 ? (
             <>
-              <DropdownMenuItem
-                disabled={remainingFiles(fileParams[0], counts) <= 0}
-                onSelect={() => openUpload(fileParams[0])}
-              >
-                <Upload />
-                上传
-              </DropdownMenuItem>
-              {allowResourceLibrary || renderFileLibrary ? (
+              <DropdownMenuLabel className='text-xs text-muted-foreground'>
+                素材
+              </DropdownMenuLabel>
+              {fileParams.length === 1 ? (
+                <>
+                  <DropdownMenuItem
+                    disabled={remainingFiles(fileParams[0], counts) <= 0}
+                    onSelect={() => openUpload(fileParams[0])}
+                  >
+                    <Upload />
+                    上传
+                  </DropdownMenuItem>
+                  {allowResourceLibrary || renderFileLibrary ? (
+                    <DropdownMenuItem
+                      disabled={
+                        !renderFileLibrary &&
+                        remainingFiles(fileParams[0], counts) <= 0
+                      }
+                      onSelect={() => openResource(fileParams[0])}
+                    >
+                      <FolderOpen />
+                      从资源库选择
+                    </DropdownMenuItem>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <ParamSubMenu
+                    icon={<Upload />}
+                    label='上传'
+                    params={fileParams}
+                    counts={counts}
+                    onSelect={openUpload}
+                  />
+                  {allowResourceLibrary || renderFileLibrary ? (
+                    <ParamSubMenu
+                      icon={<FolderOpen />}
+                      label='从资源库选择'
+                      params={fileParams}
+                      counts={counts}
+                      allowFullSelection={Boolean(renderFileLibrary)}
+                      onSelect={openResource}
+                    />
+                  ) : null}
+                </>
+              )}
+            </>
+          ) : null}
+          {fileParams.length > 0 && referenceActions.length > 0 ? (
+            <DropdownMenuSeparator />
+          ) : null}
+          {referenceActions.length > 0 ? (
+            <>
+              <DropdownMenuLabel className='text-xs text-muted-foreground'>
+                引用
+              </DropdownMenuLabel>
+              {referenceActions.map((action) => (
                 <DropdownMenuItem
-                  disabled={
-                    !renderFileLibrary &&
-                    remainingFiles(fileParams[0], counts) <= 0
-                  }
-                  onSelect={() => openResource(fileParams[0])}
+                  key={action.trigger}
+                  onSelect={() => onReferenceSelect?.(action.trigger)}
                 >
-                  <FolderOpen />
-                  从资源库选择
+                  {action.trigger === '#' ? <Hash /> : <AtSign />}
+                  {action.label}
                 </DropdownMenuItem>
-              ) : null}
+              ))}
             </>
-          ) : (
-            <>
-              <ParamSubMenu
-                icon={<Upload />}
-                label='上传'
-                params={fileParams}
-                counts={counts}
-                onSelect={openUpload}
-              />
-              {allowResourceLibrary || renderFileLibrary ? (
-                <ParamSubMenu
-                  icon={<FolderOpen />}
-                  label='从资源库选择'
-                  params={fileParams}
-                  counts={counts}
-                  allowFullSelection={Boolean(renderFileLibrary)}
-                  onSelect={openResource}
-                />
-              ) : null}
-            </>
-          )}
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
       <input

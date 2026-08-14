@@ -14,7 +14,7 @@ import {
   type UseEditorOptions,
 } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { ArrowUp, AtSign, Hash, Loader2, Square } from 'lucide-react'
+import { ArrowUp, Loader2, Square } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import {
   clipboardImageFiles,
@@ -24,14 +24,16 @@ import { uploadFileByRule, type UploadFileItem } from '@/lib/upload'
 import { cn } from '@/lib/utils'
 import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
 import {
+  buildPowerParamFileUsageOptions,
   buildDefaultParamValues,
   buildRequestInput,
   filterActivePowerParams,
+  inputKeyForParam,
   isFileParam,
   isPromptParam,
   normalizePowerParams,
   paramFilesRequestValue,
-  PowerParamPopover,
+  PowerParamPanelPopover,
   shouldDisplayPowerParam,
   validateMainParams,
   type ParamFileMap,
@@ -45,6 +47,7 @@ import {
 } from './media-selection'
 import { ReferencePicker } from './picker'
 import { ReferenceNode } from './reference-node'
+import { ReferenceNodeRuntimeProvider } from './reference-node-runtime'
 import { ReferenceTag } from './reference-tag'
 import {
   referenceAliasKind,
@@ -78,7 +81,6 @@ import type {
   ReferenceUsageOption,
 } from './types'
 
-const EMPTY_PARAM_FILES: UploadFileItem[] = []
 const CURRENT_REFERENCE_SCOPES: ReferenceScope[] = ['current']
 const EMPTY_REFERENCE_USAGE_OPTIONS: ReferenceUsageOption[] = []
 
@@ -137,6 +139,14 @@ export function ReferenceComposer({
     () => normalizeReferenceProviders(providers, loadReferences, loadPreview),
     [loadPreview, loadReferences, providers]
   )
+  const attachmentReferenceActions = useMemo(
+    () =>
+      referenceProviders.map((provider) => ({
+        trigger: provider.trigger,
+        label: provider.trigger === '#' ? '引用会话信息' : '引用资产',
+      })),
+    [referenceProviders]
+  )
   const normalizedParams = useMemo(
     () => normalizePowerParams(parameters),
     [parameters]
@@ -169,6 +179,24 @@ export function ReferenceComposer({
     () => activeParams.filter(isFileParam),
     [activeParams]
   )
+  const fileUsageOptions = useMemo(
+    () => buildPowerParamFileUsageOptions(fileParams),
+    [fileParams]
+  )
+  const referenceNodeRuntime = useMemo(
+    () => ({
+      usageOptions: fileUsageOptions,
+      usageField: 'usage' as const,
+      mediaUsageOptions: fileUsageOptions,
+    }),
+    [fileUsageOptions]
+  )
+  const attachmentFilesRef = useRef(attachmentFiles)
+  const attachmentCountsRef = useRef(attachmentCounts)
+  const fileUsageOptionsRef = useRef(fileUsageOptions)
+  attachmentFilesRef.current = attachmentFiles
+  attachmentCountsRef.current = attachmentCounts
+  fileUsageOptionsRef.current = fileUsageOptions
   const inactiveFileParamKeys = useMemo(() => {
     const activeKeys = new Set(
       fileParams.map((param) => String(param.key || '').trim()).filter(Boolean)
@@ -220,11 +248,31 @@ export function ReferenceComposer({
     extensions: referenceEditorExtensions(
       placeholder,
       (request) => loadPreviewRef.current(request),
-      [],
+      fileUsageOptions,
       'usage',
-      [],
+      fileUsageOptions,
       showMediaAliases,
-      allowMultiMediaSelection
+      allowMultiMediaSelection,
+      undefined,
+      (reference, usage) => {
+        const result = moveAttachmentUsage({
+          reference,
+          nextUsage: usage,
+          usageOptions: fileUsageOptionsRef.current,
+          usageCounts: attachmentCountsRef.current,
+          files: attachmentFilesRef.current,
+        })
+        if (result.error) {
+          setMessage(result.error)
+          return false
+        }
+        if (result.files !== attachmentFilesRef.current) {
+          attachmentFilesRef.current = result.files
+          setAttachmentFiles(result.files)
+        }
+        setMessage('')
+        return true
+      }
     ),
     editorProps: {
       attributes: {
@@ -276,7 +324,9 @@ export function ReferenceComposer({
       },
     },
     onUpdate({ editor: currentEditor }) {
-      setAttachmentCounts(referenceUsageCounts(currentEditor.getJSON()))
+      const nextCounts = referenceUsageCounts(currentEditor.getJSON())
+      attachmentCountsRef.current = nextCounts
+      setAttachmentCounts(nextCounts)
     },
   })
 
@@ -394,9 +444,14 @@ export function ReferenceComposer({
         )
       }
     }
+    const validationValues = referenceUsageValidationValues(
+      requestValues,
+      fileParams,
+      referenceUsageCounts(editor.getJSON())
+    )
     const validationMessage = validateMainParams(
       normalizedParams,
-      requestValues
+      validationValues
     )
     if (validationMessage) {
       setMessage(validationMessage)
@@ -654,16 +709,18 @@ export function ReferenceComposer({
             onClose: () => setPickerOpen(false),
           })
         : null}
-      <EditorContent
-        editor={editor}
-        className='reference-composer-content'
-        onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
-          if (event.key === 'Escape') {
-            setPickerOpen(false)
-            setPickerTrigger('')
-          }
-        }}
-      />
+      <ReferenceNodeRuntimeProvider value={referenceNodeRuntime}>
+        <EditorContent
+          editor={editor}
+          className='reference-composer-content'
+          onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+            if (event.key === 'Escape') {
+              setPickerOpen(false)
+              setPickerTrigger('')
+            }
+          }}
+        />
+      </ReferenceNodeRuntimeProvider>
       {message ? (
         <div className='reference-composer-message'>{message}</div>
       ) : null}
@@ -680,54 +737,30 @@ export function ReferenceComposer({
             allowResourceLibrary={allowResourceLibrary}
             files={attachmentFiles}
             renderFileLibrary={renderFileLibrary}
+            referenceActions={attachmentReferenceActions}
             onUploadedFiles={onUploadedFiles}
             onInsert={insertAttachments}
             onReplace={replaceAttachments}
+            onReferenceSelect={(trigger) => {
+              setPickerTrigger(trigger)
+              setPickerOpen(true)
+            }}
             onMessage={setMessage}
           />
-          {referenceProviders.map((provider) => {
-            const label =
-              provider.trigger === '#' ? '引用会话信息' : '引用资产'
-            return (
-              <ReferenceComposerControlTooltip
-                key={provider.trigger}
-                label={label}
-                layerZIndex={layerZIndex}
-              >
-                <button
-                  type='button'
-                  className='reference-composer-tool'
-                  aria-label={label}
-                  disabled={composerDisabled || running}
-                  onClick={() => {
-                    const sameProvider = pickerTrigger === provider.trigger
-                    setPickerTrigger(provider.trigger)
-                    setPickerOpen((open) => (sameProvider ? !open : true))
-                  }}
-                >
-                  {provider.trigger === '#' ? <Hash /> : <AtSign />}
-                </button>
-              </ReferenceComposerControlTooltip>
-            )
-          })}
-          {toolbarParams.map((param) => {
-            const key = String(param.key || '').trim()
-            return (
-              <PowerParamPopover
-                key={`${param.id}:${key}`}
-                param={param}
-                value={paramValues[key]}
-                files={EMPTY_PARAM_FILES}
-                disabled={composerDisabled || running}
-                triggerClassName='w-auto min-w-0 max-w-[12rem] shrink-0'
-                onChange={(value) => {
-                  setParamValues((current) => ({ ...current, [key]: value }))
-                  setMessage('')
-                }}
-                onFilesChange={() => undefined}
-              />
-            )
-          })}
+          {toolbarParams.length > 0 ? (
+            <PowerParamPanelPopover
+              params={toolbarParams}
+              values={paramValues}
+              disabled={composerDisabled || running}
+              triggerClassName='reference-composer-param-trigger'
+              onChange={(param, value) => {
+                const key = inputKeyForParam(param)
+                if (!key) return
+                setParamValues((current) => ({ ...current, [key]: value }))
+                setMessage('')
+              }}
+            />
+          ) : null}
         </div>
         <ReferenceComposerControlTooltip
           label={actionLabel}
@@ -903,6 +936,14 @@ export function ReferenceEditor({
       options: resolvedMediaUsageOptions,
     }
   }
+  const referenceNodeRuntime = useMemo(
+    () => ({
+      usageOptions: stableUsageOptionsRef.current.options,
+      usageField,
+      mediaUsageOptions: stableMediaUsageOptionsRef.current.options,
+    }),
+    [mediaUsageOptionsSignature, usageField, usageOptionsSignature]
+  )
   const [initialEditorDocument] = useState(() =>
     referenceEditorDocument(value, content, references)
   )
@@ -1331,10 +1372,12 @@ export function ReferenceEditor({
       data-disabled={disabled || undefined}
       data-text-editable={textEditable ? 'true' : 'false'}
     >
-      <EditorContent
-        editor={editor}
-        className='reference-text-editor-content'
-      />
+      <ReferenceNodeRuntimeProvider value={referenceNodeRuntime}>
+        <EditorContent
+          editor={editor}
+          className='reference-text-editor-content'
+        />
+      </ReferenceNodeRuntimeProvider>
       {pickerOpen && activeProvider?.renderPicker
         ? activeProvider.renderPicker({
             open: true,
@@ -1658,6 +1701,114 @@ function activeParamFiles(content: ReferenceContent, files: ParamFileMap) {
   return result
 }
 
+function referenceUsageValidationValues(
+  values: ParamValueMap,
+  params: PowerParam[],
+  counts: Record<string, number>
+) {
+  const result = { ...values }
+  for (const param of params) {
+    const key = String(param.key || '').trim()
+    if (!key || Number(counts[key] || 0) <= 0) {
+      continue
+    }
+    const current = result[key]
+    const hasValue = Array.isArray(current)
+      ? current.length > 0
+      : Boolean(String(current || '').trim())
+    if (hasValue) {
+      continue
+    }
+    // The backend resolves @ assets from content.parts. This value only lets
+    // the client-side required-field check account for that selected reference.
+    result[key] = param.type === 'files' ? ['@reference'] : '@reference'
+  }
+  return result
+}
+
+function moveAttachmentUsage({
+  reference,
+  nextUsage,
+  usageOptions,
+  usageCounts,
+  files,
+}: {
+  reference: Extract<ReferenceContent['parts'][number], { type: 'reference' }>
+  nextUsage: string
+  usageOptions: ReferenceUsageOption[]
+  usageCounts: Record<string, number>
+  files: ParamFileMap
+}): { files: ParamFileMap; error: string } {
+  const previousUsage = String(reference.usage || '').trim()
+  const targetUsage = String(nextUsage || '').trim()
+  if (!targetUsage || targetUsage === previousUsage) {
+    return { files, error: '' }
+  }
+
+  const targetOption = usageOptions.find((option) => option.key === targetUsage)
+  if (!targetOption) {
+    return { files, error: '所选素材用途已不可用。' }
+  }
+  const amount = referenceSelectionAmount(reference)
+  const targetCount = Number(usageCounts[targetUsage] || 0)
+  const capacity = Number(targetOption.maxFiles || 0)
+  if (capacity > 0 && targetCount + amount > capacity) {
+    return {
+      files,
+      error: `参数“${targetOption.label}”最多选择 ${capacity} 个文件。`,
+    }
+  }
+
+  const referenceID = String(reference.ref_id || '')
+  const previousFiles = files[previousUsage] || []
+  const movingFiles = previousFiles.filter(
+    (file) => referenceIDForFile(file) === referenceID
+  )
+  if (movingFiles.length === 0) {
+    return { files, error: '' }
+  }
+  return {
+    files: {
+      ...files,
+      [previousUsage]: previousFiles.filter(
+        (file) => referenceIDForFile(file) !== referenceID
+      ),
+      [targetUsage]: appendUniqueFiles(files[targetUsage] || [], movingFiles),
+    },
+    error: '',
+  }
+}
+
+function referenceSelectionAmount(
+  reference: Extract<ReferenceContent['parts'][number], { type: 'reference' }>
+) {
+  return selectedReferenceAmount(
+    reference.ref_media_items,
+    reference.ref_media_url,
+    reference.ref_media_index,
+    reference.ref_media_count
+  )
+}
+
+function selectedReferenceAmount(
+  mediaItemsValue: unknown,
+  mediaURLValue: unknown,
+  mediaIndexValue: unknown,
+  mediaCountValue: unknown
+) {
+  const mediaItems = normalizeReferenceMediaSelectionItems(mediaItemsValue)
+  if (mediaItems.length > 0) {
+    return mediaItems.length
+  }
+  if (
+    String(mediaURLValue || '').trim() ||
+    Number(mediaIndexValue || 0) > 0
+  ) {
+    return 1
+  }
+  return Math.max(1, Number(mediaCountValue || 0))
+}
+
 function referenceIDForFile(file: UploadFileItem) {
   const assetMatch = /^asset:(\d+):\d+$/.exec(String(file.id || ''))
   return assetMatch ? assetMatch[1] : String(file.id || '')
@@ -1723,20 +1874,15 @@ function walkReferenceNodes(
   if (node.type === 'reference') {
     const usage = String(node.attrs?.[usageField] || '').trim()
     if (usage) {
-      const mediaIndex = Number(node.attrs?.mediaIndex || 0)
-      const mediaURL = String(node.attrs?.mediaUrl || '').trim()
-      const mediaCount = Number(node.attrs?.mediaCount || 0)
-      const mediaItems = normalizeReferenceMediaSelectionItems(
-        node.attrs?.mediaItems
-      )
       visit(
         usage,
         String(node.attrs?.refId || ''),
-        mediaItems.length > 0
-          ? mediaItems.length
-          : mediaURL || mediaIndex > 0
-            ? 1
-            : Math.max(1, mediaCount)
+        selectedReferenceAmount(
+          node.attrs?.mediaItems,
+          node.attrs?.mediaUrl,
+          node.attrs?.mediaIndex,
+          node.attrs?.mediaCount
+        )
       )
     }
   }
@@ -1974,6 +2120,8 @@ const referenceComposerStyles = `
 .reference-composer-tool, .reference-composer-action { display: inline-flex; width: 42px; height: 42px; appearance: none; -webkit-appearance: none; box-sizing: border-box; align-items: center; justify-content: center; margin: 0; border: 0; border-radius: 50%; padding: 0; cursor: pointer; transition: background-color .16s ease, opacity .16s ease, transform .16s ease; }
 .reference-composer-tool { background: transparent; color: var(--foreground); }
 .reference-composer-tool:hover { background: var(--muted); }
+.reference-composer-add-trigger { width: auto; min-width: 42px; gap: 6px; border-radius: 8px; padding: 0 10px; font-size: 13px; }
+.reference-composer-add-trigger span { white-space: nowrap; }
 .reference-composer-action { flex: 0 0 42px; background: #111318; color: #fff; }
 .reference-composer-action:hover:not(:disabled) { transform: translateY(-1px); background: #262a32; }
 .reference-composer-tool:disabled, .reference-composer-action:disabled { cursor: default; opacity: .36; }

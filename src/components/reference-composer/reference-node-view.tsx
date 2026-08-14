@@ -15,6 +15,7 @@ import { loadReferencePreview } from './reference-preview-cache'
 import { compatibleReferenceUsageOptions } from './reference-usage'
 import { referenceTrigger } from './text'
 import { referenceMediaAliasAtPosition } from './reference-alias'
+import { useReferenceNodeRuntime } from './reference-node-runtime'
 
 export function ReferenceNodeView({
   node,
@@ -32,6 +33,7 @@ export function ReferenceNodeView({
   const versionId = Number(node.attrs.versionId || 0)
   const staticHint = referencePreviewHint(node.attrs)
   const options = extension.options as ReferenceNodeOptions
+  const runtimeOptions = useReferenceNodeRuntime()
   const alias = useReferenceNodeMediaAlias(
     editor,
     getPos,
@@ -60,16 +62,20 @@ export function ReferenceNodeView({
     updateAttributes({ previewKind: resolvedKind })
   }, [hint?.kind, node.attrs.previewKind, updateAttributes])
 
-  const usageField = options.usageField === 'purpose' ? 'purpose' : 'usage'
+  const configuredUsageField = runtimeOptions?.usageField || options.usageField
+  const usageField = configuredUsageField === 'purpose' ? 'purpose' : 'usage'
   const usage = String(node.attrs[usageField] || '')
   const usageOptions = compatibleReferenceUsageOptions(
-    options.usageOptions || [],
+    runtimeOptions?.usageOptions || options.usageOptions || [],
     hint?.kind
   )
   const usageSupported = usageOptions.some((option) => option.key === usage)
   const mediaUsage = String(node.attrs.usage || '')
   const mediaUsageOptions = compatibleReferenceUsageOptions(
-    options.mediaUsageOptions || options.usageOptions || [],
+    runtimeOptions?.mediaUsageOptions ||
+      options.mediaUsageOptions ||
+      options.usageOptions ||
+      [],
     hint?.kind
   )
   const activeMediaUsage =
@@ -96,7 +102,9 @@ export function ReferenceNodeView({
     if (disabled) {
       return
     }
-    options.onUsageChange?.(reference, nextUsage)
+    if (options.onUsageChange?.(reference, nextUsage) === false) {
+      return
+    }
     updateAttributes({ [usageField]: nextUsage })
   }
 
