@@ -170,6 +170,12 @@ export type ReferenceProvider = {
   renderPicker?: (props: ReferenceProviderPickerProps) => ReactNode
 }
 
+export type ReferenceActionPlacement = 'menu' | 'toolbar' | 'hidden'
+
+export type ReferenceActionPlacements = Partial<
+  Record<string, ReferenceActionPlacement>
+>
+
 export type ReferenceComposerProps = {
   placeholder?: string
   disabled?: boolean
@@ -183,6 +189,8 @@ export type ReferenceComposerProps = {
   uploadBizName?: string
   allowResourceLibrary?: boolean
   renderFileLibrary?: ParamFileLibraryRenderer
+  fileLibraryIncludesUpload?: boolean
+  referenceActionPlacements?: ReferenceActionPlacements
   toolbar?: ReactNode
   parameterScopeKey?: string
   showMediaAliases?: boolean

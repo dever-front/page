@@ -39,6 +39,7 @@ type SearchableOptionPickerProps = {
   clearable?: boolean
   remoteSearch?: boolean
   className?: string
+  contentClassName?: string
   open?: boolean
   onOpenChange?: (open: boolean) => void
   onSearchChange?: (query: string) => void
@@ -65,6 +66,7 @@ export function SearchableOptionPicker({
   clearable = true,
   remoteSearch = false,
   className,
+  contentClassName,
   open,
   onOpenChange,
   onSearchChange,
@@ -155,7 +157,10 @@ export function SearchableOptionPicker({
       <PopoverContent
         align='start'
         container={portalContainer}
-        className='w-[var(--radix-popover-trigger-width)] min-w-[12rem] p-0'
+        className={cn(
+          'w-[var(--radix-popover-trigger-width)] min-w-[12rem] p-0',
+          contentClassName
+        )}
       >
         <Command shouldFilter={false}>
           <CommandInput

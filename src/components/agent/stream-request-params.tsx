@@ -152,6 +152,7 @@ type ParamControlProps = {
   renderFileLibrary?: ParamFileLibraryRenderer
   onUploadedFiles?: (files: ParamUploadedFile[]) => void | Promise<void>
   surface: ParamControlSurface
+  optionPickerContentClassName?: string
   onChange: (nextValue: unknown) => void
   onFilesChange: (nextFiles: ParamUploadedFile[]) => void
   onClose?: () => void
@@ -388,6 +389,7 @@ export function PowerParamPanelPopover({
                   files={[]}
                   disabled={disabled}
                   surface='main'
+                  optionPickerContentClassName='z-[170]'
                   onChange={(nextValue) => onChange(param, nextValue)}
                   onFilesChange={() => undefined}
                 />
@@ -438,6 +440,7 @@ function PowerParamControl({
   renderFileLibrary,
   onUploadedFiles,
   surface,
+  optionPickerContentClassName,
   onChange,
   onFilesChange,
   onClose,
@@ -532,6 +535,7 @@ function PowerParamControl({
         uploading,
         disabled: !!disabled,
         surface,
+        optionPickerContentClassName,
         onChange,
         onClose,
         onPickFiles: () => fileInputRef.current?.click(),
@@ -599,6 +603,7 @@ function renderParamControl({
   uploading,
   disabled,
   surface,
+  optionPickerContentClassName,
   onChange,
   onClose,
   onPickFiles,
@@ -615,6 +620,7 @@ function renderParamControl({
   uploading: boolean
   disabled: boolean
   surface: ParamControlSurface
+  optionPickerContentClassName?: string
   onChange: (nextValue: unknown) => void
   onClose?: () => void
   onPickFiles: () => void
@@ -673,6 +679,7 @@ function renderParamControl({
           value={value}
           disabled={disabled}
           surface={surface}
+          optionPickerContentClassName={optionPickerContentClassName}
           onChange={onChange}
           onClose={onClose}
         />
@@ -684,6 +691,7 @@ function renderParamControl({
           value={value}
           disabled={disabled}
           surface={surface}
+          optionPickerContentClassName={optionPickerContentClassName}
           onChange={onChange}
         />
       )
@@ -802,6 +810,7 @@ function SingleOptionControl({
   value,
   disabled,
   surface,
+  optionPickerContentClassName,
   onChange,
   onClose,
 }: {
@@ -809,6 +818,7 @@ function SingleOptionControl({
   value: unknown
   disabled: boolean
   surface: ParamControlSurface
+  optionPickerContentClassName?: string
   onChange: (nextValue: unknown) => void
   onClose?: () => void
 }) {
@@ -858,6 +868,7 @@ function SingleOptionControl({
         disabled={disabled}
         placeholder='请选择'
         clearable={false}
+        contentClassName={optionPickerContentClassName}
         onChange={(nextValue) =>
           onChange(Array.isArray(nextValue) ? nextValue[0] || '' : nextValue)
         }
@@ -904,12 +915,14 @@ function MultiOptionControl({
   value,
   disabled,
   surface,
+  optionPickerContentClassName,
   onChange,
 }: {
   param: PowerParam
   value: unknown
   disabled: boolean
   surface: ParamControlSurface
+  optionPickerContentClassName?: string
   onChange: (nextValue: unknown) => void
 }) {
   const options = param.options || []
@@ -927,6 +940,7 @@ function MultiOptionControl({
         options={optionPickerOptions(options)}
         disabled={disabled}
         placeholder='请选择'
+        contentClassName={optionPickerContentClassName}
         onChange={onChange}
       />
     )

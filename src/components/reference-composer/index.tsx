@@ -40,7 +40,10 @@ import {
   type ParamValueMap,
   type PowerParam,
 } from '@/components/agent/stream-request-params'
-import { ReferenceAttachmentMenu } from './attachment-menu'
+import {
+  ReferenceAttachmentMenu,
+  ReferenceToolbarActions,
+} from './attachment-menu'
 import {
   normalizeReferenceMediaSelectionItems,
   referenceMediaSelectionSignature,
@@ -85,6 +88,8 @@ const CURRENT_REFERENCE_SCOPES: ReferenceScope[] = ['current']
 const EMPTY_REFERENCE_USAGE_OPTIONS: ReferenceUsageOption[] = []
 
 export type {
+  ReferenceActionPlacement,
+  ReferenceActionPlacements,
   ReferenceComposerParam,
   ReferenceComposerProps,
   ReferenceEditorProps,
@@ -123,6 +128,8 @@ export function ReferenceComposer({
   uploadBizName,
   allowResourceLibrary = true,
   renderFileLibrary,
+  fileLibraryIncludesUpload = false,
+  referenceActionPlacements,
   toolbar,
   parameterScopeKey = '',
   showMediaAliases = false,
@@ -139,13 +146,24 @@ export function ReferenceComposer({
     () => normalizeReferenceProviders(providers, loadReferences, loadPreview),
     [loadPreview, loadReferences, providers]
   )
-  const attachmentReferenceActions = useMemo(
+  const referenceActions = useMemo(
     () =>
       referenceProviders.map((provider) => ({
         trigger: provider.trigger,
         label: provider.trigger === '#' ? '引用会话信息' : '引用资产',
+        placement: referenceActionPlacements?.[provider.trigger] || 'menu',
       })),
-    [referenceProviders]
+    [referenceActionPlacements, referenceProviders]
+  )
+  const attachmentReferenceActions = useMemo(
+    () =>
+      referenceActions.filter((action) => action.placement === 'menu'),
+    [referenceActions]
+  )
+  const toolbarReferenceActions = useMemo(
+    () =>
+      referenceActions.filter((action) => action.placement === 'toolbar'),
+    [referenceActions]
   )
   const normalizedParams = useMemo(
     () => normalizePowerParams(parameters),
@@ -171,6 +189,10 @@ export function ReferenceComposer({
   const [attachmentCounts, setAttachmentCounts] = useState<
     Record<string, number>
   >({})
+  const openReferencePicker = useCallback((trigger: string) => {
+    setPickerTrigger(trigger)
+    setPickerOpen(true)
+  }, [])
   const activeParams = useMemo(
     () => filterActivePowerParams(normalizedParams, paramValues),
     [normalizedParams, paramValues]
@@ -737,14 +759,12 @@ export function ReferenceComposer({
             allowResourceLibrary={allowResourceLibrary}
             files={attachmentFiles}
             renderFileLibrary={renderFileLibrary}
+            fileLibraryIncludesUpload={fileLibraryIncludesUpload}
             referenceActions={attachmentReferenceActions}
             onUploadedFiles={onUploadedFiles}
             onInsert={insertAttachments}
             onReplace={replaceAttachments}
-            onReferenceSelect={(trigger) => {
-              setPickerTrigger(trigger)
-              setPickerOpen(true)
-            }}
+            onReferenceSelect={openReferencePicker}
             onMessage={setMessage}
           />
           {toolbarParams.length > 0 ? (
@@ -761,6 +781,12 @@ export function ReferenceComposer({
               }}
             />
           ) : null}
+          <ReferenceToolbarActions
+            actions={toolbarReferenceActions}
+            disabled={composerDisabled || running}
+            layerZIndex={layerZIndex}
+            onSelect={openReferencePicker}
+          />
         </div>
         <ReferenceComposerControlTooltip
           label={actionLabel}

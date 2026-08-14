@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -43,6 +44,11 @@ import { uploadFileReferenceOptions } from './upload-reference'
 
 const EMPTY_RESOURCE_SELECTION: UploadFileItem[] = []
 
+export type ReferenceAttachmentAction = {
+  trigger: string
+  label: string
+}
+
 export function ReferenceAttachmentMenu({
   params,
   disabled,
@@ -53,6 +59,7 @@ export function ReferenceAttachmentMenu({
   allowResourceLibrary = true,
   files,
   renderFileLibrary,
+  fileLibraryIncludesUpload = false,
   referenceActions = [],
   onUploadedFiles,
   onInsert,
@@ -69,7 +76,8 @@ export function ReferenceAttachmentMenu({
   allowResourceLibrary?: boolean
   files: ParamFileMap
   renderFileLibrary?: ParamFileLibraryRenderer
-  referenceActions?: Array<{ trigger: string; label: string }>
+  fileLibraryIncludesUpload?: boolean
+  referenceActions?: ReferenceAttachmentAction[]
   onUploadedFiles?: (files: UploadFileItem[]) => void | Promise<void>
   onInsert: (
     param: PowerParam,
@@ -99,6 +107,26 @@ export function ReferenceAttachmentMenu({
   const [uploadParam, setUploadParam] = useState<PowerParam | null>(null)
   const [resourceParam, setResourceParam] = useState<PowerParam | null>(null)
   const [uploading, setUploading] = useState(false)
+  const activeFileParams = useMemo(() => new Set(fileParams), [fileParams])
+  const activeUploadParam =
+    uploadParam && activeFileParams.has(uploadParam) ? uploadParam : null
+  const activeResourceParam =
+    resourceParam && activeFileParams.has(resourceParam) ? resourceParam : null
+  const unifiedFilePicker = Boolean(
+    fileLibraryIncludesUpload &&
+      (allowResourceLibrary || Boolean(renderFileLibrary))
+  )
+  const triggerLabel = unifiedFilePicker ? '添加素材' : '添加'
+
+  useEffect(() => {
+    const keepActiveParam = (param: PowerParam | null) =>
+      param && activeFileParams.has(param) ? param : null
+    setUploadParam(keepActiveParam)
+    setResourceParam(keepActiveParam)
+    if (fileParams.length === 0 && referenceActions.length === 0) {
+      setMenuOpen(false)
+    }
+  }, [activeFileParams, fileParams.length, referenceActions.length])
 
   if (fileParams.length === 0 && referenceActions.length === 0) {
     return null
@@ -131,7 +159,7 @@ export function ReferenceAttachmentMenu({
   const handleUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(event.target.files || [])
     event.target.value = ''
-    const param = uploadParam
+    const param = activeUploadParam
     if (!param || selected.length === 0) {
       return
     }
@@ -172,14 +200,14 @@ export function ReferenceAttachmentMenu({
     }
   }
 
-  const resourceRule = resourceParam
+  const resourceRule = activeResourceParam
     ? resolveParamResourceRule(
-        resourceParam,
-        ruleMetas.get(Number(resourceParam.upload_rule_id || 0))
+        activeResourceParam,
+        ruleMetas.get(Number(activeResourceParam.upload_rule_id || 0))
       )
     : undefined
-  const resourceRemaining = resourceParam
-    ? remainingFiles(resourceParam, counts)
+  const resourceRemaining = activeResourceParam
+    ? remainingFiles(activeResourceParam, counts)
     : 1
 
   return (
@@ -194,7 +222,7 @@ export function ReferenceAttachmentMenu({
         }}
       >
         <ReferenceComposerControlTooltip
-          label='添加'
+          label={triggerLabel}
           layerZIndex={layerZIndex}
         >
           <DropdownMenuTrigger asChild>
@@ -202,11 +230,11 @@ export function ReferenceAttachmentMenu({
               ref={triggerRef}
               type='button'
               className='reference-composer-tool reference-composer-add-trigger'
-              aria-label='添加'
+              aria-label={triggerLabel}
               disabled={disabled || uploading}
             >
               {uploading ? <Loader2 className='animate-spin' /> : <Paperclip />}
-              <span>添加</span>
+              <span>{triggerLabel}</span>
             </button>
           </DropdownMenuTrigger>
         </ReferenceComposerControlTooltip>
@@ -221,7 +249,18 @@ export function ReferenceAttachmentMenu({
               <DropdownMenuLabel className='text-xs text-muted-foreground'>
                 素材
               </DropdownMenuLabel>
-              {fileParams.length === 1 ? (
+              {unifiedFilePicker ? (
+                fileParams.map((param) => (
+                  <DropdownMenuItem
+                    key={`${param.id}:${param.key}`}
+                    disabled={remainingFiles(param, counts) <= 0}
+                    onSelect={() => openResource(param)}
+                  >
+                    <FolderOpen />
+                    {param.name}
+                  </DropdownMenuItem>
+                ))
+              ) : fileParams.length === 1 ? (
                 <>
                   <DropdownMenuItem
                     disabled={remainingFiles(fileParams[0], counts) <= 0}
@@ -232,10 +271,7 @@ export function ReferenceAttachmentMenu({
                   </DropdownMenuItem>
                   {allowResourceLibrary || renderFileLibrary ? (
                     <DropdownMenuItem
-                      disabled={
-                        !renderFileLibrary &&
-                        remainingFiles(fileParams[0], counts) <= 0
-                      }
+                      disabled={remainingFiles(fileParams[0], counts) <= 0}
                       onSelect={() => openResource(fileParams[0])}
                     >
                       <FolderOpen />
@@ -258,7 +294,6 @@ export function ReferenceAttachmentMenu({
                       label='从资源库选择'
                       params={fileParams}
                       counts={counts}
-                      allowFullSelection={Boolean(renderFileLibrary)}
                       onSelect={openResource}
                     />
                   ) : null}
@@ -279,7 +314,7 @@ export function ReferenceAttachmentMenu({
                   key={action.trigger}
                   onSelect={() => onReferenceSelect?.(action.trigger)}
                 >
-                  {action.trigger === '#' ? <Hash /> : <AtSign />}
+                  <ReferenceActionIcon trigger={action.trigger} />
                   {action.label}
                 </DropdownMenuItem>
               ))}
@@ -292,27 +327,34 @@ export function ReferenceAttachmentMenu({
         type='file'
         className='hidden'
         accept={String(
-          ruleMetas.get(Number(uploadParam?.upload_rule_id || 0))?.accept || ''
+          ruleMetas.get(Number(activeUploadParam?.upload_rule_id || 0))
+            ?.accept || ''
         )}
-        multiple={Boolean(uploadParam && isFilesParam(uploadParam))}
+        multiple={Boolean(
+          activeUploadParam && isFilesParam(activeUploadParam)
+        )}
         onChange={handleUpload}
       />
-      {renderFileLibrary && resourceParam
+      {renderFileLibrary && activeResourceParam
         ? renderFileLibrary({
             open: true,
-            param: resourceParam,
-            files: files[String(resourceParam.key || '').trim()] || [],
+            param: activeResourceParam,
+            files: files[String(activeResourceParam.key || '').trim()] || [],
             resourceKind: resourceRule?.kind,
-            multiple: isFilesParam(resourceParam),
-            maxSelection: resolveMaxFiles(resourceParam),
+            multiple: isFilesParam(activeResourceParam),
+            maxSelection: resolveMaxFiles(activeResourceParam),
             onOpenChange: (open) => {
               if (!open) setResourceParam(null)
             },
             onConfirm: (selected) => {
               onReplace(
-                resourceParam,
+                activeResourceParam,
                 selected,
-                referenceOptions(resourceParam, selected, resourceRule?.kind)
+                referenceOptions(
+                  activeResourceParam,
+                  selected,
+                  resourceRule?.kind
+                )
               )
               setResourceParam(null)
             },
@@ -320,16 +362,19 @@ export function ReferenceAttachmentMenu({
         : null}
       {!renderFileLibrary && allowResourceLibrary ? (
         <ResourcePickerDialogLazy
-          open={Boolean(resourceParam)}
-          title={`选择${resourceParam?.name || '资源'}`}
+          open={Boolean(activeResourceParam)}
+          title={`选择${activeResourceParam?.name || '资源'}`}
           description='所选资源只用于本轮消息。'
+          bizKey={uploadBizKey}
           defaultKind={resourceRule?.kind}
           fixedKind={Boolean(resourceRule?.kind)}
           value={EMPTY_RESOURCE_SELECTION}
-          multiple={Boolean(resourceParam && isFilesParam(resourceParam))}
+          multiple={Boolean(
+            activeResourceParam && isFilesParam(activeResourceParam)
+          )}
           maxSelection={Math.max(1, resourceRemaining)}
           uploadRules={resourceRule ? [resourceRule] : []}
-          allowUpload={false}
+          allowUpload={fileLibraryIncludesUpload}
           assistantLayer
           layerZIndex={layerZIndex}
           onOpenChange={(open) => {
@@ -338,7 +383,7 @@ export function ReferenceAttachmentMenu({
             }
           }}
           onConfirm={(files) => {
-            const param = resourceParam
+            const param = activeResourceParam
             if (!param) {
               return
             }
@@ -356,19 +401,51 @@ export function ReferenceAttachmentMenu({
   )
 }
 
+export function ReferenceToolbarActions({
+  actions,
+  disabled,
+  layerZIndex,
+  onSelect,
+}: {
+  actions: ReferenceAttachmentAction[]
+  disabled?: boolean
+  layerZIndex?: number
+  onSelect: (trigger: string) => void
+}) {
+  return actions.map((action) => (
+    <ReferenceComposerControlTooltip
+      key={action.trigger}
+      label={action.label}
+      layerZIndex={layerZIndex}
+    >
+      <button
+        type='button'
+        className='reference-composer-tool'
+        aria-label={action.label}
+        disabled={disabled}
+        onClick={() => onSelect(action.trigger)}
+      >
+        <ReferenceActionIcon trigger={action.trigger} />
+      </button>
+    </ReferenceComposerControlTooltip>
+  ))
+}
+
+function ReferenceActionIcon({ trigger }: { trigger: string }) {
+  return trigger === '#' ? <Hash /> : <AtSign />
+}
+
 function ParamSubMenu({
   icon,
   label,
   params,
   counts,
-  allowFullSelection = false,
   onSelect,
 }: {
   icon: ReactNode
   label: string
   params: PowerParam[]
   counts: Record<string, number>
-  allowFullSelection?: boolean
   onSelect: (param: PowerParam) => void
 }) {
   return (
@@ -381,7 +458,7 @@ function ParamSubMenu({
         {params.map((param) => (
           <DropdownMenuItem
             key={`${param.id}:${param.key}`}
-            disabled={!allowFullSelection && remainingFiles(param, counts) <= 0}
+            disabled={remainingFiles(param, counts) <= 0}
             onSelect={() => onSelect(param)}
           >
             {param.name}
