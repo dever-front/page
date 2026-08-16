@@ -185,17 +185,22 @@ export function PowerParamField(props: Omit<ParamControlProps, 'surface'>) {
 
 export function PowerParamPopover({
   triggerClassName,
+  selectedFileCount,
   ...props
-}: Omit<ParamControlProps, 'surface'> & { triggerClassName?: string }) {
+}: Omit<ParamControlProps, 'surface'> & {
+  triggerClassName?: string
+  selectedFileCount?: number
+}) {
   const { param, value, files, disabled } = props
   const [open, setOpen] = useState(false)
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
     null
   )
   const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
   const currentValue = displayParamValue(param, value)
   const label = paramLabel(param)
-  const summary = paramSummary(param, currentValue, files)
+  const summary = paramSummary(param, currentValue, files, selectedFileCount)
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen) {
       setPortalContainer(findFloatingLayerContainer(triggerRef.current))
@@ -248,9 +253,24 @@ export function PowerParamPopover({
         </Button>
       </PopoverTrigger>
       <PopoverContent
+        ref={contentRef}
         align='start'
         container={portalContainer}
         className='z-[120] w-80 space-y-3'
+        onFocusOutside={(event) =>
+          preserveNestedParameterLayer(
+            event,
+            contentRef.current,
+            portalContainer
+          )
+        }
+        onInteractOutside={(event) =>
+          preserveNestedParameterLayer(
+            event,
+            contentRef.current,
+            portalContainer
+          )
+        }
       >
         <p className='min-w-0 truncate text-sm font-medium'>
           {label}
@@ -1737,16 +1757,18 @@ function uploadFileRequestValue(file: ParamUploadedFile) {
 function paramSummary(
   param: PowerParam,
   value: unknown,
-  files: ParamUploadedFile[]
+  files: ParamUploadedFile[],
+  selectedFileCount?: number
 ) {
   if (isFileParam(param)) {
-    if (files.length === 0) {
+    const fileCount = Math.max(files.length, Number(selectedFileCount || 0))
+    if (fileCount === 0) {
       return ''
     }
-    if (files.length === 1) {
+    if (fileCount === 1 && files.length === 1) {
       return files[0]?.name || '1 个文件'
     }
-    return `${files.length} 个文件`
+    return `${fileCount} 个文件`
   }
   if (normalizeParamType(param.type) === 'switch') {
     return isTruthyValue(value) ? '是' : '否'

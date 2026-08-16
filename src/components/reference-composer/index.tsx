@@ -33,7 +33,8 @@ import {
   isPromptParam,
   normalizePowerParams,
   paramFilesRequestValue,
-  PowerParamPanelPopover,
+  PowerParamPopover,
+  resolveParamResourceRule,
   shouldDisplayPowerParam,
   validateMainParams,
   type ParamFileMap,
@@ -86,6 +87,7 @@ import type {
 
 const CURRENT_REFERENCE_SCOPES: ReferenceScope[] = ['current']
 const EMPTY_REFERENCE_USAGE_OPTIONS: ReferenceUsageOption[] = []
+const EMPTY_POWER_PARAMS: PowerParam[] = []
 
 export type {
   ReferenceActionPlacement,
@@ -169,15 +171,26 @@ export function ReferenceComposer({
     () => normalizePowerParams(parameters),
     [parameters]
   )
-  const clipboardImageRuleIds = useMemo(() => {
+  const clipboardImageRuleId = useMemo(() => {
     const ruleId = Number(clipboardImageUploadRuleId || 0)
-    return Number.isFinite(ruleId) && ruleId > 0 ? [Math.floor(ruleId)] : []
+    return Number.isFinite(ruleId) && ruleId > 0 ? Math.floor(ruleId) : 0
   }, [clipboardImageUploadRuleId])
-  const clipboardImageRuleId = clipboardImageRuleIds[0] || 0
-  const clipboardImageRuleMetas = useUploadRuleMetas(clipboardImageRuleIds)
-  const clipboardImageRuleMeta = clipboardImageRuleMetas.get(
-    clipboardImageRuleId
+  const uploadRuleIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            clipboardImageRuleId,
+            ...normalizedParams
+              .filter(isFileParam)
+              .map((param) => Number(param.upload_rule_id || 0)),
+          ].filter((ruleId) => Number.isFinite(ruleId) && ruleId > 0)
+        )
+      ),
+    [clipboardImageRuleId, normalizedParams]
   )
+  const uploadRuleMetas = useUploadRuleMetas(uploadRuleIds)
+  const clipboardImageRuleMeta = uploadRuleMetas.get(clipboardImageRuleId)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerTrigger, setPickerTrigger] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -228,7 +241,7 @@ export function ReferenceComposer({
       .map((param) => String(param.key || '').trim())
       .filter((key) => key && !activeKeys.has(key))
   }, [fileParams, normalizedParams])
-  const toolbarParams = useMemo(
+  const composerParams = useMemo(
     () =>
       activeParams.filter((param) => {
         const type = String(param.type || '')
@@ -236,7 +249,6 @@ export function ReferenceComposer({
           .toLowerCase()
         return (
           shouldDisplayPowerParam(param, normalizedParams) &&
-          !isFileParam(param) &&
           !isPromptParam(param) &&
           type !== 'hidden' &&
           type !== 'description'
@@ -633,6 +645,29 @@ export function ReferenceComposer({
     [editor, referenceProviders]
   )
 
+  const replaceParamFiles = useCallback(
+    (param: PowerParam, files: UploadFileItem[]) => {
+      const key = inputKeyForParam(param)
+      if (!key || !isFileParam(param)) {
+        return
+      }
+      const uploadRuleMeta = uploadRuleMetas.get(
+        Number(param.upload_rule_id || 0)
+      )
+      const resourceKind = resolveParamResourceRule(param, uploadRuleMeta)?.kind
+      replaceAttachments(
+        param,
+        files,
+        uploadFileReferenceOptions(files, {
+          usage: key,
+          description: param.name,
+          fallbackKind: resourceKind || 'file',
+        })
+      )
+    },
+    [replaceAttachments, uploadRuleMetas]
+  )
+
   const uploadClipboardImages = useCallback(
     async (files: File[]) => {
       if (!editor || files.length === 0) {
@@ -750,7 +785,7 @@ export function ReferenceComposer({
         <div className='reference-composer-tools'>
           {toolbar}
           <ReferenceAttachmentMenu
-            params={fileParams}
+            params={EMPTY_POWER_PARAMS}
             counts={attachmentCounts}
             layerZIndex={layerZIndex}
             disabled={composerDisabled || running}
@@ -759,7 +794,6 @@ export function ReferenceComposer({
             allowResourceLibrary={allowResourceLibrary}
             files={attachmentFiles}
             renderFileLibrary={renderFileLibrary}
-            fileLibraryIncludesUpload={fileLibraryIncludesUpload}
             referenceActions={attachmentReferenceActions}
             onUploadedFiles={onUploadedFiles}
             onInsert={insertAttachments}
@@ -767,20 +801,42 @@ export function ReferenceComposer({
             onReferenceSelect={openReferencePicker}
             onMessage={setMessage}
           />
-          {toolbarParams.length > 0 ? (
-            <PowerParamPanelPopover
-              params={toolbarParams}
-              values={paramValues}
-              disabled={composerDisabled || running}
-              triggerClassName='reference-composer-param-trigger'
-              onChange={(param, value) => {
-                const key = inputKeyForParam(param)
-                if (!key) return
-                setParamValues((current) => ({ ...current, [key]: value }))
-                setMessage('')
-              }}
-            />
-          ) : null}
+          {composerParams.map((param) => {
+            const key = inputKeyForParam(param)
+            const paramFiles = isFileParam(param)
+              ? attachmentFiles[key] || []
+              : []
+            return (
+              <PowerParamPopover
+                key={`${param.id}:${key}`}
+                param={param}
+                value={paramValues[key]}
+                files={paramFiles}
+                selectedFileCount={attachmentCounts[key] || 0}
+                uploadRuleMeta={uploadRuleMetas.get(
+                  Number(param.upload_rule_id || 0)
+                )}
+                disabled={composerDisabled || running}
+                uploadBizKey={uploadBizKey}
+                uploadBizName={uploadBizName}
+                allowResourceLibrary={allowResourceLibrary}
+                fileLibraryOnly={
+                  fileLibraryIncludesUpload &&
+                  (allowResourceLibrary || Boolean(renderFileLibrary))
+                }
+                fileLibraryLabel='选择素材'
+                renderFileLibrary={renderFileLibrary}
+                onUploadedFiles={onUploadedFiles}
+                triggerClassName='h-[42px] w-auto min-w-0 max-w-[12rem] shrink-0 rounded-lg px-2.5 font-normal'
+                onChange={(value) => {
+                  if (!key) return
+                  setParamValues((current) => ({ ...current, [key]: value }))
+                  setMessage('')
+                }}
+                onFilesChange={(files) => replaceParamFiles(param, files)}
+              />
+            )
+          })}
           <ReferenceToolbarActions
             actions={toolbarReferenceActions}
             disabled={composerDisabled || running}
