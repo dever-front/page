@@ -185,11 +185,9 @@ export function PowerParamField(props: Omit<ParamControlProps, 'surface'>) {
 
 export function PowerParamPopover({
   triggerClassName,
-  selectedFileCount,
   ...props
 }: Omit<ParamControlProps, 'surface'> & {
   triggerClassName?: string
-  selectedFileCount?: number
 }) {
   const { param, value, files, disabled } = props
   const [open, setOpen] = useState(false)
@@ -200,7 +198,7 @@ export function PowerParamPopover({
   const contentRef = useRef<HTMLDivElement | null>(null)
   const currentValue = displayParamValue(param, value)
   const label = paramLabel(param)
-  const summary = paramSummary(param, currentValue, files, selectedFileCount)
+  const summary = paramSummary(param, currentValue, files)
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen) {
       setPortalContainer(findFloatingLayerContainer(triggerRef.current))
@@ -1757,18 +1755,16 @@ function uploadFileRequestValue(file: ParamUploadedFile) {
 function paramSummary(
   param: PowerParam,
   value: unknown,
-  files: ParamUploadedFile[],
-  selectedFileCount?: number
+  files: ParamUploadedFile[]
 ) {
   if (isFileParam(param)) {
-    const fileCount = Math.max(files.length, Number(selectedFileCount || 0))
-    if (fileCount === 0) {
+    if (files.length === 0) {
       return ''
     }
-    if (fileCount === 1 && files.length === 1) {
+    if (files.length === 1) {
       return files[0]?.name || '1 个文件'
     }
-    return `${fileCount} 个文件`
+    return `${files.length} 个文件`
   }
   if (normalizeParamType(param.type) === 'switch') {
     return isTruthyValue(value) ? '是' : '否'

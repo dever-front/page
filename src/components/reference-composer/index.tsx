@@ -34,7 +34,6 @@ import {
   normalizePowerParams,
   paramFilesRequestValue,
   PowerParamPopover,
-  resolveParamResourceRule,
   shouldDisplayPowerParam,
   validateMainParams,
   type ParamFileMap,
@@ -43,6 +42,7 @@ import {
 } from '@/components/agent/stream-request-params'
 import {
   ReferenceAttachmentMenu,
+  ReferenceFileParamButton,
   ReferenceToolbarActions,
 } from './attachment-menu'
 import {
@@ -87,7 +87,7 @@ import type {
 
 const CURRENT_REFERENCE_SCOPES: ReferenceScope[] = ['current']
 const EMPTY_REFERENCE_USAGE_OPTIONS: ReferenceUsageOption[] = []
-const EMPTY_POWER_PARAMS: PowerParam[] = []
+const EMPTY_PARAM_FILES: UploadFileItem[] = []
 
 export type {
   ReferenceActionPlacement,
@@ -645,29 +645,6 @@ export function ReferenceComposer({
     [editor, referenceProviders]
   )
 
-  const replaceParamFiles = useCallback(
-    (param: PowerParam, files: UploadFileItem[]) => {
-      const key = inputKeyForParam(param)
-      if (!key || !isFileParam(param)) {
-        return
-      }
-      const uploadRuleMeta = uploadRuleMetas.get(
-        Number(param.upload_rule_id || 0)
-      )
-      const resourceKind = resolveParamResourceRule(param, uploadRuleMeta)?.kind
-      replaceAttachments(
-        param,
-        files,
-        uploadFileReferenceOptions(files, {
-          usage: key,
-          description: param.name,
-          fallbackKind: resourceKind || 'file',
-        })
-      )
-    },
-    [replaceAttachments, uploadRuleMetas]
-  )
-
   const uploadClipboardImages = useCallback(
     async (files: File[]) => {
       if (!editor || files.length === 0) {
@@ -785,34 +762,42 @@ export function ReferenceComposer({
         <div className='reference-composer-tools'>
           {toolbar}
           <ReferenceAttachmentMenu
-            params={EMPTY_POWER_PARAMS}
-            counts={attachmentCounts}
             layerZIndex={layerZIndex}
             disabled={composerDisabled || running}
-            uploadBizKey={uploadBizKey}
-            uploadBizName={uploadBizName}
-            allowResourceLibrary={allowResourceLibrary}
-            files={attachmentFiles}
-            renderFileLibrary={renderFileLibrary}
             referenceActions={attachmentReferenceActions}
-            onUploadedFiles={onUploadedFiles}
-            onInsert={insertAttachments}
-            onReplace={replaceAttachments}
             onReferenceSelect={openReferencePicker}
-            onMessage={setMessage}
           />
           {composerParams.map((param) => {
             const key = inputKeyForParam(param)
-            const paramFiles = isFileParam(param)
-              ? attachmentFiles[key] || []
-              : []
+            if (isFileParam(param)) {
+              return (
+                <ReferenceFileParamButton
+                  key={`${param.id}:${key}`}
+                  param={param}
+                  count={attachmentCounts[key] || 0}
+                  files={attachmentFiles[key] || EMPTY_PARAM_FILES}
+                  uploadRuleMeta={uploadRuleMetas.get(
+                    Number(param.upload_rule_id || 0)
+                  )}
+                  disabled={composerDisabled || running}
+                  layerZIndex={layerZIndex}
+                  uploadBizKey={uploadBizKey}
+                  uploadBizName={uploadBizName}
+                  allowResourceLibrary={allowResourceLibrary}
+                  renderFileLibrary={renderFileLibrary}
+                  fileLibraryIncludesUpload={fileLibraryIncludesUpload}
+                  onUploadedFiles={onUploadedFiles}
+                  onReplace={replaceAttachments}
+                  onMessage={setMessage}
+                />
+              )
+            }
             return (
               <PowerParamPopover
                 key={`${param.id}:${key}`}
                 param={param}
                 value={paramValues[key]}
-                files={paramFiles}
-                selectedFileCount={attachmentCounts[key] || 0}
+                files={EMPTY_PARAM_FILES}
                 uploadRuleMeta={uploadRuleMetas.get(
                   Number(param.upload_rule_id || 0)
                 )}
@@ -820,20 +805,13 @@ export function ReferenceComposer({
                 uploadBizKey={uploadBizKey}
                 uploadBizName={uploadBizName}
                 allowResourceLibrary={allowResourceLibrary}
-                fileLibraryOnly={
-                  fileLibraryIncludesUpload &&
-                  (allowResourceLibrary || Boolean(renderFileLibrary))
-                }
-                fileLibraryLabel='选择素材'
-                renderFileLibrary={renderFileLibrary}
-                onUploadedFiles={onUploadedFiles}
-                triggerClassName='h-[42px] w-auto min-w-0 max-w-[12rem] shrink-0 rounded-lg px-2.5 font-normal'
+                triggerClassName='reference-composer-param-trigger'
                 onChange={(value) => {
                   if (!key) return
                   setParamValues((current) => ({ ...current, [key]: value }))
                   setMessage('')
                 }}
-                onFilesChange={(files) => replaceParamFiles(param, files)}
+                onFilesChange={() => undefined}
               />
             )
           })}
@@ -2204,6 +2182,11 @@ const referenceComposerStyles = `
 .reference-composer-tool:hover { background: var(--muted); }
 .reference-composer-add-trigger { width: auto; min-width: 42px; gap: 6px; border-radius: 8px; padding: 0 10px; font-size: 13px; }
 .reference-composer-add-trigger span { white-space: nowrap; }
+.reference-composer-param-trigger { display: inline-flex; width: auto; min-width: 42px; max-width: 12rem; height: 42px; flex: 0 0 auto; align-items: center; justify-content: flex-start; gap: 6px; border: 0; border-radius: 8px; background: transparent; color: var(--foreground); padding: 0 10px; font-size: 13px; font-weight: 400; box-shadow: none; }
+.reference-composer-param-trigger:hover { background: var(--muted); }
+.reference-composer-param-trigger.is-selected { background: color-mix(in oklab, var(--primary) 10%, transparent); color: var(--primary); }
+.reference-composer-param-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reference-composer-param-count { display: inline-flex; min-width: 18px; height: 18px; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: 999px; background: var(--primary); color: var(--primary-foreground); padding: 0 5px; font-size: 10px; font-weight: 600; line-height: 1; }
 .reference-composer-action { flex: 0 0 42px; background: #111318; color: #fff; }
 .reference-composer-action:hover:not(:disabled) { transform: translateY(-1px); background: #262a32; }
 .reference-composer-tool:disabled, .reference-composer-action:disabled { cursor: default; opacity: .36; }
