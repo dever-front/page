@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
 } from 'react'
 import Placeholder from '@tiptap/extension-placeholder'
+import type { Editor, JSONContent } from '@tiptap/core'
 import {
   EditorContent,
   useEditor,
@@ -229,6 +230,7 @@ export function ReferenceComposer({
   const attachmentFilesRef = useRef(attachmentFiles)
   const attachmentCountsRef = useRef(attachmentCounts)
   const fileUsageOptionsRef = useRef(fileUsageOptions)
+  const composerEditorRef = useRef<Editor | null>(null)
   attachmentFilesRef.current = attachmentFiles
   attachmentCountsRef.current = attachmentCounts
   fileUsageOptionsRef.current = fileUsageOptions
@@ -262,7 +264,8 @@ export function ReferenceComposer({
   )
   const clipboardUploadActiveRef = useRef(false)
   const clipboardPasteDisabledRef = useRef(false)
-  const configuredFileParamKeysRef = useRef<Set<string>>(new Set())
+  const scopedFileParamKeysRef = useRef<Set<string>>(new Set())
+  const configuredParameterScopeRef = useRef('')
   const configuredParamContractRef = useRef('')
   const rootRef = useRef<HTMLDivElement>(null)
   const pickerOpenRef = useRef(false)
@@ -295,6 +298,7 @@ export function ReferenceComposer({
           usageOptions: fileUsageOptionsRef.current,
           usageCounts: attachmentCountsRef.current,
           files: attachmentFilesRef.current,
+          document: composerEditorRef.current?.getJSON(),
         })
         if (result.error) {
           setMessage(result.error)
@@ -303,6 +307,14 @@ export function ReferenceComposer({
         if (result.files !== attachmentFilesRef.current) {
           attachmentFilesRef.current = result.files
           setAttachmentFiles(result.files)
+        }
+        if (result.document && composerEditorRef.current) {
+          composerEditorRef.current.commands.setContent(result.document)
+          const nextCounts = referenceUsageCounts(result.document)
+          attachmentCountsRef.current = nextCounts
+          setAttachmentCounts(nextCounts)
+          setMessage('')
+          return false
         }
         setMessage('')
         return true
@@ -363,38 +375,65 @@ export function ReferenceComposer({
       setAttachmentCounts(nextCounts)
     },
   })
+  composerEditorRef.current = editor
 
   useEffect(() => {
-    const nextContract = JSON.stringify({
-      scope: parameterScopeKey,
-      parameters: normalizedParams,
-    })
-    if (configuredParamContractRef.current === nextContract) {
+    const nextContract = JSON.stringify(normalizedParams)
+    const previousScope = configuredParameterScopeRef.current
+    const scopeChanged = previousScope !== parameterScopeKey
+    if (
+      !scopeChanged &&
+      configuredParamContractRef.current === nextContract
+    ) {
       return
     }
+    configuredParameterScopeRef.current = parameterScopeKey
     configuredParamContractRef.current = nextContract
-    const previousFileParamKeys = configuredFileParamKeysRef.current
-    configuredFileParamKeysRef.current = new Set(
+    const nextFileParamKeys = new Set(
       normalizedParams
         .filter(isFileParam)
         .map((param) => String(param.key || '').trim())
         .filter(Boolean)
     )
-    let nextCounts: Record<string, number> = {}
-    if (editor && previousFileParamKeys.size > 0) {
-      const currentDocument = editor.getJSON()
-      const nextDocument = removeReferenceUsages(
-        currentDocument,
-        previousFileParamKeys
-      )
-      if (nextDocument !== currentDocument) {
-        editor.commands.setContent(nextDocument)
+    const resetParameterDraft = !parameterScopeKey || scopeChanged
+    if (resetParameterDraft) {
+      const previousFileParamKeys = scopedFileParamKeysRef.current
+      scopedFileParamKeysRef.current = nextFileParamKeys
+      let nextCounts: Record<string, number> = {}
+      if (editor && previousFileParamKeys.size > 0) {
+        const currentDocument = editor.getJSON()
+        const nextDocument = removeReferenceUsages(
+          currentDocument,
+          previousFileParamKeys
+        )
+        if (nextDocument !== currentDocument) {
+          editor.commands.setContent(nextDocument)
+        }
+        nextCounts = referenceUsageCounts(nextDocument)
       }
-      nextCounts = referenceUsageCounts(nextDocument)
+      const nextValues = buildDefaultParamValues(normalizedParams)
+      attachmentFilesRef.current = {}
+      setParamValues(nextValues)
+      setAttachmentFiles({})
+      setAttachmentCounts(nextCounts)
+      setMessage('')
+      return
     }
-    setParamValues(buildDefaultParamValues(normalizedParams))
-    setAttachmentFiles({})
-    setAttachmentCounts(nextCounts)
+
+    scopedFileParamKeysRef.current = new Set([
+      ...scopedFileParamKeysRef.current,
+      ...nextFileParamKeys,
+    ])
+    setParamValues((current) => ({
+      ...buildDefaultParamValues(normalizedParams),
+      ...current,
+    }))
+    if (editor) {
+      const currentDocument = editor.getJSON()
+      const nextCounts = referenceUsageCounts(currentDocument)
+      attachmentCountsRef.current = nextCounts
+      setAttachmentCounts(nextCounts)
+    }
     setMessage('')
   }, [editor, normalizedParams, parameterScopeKey])
 
@@ -1792,13 +1831,15 @@ function moveAttachmentUsage({
   usageOptions,
   usageCounts,
   files,
+  document,
 }: {
   reference: Extract<ReferenceContent['parts'][number], { type: 'reference' }>
   nextUsage: string
   usageOptions: ReferenceUsageOption[]
   usageCounts: Record<string, number>
   files: ParamFileMap
-}): { files: ParamFileMap; error: string } {
+  document?: JSONContent
+}): { files: ParamFileMap; document?: JSONContent; error: string } {
   const previousUsage = String(reference.usage || '').trim()
   const targetUsage = String(nextUsage || '').trim()
   if (!targetUsage || targetUsage === previousUsage) {
@@ -1813,6 +1854,32 @@ function moveAttachmentUsage({
   const targetCount = Number(usageCounts[targetUsage] || 0)
   const capacity = Number(targetOption.maxFiles || 0)
   if (capacity > 0 && targetCount + amount > capacity) {
+    const swap = document
+      ? singleSlotUsageSwap({
+          document,
+          reference,
+          previousUsage,
+          targetUsage,
+          usageOptions,
+          usageCounts,
+          amount,
+          targetCount,
+          targetCapacity: capacity,
+        })
+      : undefined
+    if (swap) {
+      return {
+        files: swapAttachmentUsageFiles(
+          files,
+          previousUsage,
+          targetUsage,
+          String(reference.ref_id || ''),
+          swap.displacedReferenceID
+        ),
+        document: swap.document,
+        error: '',
+      }
+    }
     return {
       files,
       error: `参数“${targetOption.label}”最多选择 ${capacity} 个文件。`,
@@ -1836,6 +1903,165 @@ function moveAttachmentUsage({
       [targetUsage]: appendUniqueFiles(files[targetUsage] || [], movingFiles),
     },
     error: '',
+  }
+}
+
+function singleSlotUsageSwap({
+  document,
+  reference,
+  previousUsage,
+  targetUsage,
+  usageOptions,
+  usageCounts,
+  amount,
+  targetCount,
+  targetCapacity,
+}: {
+  document: JSONContent
+  reference: Extract<ReferenceContent['parts'][number], { type: 'reference' }>
+  previousUsage: string
+  targetUsage: string
+  usageOptions: ReferenceUsageOption[]
+  usageCounts: Record<string, number>
+  amount: number
+  targetCount: number
+  targetCapacity: number
+}) {
+  const previousOption = usageOptions.find(
+    (option) => option.key === previousUsage
+  )
+  if (
+    !previousOption ||
+    amount !== 1 ||
+    targetCapacity !== 1 ||
+    targetCount !== 1
+  ) {
+    return undefined
+  }
+
+  const displaced = findReferenceNodeForUsage(document, targetUsage)
+  if (!displaced || displaced.amount !== 1) {
+    return undefined
+  }
+  const previousCapacity = Number(previousOption.maxFiles || 0)
+  const previousCountAfterSwap =
+    Math.max(Number(usageCounts[previousUsage] || 0) - amount, 0) +
+    displaced.amount
+  if (previousCapacity > 0 && previousCountAfterSwap > previousCapacity) {
+    return undefined
+  }
+
+  const nextDocument = swapReferenceNodeUsages(
+    document,
+    String(reference.ref_id || ''),
+    previousUsage,
+    targetUsage
+  )
+  if (nextDocument === document) {
+    return undefined
+  }
+  return {
+    document: nextDocument,
+    displacedReferenceID: displaced.refID,
+  }
+}
+
+function findReferenceNodeForUsage(
+  node: JSONContent,
+  usage: string
+): { refID: string; amount: number } | undefined {
+  if (node.type === 'reference' && String(node.attrs?.usage || '') === usage) {
+    return {
+      refID: String(node.attrs?.refId || ''),
+      amount: referenceNodeAmount(node),
+    }
+  }
+  for (const child of node.content || []) {
+    const match = findReferenceNodeForUsage(child, usage)
+    if (match) {
+      return match
+    }
+  }
+  return undefined
+}
+
+function referenceNodeAmount(node: JSONContent) {
+  return selectedReferenceAmount(
+    node.attrs?.mediaItems,
+    node.attrs?.mediaUrl,
+    node.attrs?.mediaIndex,
+    node.attrs?.mediaCount
+  )
+}
+
+function swapReferenceNodeUsages(
+  node: JSONContent,
+  currentReferenceID: string,
+  previousUsage: string,
+  targetUsage: string
+): JSONContent {
+  let nextNode = node
+  if (node.type === 'reference') {
+    const usage = String(node.attrs?.usage || '')
+    const movingCurrent =
+      usage === previousUsage &&
+      String(node.attrs?.refId || '') === currentReferenceID
+    const nextUsage = movingCurrent
+      ? targetUsage
+      : usage === targetUsage
+        ? previousUsage
+        : ''
+    if (nextUsage) {
+      nextNode = {
+        ...node,
+        attrs: { ...node.attrs, usage: nextUsage },
+      }
+    }
+  }
+
+  let contentChanged = false
+  const nextContent = (nextNode.content || []).map((child) => {
+    const nextChild = swapReferenceNodeUsages(
+      child,
+      currentReferenceID,
+      previousUsage,
+      targetUsage
+    )
+    contentChanged = contentChanged || nextChild !== child
+    return nextChild
+  })
+  return contentChanged ? { ...nextNode, content: nextContent } : nextNode
+}
+
+function swapAttachmentUsageFiles(
+  files: ParamFileMap,
+  previousUsage: string,
+  targetUsage: string,
+  currentReferenceID: string,
+  displacedReferenceID: string
+) {
+  const previousFiles = files[previousUsage] || []
+  const targetFiles = files[targetUsage] || []
+  const movingFiles = previousFiles.filter(
+    (file) => referenceIDForFile(file) === currentReferenceID
+  )
+  const displacedFiles = targetFiles.filter(
+    (file) => referenceIDForFile(file) === displacedReferenceID
+  )
+  return {
+    ...files,
+    [previousUsage]: appendUniqueFiles(
+      previousFiles.filter(
+        (file) => referenceIDForFile(file) !== currentReferenceID
+      ),
+      displacedFiles
+    ),
+    [targetUsage]: appendUniqueFiles(
+      targetFiles.filter(
+        (file) => referenceIDForFile(file) !== displacedReferenceID
+      ),
+      movingFiles
+    ),
   }
 }
 

@@ -431,6 +431,7 @@ export async function requestRaw(
   const options: RequestInit = {
     method: fetchMethod,
     headers,
+    cache: 'no-store',
   }
 
   if (isGetMethod && params && !isFormData) {
