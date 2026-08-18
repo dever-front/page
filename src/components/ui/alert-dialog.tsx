@@ -43,13 +43,19 @@ function AlertDialogOverlay({
 
 function AlertDialogContent({
   className,
+  layerClassName,
+  layerZIndex,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
+  layerClassName?: string
+  layerZIndex?: number
+}) {
   return (
     <AlertDialogPortal>
       <div
         data-slot='alert-dialog-layer'
-        className='pointer-events-none fixed inset-0 z-50'
+        className={cn('pointer-events-none fixed inset-0 z-50', layerClassName)}
+        style={layerZIndex ? { zIndex: layerZIndex } : undefined}
       >
         <AlertDialogOverlay className='pointer-events-auto z-0' />
         <AlertDialogPrimitive.Content

@@ -22,6 +22,8 @@ type ConfirmDialogProps = {
   handleConfirm: () => void
   isLoading?: boolean
   className?: string
+  layerClassName?: string
+  layerZIndex?: number
   children?: React.ReactNode
 }
 
@@ -31,6 +33,8 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
     desc,
     children,
     className,
+    layerClassName,
+    layerZIndex,
     confirmText,
     cancelBtnText,
     destructive,
@@ -41,7 +45,11 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   } = props
   return (
     <AlertDialog {...actions}>
-      <AlertDialogContent className={cn(className && className)}>
+      <AlertDialogContent
+        className={cn(className && className)}
+        layerClassName={layerClassName}
+        layerZIndex={layerZIndex}
+      >
         <AlertDialogHeader className='text-start'>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription asChild>
