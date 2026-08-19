@@ -6,9 +6,12 @@ import {
 } from './request'
 import { runRuntimeStream } from './runtime-stream-runner'
 import { streamValueText, type RuntimeStreamFrame } from './stream'
+import { uploadFileDirect, type UploadDirectPayload } from './upload-direct'
 import { digestUploadFile } from './upload-hash'
 
 export { digestUploadFile } from './upload-hash'
+export { uploadFileDirect } from './upload-direct'
+export type { UploadDirectPayload } from './upload-direct'
 
 export type UploadFileItem = {
   id: string | number
@@ -56,16 +59,6 @@ export type UploadRuleMeta = {
   name?: string
   accept?: string
   transport?: string
-}
-
-export type UploadDirectPayload = {
-  uploadURL?: string
-  upload_url?: string
-  UploadURL?: string
-  method?: string
-  Method?: string
-  fields?: Record<string, string>
-  Fields?: Record<string, string>
 }
 
 type UploadSessionInitPayload = {
@@ -445,42 +438,6 @@ function uploadRequestOptions(
   options?: Pick<UploadRequestOptions, 'reportError'>
 ): RequestOptions | undefined {
   return options?.reportError === false ? { reportError: false } : undefined
-}
-
-export async function uploadFileDirect(
-  file: File,
-  direct: UploadDirectPayload,
-  onProgress?: (loaded: number, total: number) => void,
-  mimeType?: string
-) {
-  const uploadURL = String(
-    direct.uploadURL || direct.upload_url || direct.UploadURL || ''
-  ).trim()
-  if (!uploadURL) {
-    throw new Error('直传地址为空')
-  }
-
-  const formData = new FormData()
-  Object.entries(direct.fields || direct.Fields || {}).forEach(
-    ([key, value]) => {
-      formData.append(key, value)
-    }
-  )
-  const resolvedMimeType = String(mimeType || '').trim()
-  const uploadBody = resolvedMimeType
-    ? file.slice(0, file.size, resolvedMimeType)
-    : file
-  formData.append('file', uploadBody, file.name)
-
-  const response = await fetch(uploadURL, {
-    method: String(direct.method || direct.Method || 'post').toUpperCase(),
-    body: formData,
-  })
-
-  if (!response.ok) {
-    throw new Error(`直传失败(${response.status})`)
-  }
-  onProgress?.(file.size, file.size)
 }
 
 function applyImportStreamStatus(
