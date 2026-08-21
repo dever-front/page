@@ -51,6 +51,10 @@ import {
   referenceMediaSelectionSignature,
 } from './media-selection'
 import { ReferencePicker } from './picker'
+import {
+  referenceFileIdentity,
+  referenceIdentity,
+} from './reference-identity'
 import { ReferenceNode } from './reference-node'
 import { ReferenceNodeRuntimeProvider } from './reference-node-runtime'
 import { ReferenceTag } from './reference-tag'
@@ -617,25 +621,34 @@ export function ReferenceComposer({
       if (!key || !editor) {
         return
       }
-      const existingIDs = referenceIDsForUsage(editor.getJSON(), key)
+      const existingIdentities = referenceIdentitiesForUsage(
+        editor.getJSON(),
+        key
+      )
       const nextOptions = options.filter((option) => {
-        const id = String(option.refId || '')
-        if (!id || existingIDs.has(id)) {
+        const identity = referenceIdentity(option.refType, option.refId)
+        if (!identity || existingIdentities.has(identity)) {
           return false
         }
-        existingIDs.add(id)
+        existingIdentities.add(identity)
         return true
       })
       if (nextOptions.length === 0) {
         setMessage(`参数“${param.name}”中已添加所选资源。`)
         return
       }
-      const nextIDs = new Set(nextOptions.map((option) => String(option.refId)))
+      const nextIdentities = new Set(
+        nextOptions.map((option) =>
+          referenceIdentity(option.refType, option.refId)
+        )
+      )
       setAttachmentFiles((current) => ({
         ...current,
         [key]: appendUniqueFiles(
           current[key] || [],
-          files.filter((file) => nextIDs.has(referenceIDForFile(file)))
+          files.filter((file) =>
+            nextIdentities.has(referenceIdentityForFile(file))
+          )
         ),
       }))
       const content = referenceInsertionContent(
@@ -1786,15 +1799,17 @@ function activeParamFiles(content: ReferenceContent, files: ParamFileMap) {
     if (part.type !== 'reference' || !part.usage) {
       continue
     }
-    const ids = active.get(part.usage) || new Set<string>()
-    ids.add(String(part.ref_id))
-    active.set(part.usage, ids)
+    const identities = active.get(part.usage) || new Set<string>()
+    identities.add(referenceIdentity(part.ref_type, part.ref_id))
+    active.set(part.usage, identities)
   }
   const result: ParamFileMap = {}
   for (const [key, values] of Object.entries(files)) {
-    const ids = active.get(key)
-    result[key] = ids
-      ? values.filter((file) => ids.has(referenceIDForFile(file)))
+    const identities = active.get(key)
+    result[key] = identities
+      ? values.filter((file) =>
+          identities.has(referenceIdentityForFile(file))
+        )
       : []
   }
   return result
@@ -1873,8 +1888,8 @@ function moveAttachmentUsage({
           files,
           previousUsage,
           targetUsage,
-          String(reference.ref_id || ''),
-          swap.displacedReferenceID
+          referenceIdentity(reference.ref_type, reference.ref_id),
+          swap.displacedReferenceIdentity
         ),
         document: swap.document,
         error: '',
@@ -1886,10 +1901,13 @@ function moveAttachmentUsage({
     }
   }
 
-  const referenceID = String(reference.ref_id || '')
+  const currentReferenceIdentity = referenceIdentity(
+    reference.ref_type,
+    reference.ref_id
+  )
   const previousFiles = files[previousUsage] || []
   const movingFiles = previousFiles.filter(
-    (file) => referenceIDForFile(file) === referenceID
+    (file) => referenceIdentityForFile(file) === currentReferenceIdentity
   )
   if (movingFiles.length === 0) {
     return { files, error: '' }
@@ -1898,7 +1916,7 @@ function moveAttachmentUsage({
     files: {
       ...files,
       [previousUsage]: previousFiles.filter(
-        (file) => referenceIDForFile(file) !== referenceID
+        (file) => referenceIdentityForFile(file) !== currentReferenceIdentity
       ),
       [targetUsage]: appendUniqueFiles(files[targetUsage] || [], movingFiles),
     },
@@ -1953,7 +1971,7 @@ function singleSlotUsageSwap({
 
   const nextDocument = swapReferenceNodeUsages(
     document,
-    String(reference.ref_id || ''),
+    referenceIdentity(reference.ref_type, reference.ref_id),
     previousUsage,
     targetUsage
   )
@@ -1962,17 +1980,20 @@ function singleSlotUsageSwap({
   }
   return {
     document: nextDocument,
-    displacedReferenceID: displaced.refID,
+    displacedReferenceIdentity: displaced.identity,
   }
 }
 
 function findReferenceNodeForUsage(
   node: JSONContent,
   usage: string
-): { refID: string; amount: number } | undefined {
+): { identity: string; amount: number } | undefined {
   if (node.type === 'reference' && String(node.attrs?.usage || '') === usage) {
     return {
-      refID: String(node.attrs?.refId || ''),
+      identity: referenceIdentity(
+        String(node.attrs?.refType || ''),
+        node.attrs?.refId
+      ),
       amount: referenceNodeAmount(node),
     }
   }
@@ -1996,7 +2017,7 @@ function referenceNodeAmount(node: JSONContent) {
 
 function swapReferenceNodeUsages(
   node: JSONContent,
-  currentReferenceID: string,
+  currentReferenceIdentity: string,
   previousUsage: string,
   targetUsage: string
 ): JSONContent {
@@ -2005,7 +2026,10 @@ function swapReferenceNodeUsages(
     const usage = String(node.attrs?.usage || '')
     const movingCurrent =
       usage === previousUsage &&
-      String(node.attrs?.refId || '') === currentReferenceID
+      referenceIdentity(
+        String(node.attrs?.refType || ''),
+        node.attrs?.refId
+      ) === currentReferenceIdentity
     const nextUsage = movingCurrent
       ? targetUsage
       : usage === targetUsage
@@ -2023,7 +2047,7 @@ function swapReferenceNodeUsages(
   const nextContent = (nextNode.content || []).map((child) => {
     const nextChild = swapReferenceNodeUsages(
       child,
-      currentReferenceID,
+      currentReferenceIdentity,
       previousUsage,
       targetUsage
     )
@@ -2037,28 +2061,29 @@ function swapAttachmentUsageFiles(
   files: ParamFileMap,
   previousUsage: string,
   targetUsage: string,
-  currentReferenceID: string,
-  displacedReferenceID: string
+  currentReferenceIdentity: string,
+  displacedReferenceIdentity: string
 ) {
   const previousFiles = files[previousUsage] || []
   const targetFiles = files[targetUsage] || []
   const movingFiles = previousFiles.filter(
-    (file) => referenceIDForFile(file) === currentReferenceID
+    (file) => referenceIdentityForFile(file) === currentReferenceIdentity
   )
   const displacedFiles = targetFiles.filter(
-    (file) => referenceIDForFile(file) === displacedReferenceID
+    (file) => referenceIdentityForFile(file) === displacedReferenceIdentity
   )
   return {
     ...files,
     [previousUsage]: appendUniqueFiles(
       previousFiles.filter(
-        (file) => referenceIDForFile(file) !== currentReferenceID
+        (file) => referenceIdentityForFile(file) !== currentReferenceIdentity
       ),
       displacedFiles
     ),
     [targetUsage]: appendUniqueFiles(
       targetFiles.filter(
-        (file) => referenceIDForFile(file) !== displacedReferenceID
+        (file) =>
+          referenceIdentityForFile(file) !== displacedReferenceIdentity
       ),
       movingFiles
     ),
@@ -2095,9 +2120,8 @@ function selectedReferenceAmount(
   return Math.max(1, Number(mediaCountValue || 0))
 }
 
-function referenceIDForFile(file: UploadFileItem) {
-  const assetMatch = /^asset:(\d+):\d+$/.exec(String(file.id || ''))
-  return assetMatch ? assetMatch[1] : String(file.id || '')
+function referenceIdentityForFile(file: UploadFileItem) {
+  return referenceFileIdentity(file.id)?.key || ''
 }
 
 function removeReferenceUsages(
@@ -2131,7 +2155,7 @@ function referenceUsageCounts(
   const result: Record<string, number> = {}
   walkReferenceNodes(
     document,
-    (usage, _refID, amount) => {
+    (usage, _identity, amount) => {
       result[usage] = (result[usage] || 0) + amount
     },
     usageField
@@ -2139,14 +2163,14 @@ function referenceUsageCounts(
   return result
 }
 
-function referenceIDsForUsage(
+function referenceIdentitiesForUsage(
   document: import('@tiptap/core').JSONContent,
   targetUsage: string
 ) {
   const result = new Set<string>()
-  walkReferenceNodes(document, (usage, refID) => {
-    if (usage === targetUsage && refID) {
-      result.add(refID)
+  walkReferenceNodes(document, (usage, identity) => {
+    if (usage === targetUsage && identity) {
+      result.add(identity)
     }
   })
   return result
@@ -2154,7 +2178,7 @@ function referenceIDsForUsage(
 
 function walkReferenceNodes(
   node: import('@tiptap/core').JSONContent,
-  visit: (usage: string, refID: string, amount: number) => void,
+  visit: (usage: string, identity: string, amount: number) => void,
   usageField: ReferenceUsageField = 'usage'
 ) {
   if (node.type === 'reference') {
@@ -2162,7 +2186,10 @@ function walkReferenceNodes(
     if (usage) {
       visit(
         usage,
-        String(node.attrs?.refId || ''),
+        referenceIdentity(
+          String(node.attrs?.refType || ''),
+          node.attrs?.refId
+        ),
         selectedReferenceAmount(
           node.attrs?.mediaItems,
           node.attrs?.mediaUrl,
@@ -2305,6 +2332,7 @@ function normalizeReferenceProviders(
         'session',
         'canvas_node',
         'asset',
+        'material',
       ],
       loadReferences,
       loadPreview,

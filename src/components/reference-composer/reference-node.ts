@@ -181,7 +181,8 @@ export function referenceTypeFromValue(value: unknown): Extract<
     current === 'upload_file' ||
     current === 'session' ||
     current === 'canvas_node' ||
-    current === 'asset'
+    current === 'asset' ||
+    current === 'material'
   ) {
     return current
   }

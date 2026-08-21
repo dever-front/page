@@ -12,6 +12,7 @@ export type ReferenceType =
   | 'session'
   | 'canvas_node'
   | 'asset'
+  | 'material'
 
 export type ReferenceUsageField = 'usage' | 'purpose'
 

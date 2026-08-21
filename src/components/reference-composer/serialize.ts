@@ -111,6 +111,7 @@ function isReferenceType(value: string): value is ReferenceType {
     'session',
     'canvas_node',
     'asset',
+    'material',
   ].includes(value)
 }
 

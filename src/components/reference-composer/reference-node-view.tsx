@@ -86,7 +86,7 @@ export function ReferenceNodeView({
     node.attrs.mediaItems
   )
   const mediaCapacity = Number(activeMediaUsage?.maxFiles || 0)
-  const mediaSelectable = refType === 'asset'
+  const mediaSelectable = refType === 'asset' || refType === 'material'
   const reference = referencePartFromAttributes(node.attrs)
   const disabled = useReferenceNodeDisabled(editor)
 
