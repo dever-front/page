@@ -2,15 +2,19 @@
  * Header.tsx - 顶部栏布局
  * 页面级标题条，位于全局顶栏下方
  */
+import { useStore } from 'zustand'
+import { usePageStore } from '@/lib/store'
 import { cn } from '@/lib/utils'
 import { AssistantFormFillButton } from '@/components/assistant/form-actions'
-import { usePageStore } from '@/lib/store'
-import { useStore } from 'zustand'
 import type { LayoutComponentProps } from './types'
 
 export function Header({ config, children }: LayoutComponentProps) {
   const store = usePageStore()
   const isNestedPage = useStore(store, (state) => !!state.parentStore)
+
+  if (isNestedPage && config.meta?.hideWhenNested === true) {
+    return null
+  }
 
   return (
     <section
@@ -22,7 +26,7 @@ export function Header({ config, children }: LayoutComponentProps) {
       <div className='flex min-h-12 min-w-0 items-center gap-3'>
         {children}
         {!isNestedPage ? (
-          <AssistantFormFillButton store={store} scope="page" />
+          <AssistantFormFillButton store={store} scope='page' />
         ) : null}
       </div>
     </section>
