@@ -15,6 +15,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { cn } from '@/lib/utils'
 import {
   Card,
   CardContent,
@@ -22,7 +23,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
 import type { NodeItemProps } from '../../nodes'
 
 type ChartMeta = {
@@ -31,6 +31,7 @@ type ChartMeta = {
   type?: 'bar' | 'line' | 'area' | 'pie'
   nameKey?: string
   dataKey?: string
+  valueLabel?: string
   height?: number
 }
 
@@ -51,6 +52,7 @@ export function ShowChart({ item, value }: NodeItemProps) {
   const type = meta.type || 'bar'
   const nameKey = meta.nameKey || 'name'
   const dataKey = meta.dataKey || 'value'
+  const valueLabel = String(meta.valueLabel || '').trim()
   const height = Number(meta.height || 300)
 
   return (
@@ -66,13 +68,13 @@ export function ShowChart({ item, value }: NodeItemProps) {
       <CardContent>
         {rows.length ? (
           <div style={{ height }}>
-            <ResponsiveContainer width="100%" height="100%">
-              {renderChart(type, rows, nameKey, dataKey)}
+            <ResponsiveContainer width='100%' height='100%'>
+              {renderChart(type, rows, nameKey, dataKey, valueLabel)}
             </ResponsiveContainer>
           </div>
         ) : (
           <div
-            className="flex items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground"
+            className='flex items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground'
             style={{ height }}
           >
             暂无统计数据
@@ -87,13 +89,15 @@ function renderChart(
   type: NonNullable<ChartMeta['type']>,
   rows: ChartRow[],
   nameKey: string,
-  dataKey: string
+  dataKey: string,
+  valueLabel: string
 ) {
+  const tooltipFormatter = createMetricTooltipFormatter(valueLabel || dataKey)
   switch (type) {
     case 'pie':
       return (
         <PieChart>
-          <Tooltip />
+          <Tooltip separator='：' formatter={tooltipFormatter} />
           <Legend
             iconSize={8}
             wrapperStyle={{ fontSize: 12, color: 'var(--muted-foreground)' }}
@@ -102,8 +106,8 @@ function renderChart(
             data={rows}
             dataKey={dataKey}
             nameKey={nameKey}
-            innerRadius="58%"
-            outerRadius="82%"
+            innerRadius='58%'
+            outerRadius='82%'
             paddingAngle={3}
           >
             {rows.map((row, index) => (
@@ -118,14 +122,15 @@ function renderChart(
     case 'line':
       return (
         <LineChart data={rows}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid strokeDasharray='3 3' vertical={false} />
           <XAxis dataKey={nameKey} tickLine={false} axisLine={false} />
           <YAxis tickLine={false} axisLine={false} width={36} />
-          <Tooltip />
+          <Tooltip separator='：' formatter={tooltipFormatter} />
           <Line
-            type="monotone"
+            type='monotone'
             dataKey={dataKey}
-            stroke="var(--primary)"
+            name={valueLabel || dataKey}
+            stroke='var(--primary)'
             strokeWidth={2}
             dot={false}
           />
@@ -134,15 +139,16 @@ function renderChart(
     case 'area':
       return (
         <AreaChart data={rows}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid strokeDasharray='3 3' vertical={false} />
           <XAxis dataKey={nameKey} tickLine={false} axisLine={false} />
           <YAxis tickLine={false} axisLine={false} width={36} />
-          <Tooltip />
+          <Tooltip separator='：' formatter={tooltipFormatter} />
           <Area
-            type="monotone"
+            type='monotone'
             dataKey={dataKey}
-            stroke="var(--primary)"
-            fill="var(--primary)"
+            name={valueLabel || dataKey}
+            stroke='var(--primary)'
+            fill='var(--primary)'
             fillOpacity={0.16}
             strokeWidth={2}
           />
@@ -152,11 +158,15 @@ function renderChart(
     default:
       return (
         <BarChart data={rows}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid strokeDasharray='3 3' vertical={false} />
           <XAxis dataKey={nameKey} tickLine={false} axisLine={false} />
           <YAxis tickLine={false} axisLine={false} width={36} />
-          <Tooltip />
-          <Bar dataKey={dataKey} radius={[8, 8, 0, 0]}>
+          <Tooltip separator='：' formatter={tooltipFormatter} />
+          <Bar
+            dataKey={dataKey}
+            name={valueLabel || dataKey}
+            radius={[8, 8, 0, 0]}
+          >
             {rows.map((row, index) => (
               <Cell
                 key={`${String(row[nameKey] ?? index)}-${index}`}
@@ -167,6 +177,21 @@ function renderChart(
         </BarChart>
       )
   }
+}
+
+function createMetricTooltipFormatter(label: string) {
+  return (value: unknown) =>
+    [normalizeChartTooltipValue(value), label] as [string | number, string]
+}
+
+function normalizeChartTooltipValue(value: unknown): string | number {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return value
+  }
+  if (Array.isArray(value)) {
+    return value.map(String).join(' - ')
+  }
+  return String(value ?? '')
 }
 
 function normalizeChartRows(value: unknown): ChartRow[] {
