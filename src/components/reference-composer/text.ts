@@ -6,6 +6,11 @@ type ReferenceMatch = {
   option: ReferenceOption
 }
 
+const REFERENCE_TRIGGER_ALIASES: Record<string, string> = {
+  '＠': '@',
+  '＃': '#',
+}
+
 export function referenceMentionLabel(label: string, trigger = '@') {
   const normalizedTrigger = referenceTrigger(trigger)
   const value = referenceLabel(label)
@@ -13,14 +18,21 @@ export function referenceMentionLabel(label: string, trigger = '@') {
 }
 
 export function referenceTrigger(value: string | undefined) {
+  return normalizeReferenceInputTrigger(value) || '@'
+}
+
+export function normalizeReferenceInputTrigger(value: string | undefined) {
   const trigger = String(value || '').trim()
-  return trigger.length === 1 ? trigger : '@'
+  if (trigger.length !== 1) {
+    return ''
+  }
+  return REFERENCE_TRIGGER_ALIASES[trigger] || trigger
 }
 
 export function referenceLabel(value: string) {
   return String(value || '')
     .trim()
-    .replace(/^[@#]/, '')
+    .replace(/^[@#＠＃]/, '')
 }
 
 export function referenceContentFromText(

@@ -73,6 +73,7 @@ import { ReferenceComposerControlTooltip } from './tooltip'
 import {
   referenceDocumentFromContent,
   referenceDocumentFromText,
+  normalizeReferenceInputTrigger,
   referenceLabel,
   referenceTrigger,
 } from './text'
@@ -2345,7 +2346,10 @@ function referenceProviderForTrigger(
   providers: ReferenceProvider[],
   trigger: string
 ) {
-  return providers.find((provider) => provider.trigger === trigger)
+  const normalizedTrigger = normalizeReferenceInputTrigger(trigger)
+  return normalizedTrigger
+    ? providers.find((provider) => provider.trigger === normalizedTrigger)
+    : undefined
 }
 
 function referenceOptionWithProviderTrigger(
