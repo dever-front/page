@@ -1,9 +1,11 @@
 import {
+  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
   type ChangeEvent,
+  type ComponentProps,
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
@@ -57,12 +59,16 @@ import { ResourcePickerDialogLazy } from '@/components/resource/lazy-dialogs'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
-  DropdownMenuContent,
+  DropdownMenuContent as BaseDropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  Popover,
+  PopoverContent as BasePopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { importArticleFromURL } from '@/lib/article-import'
 import {
   normalizeRichTextHexColor,
@@ -91,6 +97,7 @@ import {
   type EditorMediaKind,
   type EditorUploadRule,
 } from './media'
+import { RichTextFloatingLayerContext } from './floating-layer'
 import {
   normalizePastedRichTextHTML,
   pastedMediaAssetKey,
@@ -131,6 +138,7 @@ type RichTextEditorProps = {
   maxHeight?: number
   className?: string
   controlClassName?: string
+  floatingLayerZIndex?: number
   uploadRules?: EditorUploadRule[]
   assistantAdornment?: ReactNode
   renderAiGenerate?: (input: {
@@ -161,6 +169,22 @@ const EDITOR_MEDIA_CONTROLS: Array<{
 
 const TOOLBAR_BUTTON_CLASS =
   'h-7 shrink-0 rounded-md px-2 text-muted-foreground hover:text-foreground'
+
+function EditorDropdownMenuContent(
+  props: ComponentProps<typeof BaseDropdownMenuContent>
+) {
+  const floatingLayerZIndex = useContext(RichTextFloatingLayerContext)
+  return (
+    <BaseDropdownMenuContent {...props} layerZIndex={floatingLayerZIndex} />
+  )
+}
+
+function EditorPopoverContent(
+  props: ComponentProps<typeof BasePopoverContent>
+) {
+  const floatingLayerZIndex = useContext(RichTextFloatingLayerContext)
+  return <BasePopoverContent {...props} layerZIndex={floatingLayerZIndex} />
+}
 
 function runToolbarActionOnEnter(event: KeyboardEvent<HTMLElement>, action: () => void) {
   if (event.key !== 'Enter') {
@@ -302,7 +326,15 @@ export {
   type EditorUploadRule,
 } from './media'
 
-export function RichTextEditor({
+export function RichTextEditor(props: RichTextEditorProps) {
+  return (
+    <RichTextFloatingLayerContext.Provider value={props.floatingLayerZIndex}>
+      <RichTextEditorContent {...props} />
+    </RichTextFloatingLayerContext.Provider>
+  )
+}
+
+function RichTextEditorContent({
   id,
   value,
   onChange,
@@ -314,6 +346,7 @@ export function RichTextEditor({
   maxHeight = 560,
   className,
   controlClassName,
+  floatingLayerZIndex,
   uploadRules = [],
   assistantAdornment,
   renderAiGenerate,
@@ -1015,7 +1048,7 @@ export function RichTextEditor({
                 <span className="sr-only">链接</span>
               </Button>
             </PopoverTrigger>
-            <PopoverContent align="start" className="w-80 p-3">
+            <EditorPopoverContent align="start" className="w-80 p-3">
               <div className="space-y-3">
                 <Input
                   value={linkHref}
@@ -1040,7 +1073,7 @@ export function RichTextEditor({
                   </Button>
                 </div>
               </div>
-            </PopoverContent>
+            </EditorPopoverContent>
           </Popover>
           {richControlsEnabled ? (
             <Popover
@@ -1073,7 +1106,7 @@ export function RichTextEditor({
                   <span className="sr-only">导入文章链接</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="start" className="w-96 p-3">
+              <EditorPopoverContent align="start" className="w-96 p-3">
                 <div className="space-y-3">
                   <div className="space-y-1.5">
                     <Input
@@ -1114,7 +1147,7 @@ export function RichTextEditor({
                     </Button>
                   </div>
                 </div>
-              </PopoverContent>
+              </EditorPopoverContent>
             </Popover>
           ) : null}
           {richControlsEnabled
@@ -1213,6 +1246,7 @@ export function RichTextEditor({
       {activePickerKind ? (
         <ResourcePickerDialogLazy
           open={!!activePickerKind}
+          layerZIndex={floatingLayerZIndex}
           title={`${resolveEditorMediaLabel(activePickerKind)}资源库`}
           description={`可上传并选择${resolveEditorMediaLabel(activePickerKind)}资源后插入正文。`}
           bizKey={uploadRuleMap.get(activePickerKind)?.bizKey}
@@ -1507,7 +1541,7 @@ function EditorFontSizeMenu({
           <span className="sr-only">字号</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <EditorDropdownMenuContent align="start">
         <DropdownMenuItem onSelect={() => onSelect({ fontSize: null })}>
           默认字号
         </DropdownMenuItem>
@@ -1519,7 +1553,7 @@ function EditorFontSizeMenu({
             <span style={{ fontSize: fontSize.value }}>{fontSize.label}</span>
           </DropdownMenuItem>
         ))}
-      </DropdownMenuContent>
+      </EditorDropdownMenuContent>
     </DropdownMenu>
   )
 }
@@ -1561,7 +1595,7 @@ function EditorInlineFormatMenu({
           <span className="sr-only">行内格式</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <EditorDropdownMenuContent align="start">
         {options.map(({ icon: Icon, label, isActive, run }) => (
           <DropdownMenuItem
             key={label}
@@ -1572,7 +1606,7 @@ function EditorInlineFormatMenu({
             {label}
           </DropdownMenuItem>
         ))}
-      </DropdownMenuContent>
+      </EditorDropdownMenuContent>
     </DropdownMenu>
   )
 }
@@ -1625,7 +1659,7 @@ function EditorColorMenu({
           <span className="sr-only">颜色和高亮</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-3">
+      <EditorPopoverContent align="start" className="w-64 p-3">
         <ColorPickerSection
           label="文字颜色"
           value={textColor}
@@ -1665,7 +1699,7 @@ function EditorColorMenu({
           colors={richTextHighlightColors}
           onSelect={applyHighlightColor}
         />
-      </PopoverContent>
+      </EditorPopoverContent>
     </Popover>
   )
 }
@@ -1781,7 +1815,7 @@ function EditorAlignMenu({
           <span className="sr-only">对齐</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <EditorDropdownMenuContent align="start">
         {ALIGN_OPTIONS.map(({ icon: Icon, label, value }) => (
           <DropdownMenuItem
             key={value}
@@ -1792,7 +1826,7 @@ function EditorAlignMenu({
             {label}
           </DropdownMenuItem>
         ))}
-      </DropdownMenuContent>
+      </EditorDropdownMenuContent>
     </DropdownMenu>
   )
 }
@@ -1830,7 +1864,7 @@ function EditorListMenu({
           <span className="sr-only">列表</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <EditorDropdownMenuContent align="start">
         {LIST_OPTIONS.map(({ icon: Icon, label, isActive, run }) => (
           <DropdownMenuItem
             key={label}
@@ -1841,7 +1875,7 @@ function EditorListMenu({
             {label}
           </DropdownMenuItem>
         ))}
-      </DropdownMenuContent>
+      </EditorDropdownMenuContent>
     </DropdownMenu>
   )
 }
@@ -1881,7 +1915,7 @@ function EditorMediaButton({
           <span className="sr-only">{label}</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <EditorDropdownMenuContent align="start">
         <DropdownMenuItem onSelect={() => onUpload(kind)}>
           上传{label}
         </DropdownMenuItem>
@@ -1889,7 +1923,7 @@ function EditorMediaButton({
           从资源库选择{label}
         </DropdownMenuItem>
         {aiGenerate ? <div className="px-1 py-0.5">{aiGenerate}</div> : null}
-      </DropdownMenuContent>
+      </EditorDropdownMenuContent>
     </DropdownMenu>
   )
 }
@@ -1939,7 +1973,7 @@ function EditorTableMenu({
           <span className="sr-only">表格</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-3">
+      <EditorPopoverContent align="start" className="w-72 p-3">
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <label className="space-y-1 text-xs text-muted-foreground">
@@ -2033,7 +2067,7 @@ function EditorTableMenu({
             删除表格
           </Button>
         </div>
-      </PopoverContent>
+      </EditorPopoverContent>
     </Popover>
   )
 }

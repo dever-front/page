@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react'
+import { useContext, useEffect, useRef, useState, type MouseEvent } from 'react'
 import { NodeViewWrapper, type ReactNodeViewProps } from '@tiptap/react'
 import { MessageSquareText } from 'lucide-react'
 import { FirstFrameVideo } from '@/components/media/first-frame-video'
@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { RichTextFloatingLayerContext } from './floating-layer'
 
 type EditorMediaNodeViewProps = ReactNodeViewProps & {
   kind: 'image' | 'video' | 'audio'
@@ -64,6 +65,7 @@ export function EditorMediaNodeView({
 }: EditorMediaNodeViewProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null)
   const cleanupResizeRef = useRef<(() => void) | null>(null)
+  const floatingLayerZIndex = useContext(RichTextFloatingLayerContext)
   const [isEditorFocused, setIsEditorFocused] = useState(editor.isFocused)
   const [captionDialogOpen, setCaptionDialogOpen] = useState(false)
   const [captionDraft, setCaptionDraft] = useState('')
@@ -330,7 +332,10 @@ export function EditorMediaNodeView({
         ) : null}
       </div>
       <Dialog open={captionDialogOpen} onOpenChange={setCaptionDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="sm:max-w-md"
+          layerZIndex={floatingLayerZIndex}
+        >
           <DialogHeader>
             <DialogTitle>{label}备注</DialogTitle>
             <DialogDescription>
