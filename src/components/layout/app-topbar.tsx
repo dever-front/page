@@ -1,9 +1,10 @@
-import { SidebarTrigger } from '@/components/ui/sidebar'
+import { cn } from '@/lib/utils'
 import { Separator } from '@/components/ui/separator'
+import { SidebarTrigger } from '@/components/ui/sidebar'
+import { PluginSlot } from '@/components/plugin-slot'
 import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { TopUserNav } from './top-user-nav'
-import { cn } from '@/lib/utils'
 
 type AppTopbarProps = {
   className?: string
@@ -27,6 +28,7 @@ export function AppTopbar({ className }: AppTopbarProps) {
           />
         </div>
         <div className='flex shrink-0 items-center gap-1'>
+          <PluginSlot name='app-topbar-actions' />
           <ThemeSwitch />
           <TopUserNav />
         </div>
