@@ -90,9 +90,13 @@ export function FormUpload({ item, value, setValue, error, store }: NodeItemProp
     kind: item.meta?.kind,
     uploadType,
   })
+  const ruleIdPath = String(item.meta?.ruleIdPath || '').trim()
+  const ruleIdFromPath = useStore(store, (state) =>
+    ruleIdPath ? state.getValueByPath(ruleIdPath) : undefined
+  )
   const baseUploadRules = useMemo(
-    () => buildUploadRules(item, resourceKind),
-    [item, resourceKind]
+    () => buildUploadRules(item, resourceKind, ruleIdFromPath),
+    [item, resourceKind, ruleIdFromPath]
   )
   const uploadRuleMetas = useUploadRuleMetas(baseUploadRules.map((current) => current.ruleId))
   const uploadRules = useMemo(

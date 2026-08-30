@@ -54,9 +54,11 @@ export function resolveUploadSaveMode(item: UploadItemSchema) {
 
 export function buildUploadRules(
   item: UploadItemSchema,
-  resourceKind: string
+  resourceKind: string,
+  ruleIdFromPath?: unknown
 ): ResourceUploadRule[] {
-  const ruleId = Number(item.meta?.ruleId || 0)
+  const ruleIdPath = String(item.meta?.ruleIdPath || '').trim()
+  const ruleId = Number(ruleIdPath ? ruleIdFromPath : item.meta?.ruleId || 0)
   if (!ruleId) {
     return []
   }
