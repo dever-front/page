@@ -14,6 +14,17 @@ export function normalizeRoutePagePath(path: unknown) {
     .replace(/^\/+|\/+$/g, '')
 }
 
+export function mergeRouteQueryParams(
+  route: unknown,
+  overrides: Record<string, unknown> = {}
+) {
+  const [, rawQuery = ''] = String(route ?? '').split('?')
+  return {
+    ...Object.fromEntries(new URLSearchParams(rawQuery).entries()),
+    ...overrides,
+  }
+}
+
 export function appendStoreRouteQueryParams(
   params: URLSearchParams,
   store: PageStore,

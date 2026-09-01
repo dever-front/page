@@ -6,6 +6,7 @@ import { getRuntimeConfig } from '@/config/app-config'
 import { getAccessTokenKey, useAuthStore } from '@/stores/auth-store'
 import { getCookie } from '@/lib/cookies'
 import { resetPageProgressCache } from '@/lib/page-progress'
+import { mergeRouteQueryParams } from '@/lib/route-context'
 import {
   getCurrentRouterHref,
   getCurrentRouterPathname,
@@ -724,9 +725,7 @@ export async function loadPageSchema(
       return null
     }
 
-    const extraParams = Object.fromEntries(
-      new URLSearchParams(routeQuery).entries()
-    )
+    const extraParams = mergeRouteQueryParams(route)
 
     const cacheVersion = remoteSchemaCacheVersion
     const schemaPromise = loadPageSchemaSingle(
@@ -775,7 +774,7 @@ export async function loadPageDataContainer(
   }
 
   const result = await request(routeApi, 'get', {
-    ...params,
+    ...mergeRouteQueryParams(route, params),
     __route: normalizedRoute,
     __dataKey: dataKey,
   })
