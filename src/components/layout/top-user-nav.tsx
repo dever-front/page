@@ -7,6 +7,7 @@ import {
   setAssistantFloatingEnabled,
   useAssistantFloatingEnabled,
 } from '@/lib/assistant/floating-state'
+import { isAssistantAvailable } from '@/lib/assistant/availability'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -31,6 +32,7 @@ export function TopUserNav() {
   const fallback = getAvatarFallback(name)
   const assistantUserKey = getAssistantFloatingUserKey(user)
   const assistantEnabled = useAssistantFloatingEnabled(assistantUserKey)
+  const assistantAvailable = isAssistantAvailable()
 
   return (
     <>
@@ -70,21 +72,23 @@ export function TopUserNav() {
               <UserRound className='size-4.5 text-muted-foreground' />
               个人信息
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={(event) => event.preventDefault()}
-              className='gap-3 rounded-none px-4 py-3 text-base'
-            >
-              <Bot className='size-4.5 text-muted-foreground' />
-              <span className='flex-1'>AI 助理</span>
-              <Switch
-                checked={assistantEnabled}
-                onCheckedChange={(checked) =>
-                  setAssistantFloatingEnabled(assistantUserKey, checked)
-                }
-                onClick={(event) => event.stopPropagation()}
-                aria-label='AI 助理开关'
-              />
-            </DropdownMenuItem>
+            {assistantAvailable ? (
+              <DropdownMenuItem
+                onSelect={(event) => event.preventDefault()}
+                className='gap-3 rounded-none px-4 py-3 text-base'
+              >
+                <Bot className='size-4.5 text-muted-foreground' />
+                <span className='flex-1'>AI 助理</span>
+                <Switch
+                  checked={assistantEnabled}
+                  onCheckedChange={(checked) =>
+                    setAssistantFloatingEnabled(assistantUserKey, checked)
+                  }
+                  onClick={(event) => event.stopPropagation()}
+                  aria-label='AI 助理开关'
+                />
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuGroup>
           <DropdownMenuSeparator className='my-0' />
           <DropdownMenuItem

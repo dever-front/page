@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import { Loader2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { isAssistantAvailable } from '@/lib/assistant/availability'
 import type { AssistantMediaGenerateButtonProps } from './media-generate'
 
 const LazyAssistantMediaGenerateButton = lazy(() =>
@@ -14,6 +15,10 @@ export function AssistantMediaGenerateLazyButton(
 ) {
   const [loaded, setLoaded] = useState(false)
   const label = `AI 生成${mediaKindLabel(props.kind)}`
+
+  if (!isAssistantAvailable()) {
+    return null
+  }
 
   if (loaded) {
     return (

@@ -11,6 +11,7 @@ import {
   type AssistantFieldContext,
   type AssistantPageContext,
 } from '@/lib/assistant/context'
+import { isAssistantAvailable } from '@/lib/assistant/availability'
 import {
   AssistantQuickFillInteractionRequiredError,
   continueAssistantContextQuickFill,
@@ -97,6 +98,10 @@ export function AssistantFieldGenerateButton({
   store,
   className,
 }: AssistantFieldGenerateButtonProps) {
+  if (!isAssistantAvailable()) {
+    return null
+  }
+
   const field = buildAssistantFieldContext(item)
 
   if (!field || item.meta?.disabled) {
@@ -132,7 +137,7 @@ export function AssistantFormFillButton({
 }: AssistantFormFillButtonProps) {
   const fieldCount = useAssistantFormFieldCount(store)
 
-  if (fieldCount === 0) {
+  if (!isAssistantAvailable() || fieldCount === 0) {
     return null
   }
 
@@ -162,7 +167,7 @@ export function AssistantContextFormFillButton({
   overwrite = true,
   onApplyValues,
 }: AssistantContextFormFillButtonProps) {
-  if (!context.form?.fields.length) {
+  if (!isAssistantAvailable() || !context.form?.fields.length) {
     return null
   }
 
@@ -189,6 +194,10 @@ export function AssistantContextFieldGenerateButton({
   disabled = false,
   onApplyValue,
 }: AssistantContextFieldGenerateButtonProps) {
+  if (!isAssistantAvailable()) {
+    return null
+  }
+
   return (
     <AssistantContextQuickFillPopover
       context={context}

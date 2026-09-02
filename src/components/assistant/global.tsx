@@ -16,6 +16,7 @@ import {
   getAssistantRegistryVersion,
   subscribeAssistantRegistry,
 } from '@/lib/assistant/registry'
+import { isAssistantAvailable } from '@/lib/assistant/availability'
 import {
   getAssistantFloatingUserKey,
   useAssistantFloatingBlockedByModal,
@@ -31,6 +32,14 @@ const AssistantDrawer = lazy(() =>
 )
 
 export function GlobalAssistant() {
+  if (!isAssistantAvailable()) {
+    return null
+  }
+
+  return <AvailableGlobalAssistant />
+}
+
+function AvailableGlobalAssistant() {
   const [open, setOpen] = useState(false)
   const [drawerMounted, setDrawerMounted] = useState(false)
   const user = useAuthStore((state) => state.auth.user)
