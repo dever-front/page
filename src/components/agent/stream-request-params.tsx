@@ -1256,6 +1256,11 @@ export function normalizePowerParams(value: unknown): PowerParam[] {
       if (leftSort !== rightSort) {
         return leftSort - rightSort
       }
+      const leftPowerParamID = Number(left.power_param_id || left.id || 0)
+      const rightPowerParamID = Number(right.power_param_id || right.id || 0)
+      if (leftPowerParamID !== rightPowerParamID) {
+        return leftPowerParamID - rightPowerParamID
+      }
       return Number(left.id || 0) - Number(right.id || 0)
     })
 }
