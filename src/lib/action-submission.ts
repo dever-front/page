@@ -12,7 +12,12 @@ export type SubmissionContext = Record<string, unknown> & {
 }
 export type SubmissionAction = string | ActionConfig
 export type SubmissionScope = { store: PageStore; key: string }
-export const FORM_SUBMISSION_KEY = JSON.stringify(['form', 'data', 'form'])
+// 固定字符串数组的序列化没有副作用，避免阻止 Rollup 合并共享分包。
+export const FORM_SUBMISSION_KEY = /* @__PURE__ */ JSON.stringify([
+  'form',
+  'data',
+  'form',
+])
 
 export function actionSubmissionScopes(
   store: PageStore,
