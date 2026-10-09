@@ -3,7 +3,7 @@
  * 使用 shadcn/ui AlertDialog
  */
 import { useStore } from 'zustand'
-import { useState } from 'react'
+import { useActionSubmission } from '@/hooks/use-action-submission'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -23,43 +23,34 @@ import type { NodeItemProps } from '../../nodes'
 export function FeedbackConfirm({ item, store }: NodeItemProps) {
   const stateKey = item.meta?.stateKey || item.id
   const open = useStore(store, (s) => !!getByPath(s.state, stateKey))
-  const [submitting, setSubmitting] = useState(false)
+  const actionContext = {
+    item,
+    itemKey: String(stateKey || '').replace(/\./g, '-'),
+  }
+  const { submitting, isSubmitting, run } = useActionSubmission(
+    store, item.action?.confirm, actionContext, `confirm:${stateKey}`
+  )
 
   const handleOpenChange = (val: boolean) => {
-    if (submitting) {
+    if (isSubmitting()) {
       return
     }
     store.getState().setPageState(stateKey, val)
   }
 
-  const handleConfirm = async () => {
-    if (submitting) {
-      return
-    }
-
-    setSubmitting(true)
+  const handleConfirm = () => run(async (executionContext) => {
     if (item.action?.confirm) {
-      const result = await runActionsWithResult(store, item.action.confirm, {
-        item,
-        itemKey: String(item.meta?.stateKey || item.id || '').replace(/\./g, '-'),
-      })
-      if (!result.success) {
-        toastActionResult(result, buildConfirmToastOptions(item))
-        setSubmitting(false)
-        return
-      }
-
+      const result = await runActionsWithResult(store, item.action.confirm, executionContext)
+      if (result.ignored) return
       toastActionResult(result, buildConfirmToastOptions(item))
+      if (!result.success) return
     }
 
     const patched = applyConfirmLocalPatch(store, item)
-    if (!patched) {
-      await reloadStorePageSchema(store)
-    }
+    if (!patched) await reloadStorePageSchema(store)
 
     store.getState().setPageState(stateKey, false)
-    setSubmitting(false)
-  }
+  })
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>

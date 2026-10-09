@@ -3,7 +3,7 @@
  * 和 modal 共用同一套壳层语义：
  * 标题 / 右上关闭 / 中间内容滚动 / 底部按钮
  */
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useStore } from 'zustand'
 import {
   Sheet,
@@ -15,6 +15,8 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
+import { useActionSubmission } from '@/hooks/use-action-submission'
+import { FORM_SUBMISSION_KEY } from '@/lib/action-submission'
 import { cn } from '@/lib/utils'
 import { getByPath, resolvePath } from '@/lib/path'
 import { loadPageSchema } from '@/lib/request'
@@ -32,7 +34,7 @@ import { ShowButton } from '../show/button'
 
 const OVERLAY_CONTENT_CLEANUP_DELAY = 220
 
-export function FeedbackDrawer({ item, store }: NodeItemProps) {
+export function FeedbackDrawer({ item, store, runAction, layoutId }: NodeItemProps) {
   const stateKey = item.meta?.stateKey || item.id
   const open = useStore(store, (s) => !!getByPath(s.state, stateKey))
   const routeFromState = useStore(store, (s) =>
@@ -45,7 +47,19 @@ export function FeedbackDrawer({ item, store }: NodeItemProps) {
   const [pageSchema, setPageSchema] = useState<PageSchemaType | null>(null)
   const [pageStore, setPageStore] = useState<PageStore | null>(null)
   const [loadingPage, setLoadingPage] = useState(false)
-  const refreshParentOnCloseRef = useRef(false)
+  const formStore = pageStore ?? store
+  const submitOwner = item.action?.submit ? store : pageStore?.getState().action.submit ? pageStore : store
+  const submitAction = item.action?.submit ?? 'submit'
+  const submissionContext = {
+    modalStore: formStore,
+    modalData: formStore.getState().data,
+    modalState: formStore.getState().state,
+    modalForm: formStore.getState().data?.form,
+  }
+  const { submitting, isSubmitting, run } = useActionSubmission(
+    submitOwner, submitAction, submissionContext, FORM_SUBMISSION_KEY
+  )
+  const waitingForPage = loadingPage || (!!(item.meta?.pageRoute || item.meta?.pageRoutePath) && !pageStore)
   const [hotVersion, setHotVersion] = useState(0)
   const formId = useMemo(() => `drawer-form-${item.id}`, [item.id])
   const footer = item.meta?.footer ?? {}
@@ -79,6 +93,7 @@ export function FeedbackDrawer({ item, store }: NodeItemProps) {
       : undefined
 
   const handleOpenChange = (val: boolean) => {
+    if (isSubmitting()) return
     store.getState().setPageState(stateKey, val)
   }
 
@@ -93,6 +108,7 @@ export function FeedbackDrawer({ item, store }: NodeItemProps) {
 
       setLoadingPage(true)
       setPageSchema(null)
+      setPageStore(null)
 
       try {
         const raw = await loadPageSchema(String(pageRoute))
@@ -125,17 +141,12 @@ export function FeedbackDrawer({ item, store }: NodeItemProps) {
     const timer = window.setTimeout(() => {
       setPageSchema(null)
       setPageStore(null)
-
-      if (refreshParentOnCloseRef.current) {
-        refreshParentOnCloseRef.current = false
-        void reloadStorePageSchema(store)
-      }
     }, OVERLAY_CONTENT_CLEANUP_DELAY)
 
     return () => {
       window.clearTimeout(timer)
     }
-  }, [open, store])
+  }, [open])
 
   useEffect(() => {
     if (!import.meta.env.DEV || !import.meta.hot) {
@@ -163,39 +174,39 @@ export function FeedbackDrawer({ item, store }: NodeItemProps) {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    event.stopPropagation()
+    if (waitingForPage || !getByPath(store.getState().state, stateKey)) return
 
-    if (pageStore && !pageStore.getState().validateForm()) {
-      return
-    }
+    await run(async (executionContext) => {
+      Object.assign(executionContext, {
+        modalData: formStore.getState().data,
+        modalState: formStore.getState().state,
+        modalForm: formStore.getState().data?.form,
+      })
+      if (!formStore.getState().validateForm()) return
 
-    if (!pageStore && !store.getState().validateForm()) {
-      return
-    }
-
-    const closeOverlayAndRefreshParent = () => {
-      refreshParentOnCloseRef.current = true
-      handleOpenChange(false)
-    }
-
-    if (item.action?.submit) {
-      const result = await runActionsWithResult(store, item.action.submit)
-      if (result.success) {
-        closeOverlayAndRefreshParent()
+      const closeOverlayAndRefreshParent = async () => {
+        store.getState().setPageState(stateKey, false)
+        await new Promise(resolve => window.setTimeout(resolve, OVERLAY_CONTENT_CLEANUP_DELAY))
+        await reloadStorePageSchema(store)
       }
-      return
-    }
 
-    if (pageStore?.getState().action.submit) {
-      const result = await runStoreActionWithResult(pageStore, 'submit')
-      if (result.success) {
-        closeOverlayAndRefreshParent()
+      if (item.action?.submit) {
+        const result = await runActionsWithResult(store, item.action.submit, executionContext)
+        if (result.success && !result.ignored) await closeOverlayAndRefreshParent()
+        return
       }
-      return
-    }
 
-    if (store.getState().action.submit) {
-      await runStoreActionWithResult(store, 'submit')
-    }
+      if (pageStore?.getState().action.submit) {
+        const result = await runStoreActionWithResult(pageStore, 'submit', executionContext)
+        if (result.success && !result.ignored) await closeOverlayAndRefreshParent()
+        return
+      }
+
+      if (store.getState().action.submit) {
+        await runStoreActionWithResult(store, 'submit', executionContext)
+      }
+    })
   }
 
   const renderBodyContent = () => {
@@ -265,6 +276,7 @@ export function FeedbackDrawer({ item, store }: NodeItemProps) {
                   variant="ghost"
                   size="icon"
                   className="-mr-3 -mt-2 size-8 shrink-0 self-start"
+                  disabled={submitting}
                 >
                   <span className="sr-only">关闭</span>
                   <svg
@@ -303,6 +315,7 @@ export function FeedbackDrawer({ item, store }: NodeItemProps) {
                   item={{
                     type: 'show-button',
                     ...buttonConfig,
+                    meta: { ...buttonConfig.meta, disabled: !!buttonConfig.meta?.disabled || waitingForPage || submitting },
                     id: buttonConfig.id ?? `${item.id}-footer-button-${index}`,
                   }}
                   value={buttonConfig.value}
@@ -311,18 +324,19 @@ export function FeedbackDrawer({ item, store }: NodeItemProps) {
                   runAction={runAction}
                   store={store}
                   layoutId={layoutId}
+                  context={submissionContext}
                 />
               ))}
 
               {showClose && (
-                <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+                <Button type="button" variant="outline" disabled={submitting} onClick={() => handleOpenChange(false)}>
                   {footer.closeText || '关闭'}
                 </Button>
               )}
 
               {showConfirm && (
-                <Button type="submit" form={formId}>
-                  {footer.confirmText || '确定'}
+                <Button type="submit" form={formId} disabled={submitting || waitingForPage}>
+                  {submitting ? '提交中...' : footer.confirmText || '确定'}
                 </Button>
               )}
             </SheetFooter>

@@ -757,7 +757,7 @@ function CellRenderer({
         buttonMeta={buttonMeta}
         store={store}
         record={row}
-        context={{ row, rowIndex }}
+        context={{ row, rowIndex, rowKey }}
         defaultVariant={type === 'show-button' ? 'default' : 'ghost'}
         defaultSize='sm'
       />
@@ -1029,6 +1029,8 @@ function CellRenderer({
           value={displayValue}
           selectOptions={resolveColumnOptionList(store, column)}
           row={row}
+          rowKey={rowKey}
+          rowIndex={rowIndex}
           editable={editable}
           changeAction={inlineChangeAction}
           onValueChangeSuccess={handleValueSaved}

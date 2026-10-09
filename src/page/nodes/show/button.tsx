@@ -7,12 +7,14 @@
  * - successMessage: 操作成功提示
  * - loadingText: 请求中按钮文案
  */
-import { useState } from 'react'
+import { createElement, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { runActionsWithResult } from '@/lib/action'
+import { useActionSubmission } from '@/hooks/use-action-submission'
+import type { SubmissionContext } from '@/lib/action-submission'
 import {
   buildRemoteSearchPatch,
   buildRemoteSearchResetPatch,
@@ -43,10 +45,12 @@ type ButtonConfirmMeta = {
   destructive?: boolean
 }
 
-export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
+export function ShowButton({ item, value, store, layoutId, context }: NodeItemProps & { context?: SubmissionContext }) {
   const navigate = useNavigate()
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
+  const { submitting, isSubmitting, run } = useActionSubmission(
+    store, item.action?.click, { ...context, item, itemKey: item.id }, `button:${item.id}`
+  )
   const fallbackBackTarget = parseInternalNavigationHref(item.meta?.fallback ?? item.meta?.to)
   const backTarget = item.meta?.back === true ? getNavigationBackTarget() : null
 
@@ -57,7 +61,7 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
         ? (item.meta.confirm as ButtonConfirmMeta)
         : null
 
-  const runCurrentAction = async () => {
+  const runCurrentAction = async (executionContext: SubmissionContext) => {
     if (item.meta?.validateForm === true && !store.getState().validateForm()) {
       return false
     }
@@ -129,8 +133,16 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
     }
 
     if (item.action?.click) {
-      const result = await runActionsWithResult(store, item.action.click)
-      return result.success
+      if (executionContext.modalStore) {
+        const modalState = executionContext.modalStore.getState()
+        Object.assign(executionContext, {
+          modalData: modalState.data,
+          modalState: modalState.state,
+          modalForm: modalState.data?.form,
+        })
+      }
+      const result = await runActionsWithResult(store, item.action.click, executionContext)
+      return result.success && !result.ignored
     }
 
     return true
@@ -145,33 +157,18 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
     ? item.meta?.loadingText || '处理中...'
     : item.name || value || ''
 
-  const executeAction = async () => {
-    if (submitting) {
-      return
-    }
+  const executeAction = () => run(async (executionContext) => {
+    const success = await runCurrentAction(executionContext)
+    if (!success) return
 
-    setSubmitting(true)
-    try {
-      const success = await runCurrentAction()
-      if (!success) {
-        return
-      }
+    if (confirmOpen) setConfirmOpen(false)
 
-      if (confirmOpen) {
-        setConfirmOpen(false)
-      }
-
-      const successMessage = String(item.meta?.successMessage || '').trim()
-      if (successMessage) {
-        toast.success(successMessage)
-      }
-    } finally {
-      setSubmitting(false)
-    }
-  }
+    const successMessage = String(item.meta?.successMessage || '').trim()
+    if (successMessage) toast.success(successMessage)
+  })
 
   const handleClick = async () => {
-    if (submitting) {
+    if (isSubmitting()) {
       return
     }
 
@@ -193,7 +190,7 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
         onClick={() => void handleClick()}
         disabled={submitting || !!item.meta?.disabled}
       >
-        {Icon && !submitting ? <Icon className="size-4" /> : null}
+        {Icon && !submitting ? createElement(Icon, { className: 'size-4' }) : null}
         {buttonLabel ? <span>{buttonLabel}</span> : null}
       </Button>
 
@@ -201,7 +198,7 @@ export function ShowButton({ item, value, store, layoutId }: NodeItemProps) {
         <ConfirmDialog
           open={confirmOpen}
           onOpenChange={(open) => {
-            if (submitting) {
+            if (isSubmitting()) {
               return
             }
             setConfirmOpen(open)

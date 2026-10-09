@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useActionSubmission } from '@/hooks/use-action-submission'
 import { runActionWithResult } from '@/lib/action'
 import { toastActionResult } from '@/lib/action-toast'
 import { type PageStore } from '@/lib/store'
@@ -28,20 +29,16 @@ export function AccountProfileDialog({
   const user = useAuthStore((state) => state.auth.user)
   const setUser = useAuthStore((state) => state.auth.setUser)
   const [pageStore, setPageStore] = useState<PageStore | null>(null)
-  const [submitting, setSubmitting] = useState(false)
+  const { submitting, isSubmitting, run } = useActionSubmission(pageStore, 'submit')
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!isSubmitting()) onOpenChange(nextOpen)
+  }
 
   const handleSubmit = async () => {
-    if (!pageStore || submitting) {
-      return
-    }
-
-    if (!pageStore.getState().validateForm()) {
-      return
-    }
-
-    setSubmitting(true)
-    try {
-      const result = await runActionWithResult(pageStore, 'submit')
+    if (!pageStore) return
+    await run(async execution => {
+      if (!pageStore.getState().validateForm()) return
+      const result = await runActionWithResult(pageStore, 'submit', execution)
       toastActionResult(result, {
         defaultSuccessMessage: '个人信息已更新',
       })
@@ -57,13 +54,11 @@ export function AccountProfileDialog({
       }
 
       onOpenChange(false)
-    } finally {
-      setSubmitting(false)
-    }
+    })
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className='flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg'>
         <DialogHeader className='px-6 py-4 text-start'>
           <DialogTitle>个人信息</DialogTitle>
@@ -84,7 +79,7 @@ export function AccountProfileDialog({
           <Button
             type='button'
             variant='outline'
-            onClick={() => onOpenChange(false)}
+            onClick={() => handleOpenChange(false)}
             disabled={submitting}
           >
             取消

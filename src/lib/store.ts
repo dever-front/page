@@ -22,6 +22,7 @@ export type PageStoreState = {
   errors: Record<string, string>
   optionRegistry: Record<string, any[]>
   resetVersion: number
+  pendingSubmissions: Map<string, symbol>
 
   // 读写 data
   getData: (path: string) => any
@@ -65,6 +66,7 @@ export function createPageStore(
     errors: {},
     optionRegistry: {},
     resetVersion: 0,
+    pendingSubmissions: new Map(),
 
     getData: (path: string) => getByPath(get().data, path),
 

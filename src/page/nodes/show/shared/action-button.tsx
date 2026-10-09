@@ -1,6 +1,7 @@
-import { useState, type ComponentProps } from 'react'
+import { createElement, useState, type ComponentProps } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { runActionsWithResult } from '@/lib/action'
+import { useActionSubmission } from '@/hooks/use-action-submission'
 import { toastActionResult } from '@/lib/action-toast'
 import { matchConditionValue } from '@/lib/condition'
 import { resolveLucideIcon } from '@/lib/icon'
@@ -93,13 +94,17 @@ export function ActionButton({
 }: ActionButtonProps) {
   const navigate = useNavigate()
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
   const actionContext = {
     ...(context || {}),
     ...(record ? { row: record } : {}),
     item: buttonMeta,
     itemKey: buttonMeta.key || buttonMeta.id || buttonMeta.stateKey,
   }
+
+  const { submitting, isSubmitting, run } = useActionSubmission(
+    store, buttonMeta.action?.click, actionContext,
+    `button:${actionContext.itemKey || buttonMeta.to || ''}`
+  )
 
   if (isActionButtonHidden(buttonMeta, record, actionContext)) {
     return null
@@ -111,30 +116,15 @@ export function ActionButton({
   const hasLabel = !!buttonLabel
   const confirmMeta = resolveActionButtonConfirm(buttonMeta)
 
-  const executeAction = async () => {
-    if (submitting) {
-      return
-    }
-
-    setSubmitting(true)
-    try {
-      const success = await runButtonAction(
-        buttonMeta,
-        store,
-        record,
-        actionContext,
-        navigate
-      )
-      if (success) {
-        setConfirmOpen(false)
-      }
-    } finally {
-      setSubmitting(false)
-    }
-  }
+  const executeAction = () => run(async (executionContext) => {
+    const success = await runButtonAction(
+      buttonMeta, store, record, executionContext, navigate
+    )
+    if (success) setConfirmOpen(false)
+  })
 
   const handleClick = async () => {
-    if (submitting) {
+    if (isSubmitting()) {
       return
     }
 
@@ -158,8 +148,8 @@ export function ActionButton({
       onClick={() => void handleClick()}
       disabled={submitting || !!buttonMeta?.disabled}
     >
-      {Icon ? <Icon className='size-4' /> : null}
-      {hasLabel ? <span>{buttonLabel}</span> : null}
+      {Icon ? createElement(Icon, { className: 'size-4' }) : null}
+      {hasLabel ? <span>{submitting ? '处理中...' : buttonLabel}</span> : null}
     </Button>
   )
 
@@ -179,7 +169,7 @@ export function ActionButton({
         <ConfirmDialog
           open={confirmOpen}
           onOpenChange={(open) => {
-            if (submitting) {
+            if (isSubmitting()) {
               return
             }
             setConfirmOpen(open)
@@ -244,6 +234,7 @@ async function runButtonAction(
       buttonMeta.action.click,
       actionContext
     )
+    if (result.ignored) return false
     if (
       !result.success ||
       buttonMeta?.successMessage ||

@@ -15,12 +15,19 @@ import {
 import { buildInheritedPageRoute } from './route-inherit'
 import type { ActionConfig } from './schema'
 import type { PageStore } from './store'
+import {
+  acquireActionSubmission,
+  actionSubmissionScopes,
+  isMutatingRequestMethod,
+  type SubmissionContext,
+} from './action-submission'
 
-type ActionContext = Record<string, any>
+type ActionContext = SubmissionContext
 type ActionInvocation = string | ActionConfig
 
 export type ActionRunResult = {
   success: boolean
+  ignored?: boolean
   data?: any
   message?: string
 }
@@ -79,6 +86,16 @@ export async function runActionConfigWithResult(
   config: ActionConfig,
   context?: ActionContext
 ): Promise<ActionRunResult> {
+  return await withActionSubmission(store, config, context, execution =>
+    executeActionConfig(store, config, execution)
+  )
+}
+
+async function executeActionConfig(
+  store: PageStore,
+  config: ActionConfig,
+  context?: ActionContext
+): Promise<ActionRunResult> {
   const { type } = config
 
   switch (type) {
@@ -132,6 +149,34 @@ export async function runActions(
 }
 
 export async function runActionsWithResult(
+  store: PageStore,
+  nameOrNames: ActionInvocation | ActionInvocation[],
+  context?: ActionContext
+): Promise<ActionRunResult> {
+  return await withActionSubmission(store, nameOrNames, context, execution =>
+    executeActions(store, nameOrNames, execution)
+  )
+}
+
+async function withActionSubmission(
+  store: PageStore,
+  actions: ActionInvocation | ActionInvocation[],
+  context: ActionContext | undefined,
+  perform: (execution: ActionContext) => Promise<ActionRunResult>
+): Promise<ActionRunResult> {
+  const submission = acquireActionSubmission(
+    actionSubmissionScopes(store, actions, context),
+    context
+  )
+  if (!submission) return { success: false, ignored: true }
+  try {
+    return await perform(submission.context)
+  } finally {
+    submission.release()
+  }
+}
+
+async function executeActions(
   store: PageStore,
   nameOrNames: ActionInvocation | ActionInvocation[],
   context?: ActionContext
@@ -670,22 +715,6 @@ function resolveCrudRequestKey(
       return 'submit'
     default:
       return normalizeOperationKey(String(context?.itemKey || '').trim())
-  }
-}
-
-function isMutatingRequestMethod(method?: string) {
-  switch (
-    String(method || 'get')
-      .trim()
-      .toLowerCase()
-  ) {
-    case 'post':
-    case 'put':
-    case 'patch':
-    case 'delete':
-      return true
-    default:
-      return false
   }
 }
 

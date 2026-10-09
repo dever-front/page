@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { runActionsWithResult, type ImportActionPayload } from '@/lib/action'
+import { useActionSubmission } from '@/hooks/use-action-submission'
 import type { ExportTaskInfo } from '@/lib/export-task'
 import { downloadExportTask, getExportTaskInfo } from '@/lib/export-task'
 import { resolveLucideIcon } from '@/lib/icon'
@@ -37,6 +38,12 @@ export function ShowButtonGroup({ item, store }: NodeItemProps) {
   const [importTitle, setImportTitle] = useState('')
   const [importDescription, setImportDescription] = useState('')
   const downloadedTaskIDRef = useRef(0)
+  const { submitting, run } = useActionSubmission(
+    store,
+    menuItems.flatMap(menuItem => menuItem.action?.click || []),
+    { group: item },
+    `button-group:${item.id}`
+  )
 
   useEffect(() => {
     if (!exportDialogOpen || !task || !['pending', 'running'].includes(task.status)) {
@@ -94,44 +101,40 @@ export function ShowButtonGroup({ item, store }: NodeItemProps) {
   }
 
   const handleItemClick = async (menuItem: Record<string, any>, index: number) => {
-    if (loadingKey) {
-      return
-    }
+    if (!menuItem.action?.click) return
 
-    if (!menuItem.action?.click) {
-      return
-    }
+    await run(async (executionContext) => {
+      const itemKey = resolveButtonGroupItemKey(item, menuItem, index)
+      setLoadingKey(itemKey)
+      try {
+        const result = await runActionsWithResult(store, menuItem.action.click, {
+          ...executionContext,
+          item: menuItem,
+          itemKey,
+        })
+        if (result.ignored) return
+        if (!result.success) {
+          toast.error(result.message || '操作失败')
+          return
+        }
 
-    const itemKey = resolveButtonGroupItemKey(item, menuItem, index)
-    setLoadingKey(itemKey)
-    try {
-      const result = await runActionsWithResult(store, menuItem.action?.click, {
-        item: menuItem,
-        itemKey,
-        group: item,
-      })
+        if (isExportTaskInfo(result.data)) {
+          downloadedTaskIDRef.current = 0
+          setTask(result.data)
+          setExportDialogOpen(true)
+          return
+        }
 
-      if (!result.success) {
-        toast.error(result.message || '操作失败')
-        return
+        if (isImportActionPayload(result.data)) {
+          setImportPayload(result.data)
+          setImportTitle(menuItem.name || item.name || '导入')
+          setImportDescription(menuItem.info || item.info || '')
+          setImportDialogOpen(true)
+        }
+      } finally {
+        setLoadingKey('')
       }
-
-      if (isExportTaskInfo(result.data)) {
-        downloadedTaskIDRef.current = 0
-        setTask(result.data)
-        setExportDialogOpen(true)
-        return
-      }
-
-      if (isImportActionPayload(result.data)) {
-        setImportPayload(result.data)
-        setImportTitle(menuItem.name || item.name || '导入')
-        setImportDescription(menuItem.info || item.info || '')
-        setImportDialogOpen(true)
-      }
-    } finally {
-      setLoadingKey('')
-    }
+    })
   }
 
   const progressValue = Math.max(0, Math.min(Number(task?.progress || 0), 100))
@@ -144,7 +147,7 @@ export function ShowButtonGroup({ item, store }: NodeItemProps) {
             variant={item.meta?.variant || 'outline'}
             size={item.meta?.size || 'sm'}
             className={cn(item.className)}
-            disabled={!!item.meta?.disabled || !!loadingKey}
+            disabled={!!item.meta?.disabled || submitting}
           >
             {loadingKey ? <LoaderCircle className="size-4 animate-spin" /> : TriggerIcon ? <TriggerIcon className="size-4" /> : null}
             {item.name || '按钮组'}
@@ -159,7 +162,7 @@ export function ShowButtonGroup({ item, store }: NodeItemProps) {
               <DropdownMenuItem
                 key={itemKey}
                 onClick={() => void handleItemClick(menuItem, index)}
-                disabled={!!loadingKey || !!menuItem.meta?.disabled}
+                disabled={submitting || !!menuItem.meta?.disabled}
               >
                 {MenuIcon ? <MenuIcon className="mr-2 size-4" /> : null}
                 {menuItem.name || itemKey}

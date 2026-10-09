@@ -2,6 +2,7 @@ import { toast } from 'sonner'
 
 type ActionResultLike = {
   success: boolean
+  ignored?: boolean
   message?: string
 }
 
@@ -16,6 +17,7 @@ export function toastActionResult(
   result: ActionResultLike,
   options: ActionToastOptions = {}
 ) {
+  if (result.ignored) return
   if (result.success) {
     const message = pickSuccessToastMessage(result, options)
     if (message) {

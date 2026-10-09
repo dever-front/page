@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { useActionSubmission } from '@/hooks/use-action-submission'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -28,6 +29,8 @@ export type SelectOption = {
 
 export type ShowSelectProps = NodeItemProps & {
   row?: Record<string, any>
+  rowKey?: string
+  rowIndex?: number
   editable?: boolean
   selectOptions?: SelectOption[]
   changeAction?: any
@@ -43,12 +46,18 @@ export function ShowSelect({
   option,
   selectOptions,
   row,
+  rowKey: tableRowKey,
+  rowIndex,
   editable = false,
   changeAction,
   store,
   onValueChangeSuccess,
 }: ShowSelectProps) {
-  const [savingValue, setSavingValue] = useState<string>('')
+  const rowKey = String(tableRowKey || item.meta?.rowKey || 'id')
+  const field = String(item.value || '')
+  const { submitting, run } = useActionSubmission(
+    store, changeAction, { row, rowKey, rowIndex, field }
+  )
 
   const normalizedOptions = useMemo(() => {
     const items = Array.isArray(selectOptions)
@@ -100,7 +109,7 @@ export function ShowSelect({
           type="button"
           variant="ghost"
           size="sm"
-          disabled={!!savingValue}
+          disabled={submitting}
           className={cn(
             'h-auto p-0 hover:bg-transparent focus-visible:ring-0',
             displayMode === 'badge' ? 'rounded-full' : 'rounded-md'
@@ -119,51 +128,47 @@ export function ShowSelect({
           return (
             <DropdownMenuItem
               key={optionId}
-              disabled={isCurrent || !!savingValue}
+              disabled={isCurrent || submitting}
               onClick={async () => {
                 if (!row || !optionId) return
+                await run(async execution => {
+                  const confirmValues = Array.isArray(item.meta?.confirmValues)
+                    ? item.meta.confirmValues.map((value: unknown) => String(value))
+                    : []
+                  const confirmStateKey = String(item.meta?.confirmStateKey || '')
+                  const confirmDataKey = String(item.meta?.confirmDataKey || '')
 
-                const confirmValues = Array.isArray(item.meta?.confirmValues)
-                  ? item.meta.confirmValues.map((value: unknown) => String(value))
-                  : []
-                const confirmStateKey = String(item.meta?.confirmStateKey || '')
-                const confirmDataKey = String(item.meta?.confirmDataKey || '')
-                const rowKey = String(item.meta?.rowKey || 'id')
-                const field = String(item.value || '')
+                  if (confirmValues.includes(optionId)) {
+                    const resolvedRowKey = rowKey || 'id'
+                    const resolvedConfirmStateKey =
+                      confirmStateKey || buildDefaultConfirmStateKey(field)
+                    const resolvedConfirmDataKey =
+                      confirmDataKey || buildDefaultConfirmDataKey(field)
 
-                if (confirmValues.includes(optionId)) {
-                  const resolvedRowKey = rowKey || 'id'
-                  const resolvedConfirmStateKey =
-                    confirmStateKey || buildDefaultConfirmStateKey(field)
-                  const resolvedConfirmDataKey =
-                    confirmDataKey || buildDefaultConfirmDataKey(field)
+                    if (resolvedConfirmStateKey && resolvedConfirmDataKey && field && row) {
+                      store.getState().setData(resolvedConfirmDataKey, {
+                        _partial: true,
+                        [resolvedRowKey]: row[resolvedRowKey],
+                        [field]: optionId,
+                      })
+                      store.getState().setPageState(resolvedConfirmStateKey, true)
+                      return
+                    }
 
-                  if (resolvedConfirmStateKey && resolvedConfirmDataKey && field && row) {
-                    store.getState().setData(resolvedConfirmDataKey, {
-                      _partial: true,
-                      [resolvedRowKey]: row[resolvedRowKey],
-                      [field]: optionId,
-                    })
-                    store.getState().setPageState(resolvedConfirmStateKey, true)
-                    return
+                    const nextLabel = current.label || current.value || optionId
+                    const confirmMessage =
+                      item.meta?.confirmMessage || `确认将值改为“${nextLabel}”吗？`
+
+                    if (
+                      typeof window !== 'undefined' &&
+                      !window.confirm(confirmMessage)
+                    ) {
+                      return
+                    }
                   }
 
-                  const nextLabel = current.label || current.value || optionId
-                  const confirmMessage =
-                    item.meta?.confirmMessage || `确认将值改为“${nextLabel}”吗？`
-
-                  if (
-                    typeof window !== 'undefined' &&
-                    !window.confirm(confirmMessage)
-                  ) {
-                    return
-                  }
-                }
-
-                setSavingValue(optionId)
-                try {
                   const result = await runActionsWithResult(store, changeAction, {
-                    row,
+                    ...execution,
                     value: optionValue,
                     option: current,
                   })
@@ -179,9 +184,7 @@ export function ShowSelect({
                     defaultSuccessMessage: '操作成功',
                     defaultErrorMessage: '修改失败',
                   })
-                } finally {
-                  setSavingValue('')
-                }
+                })
               }}
             >
               <span className="flex min-w-0 flex-1 items-center gap-2">

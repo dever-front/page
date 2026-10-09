@@ -5,6 +5,7 @@ import { getByPath, setByPath } from '@/lib/path'
 import { runActionsWithResult } from '@/lib/action'
 import { toastActionResult } from '@/lib/action-toast'
 import { cn } from '@/lib/utils'
+import { useActionSubmission } from '@/hooks/use-action-submission'
 import { FormInput } from '../../form/input'
 import { FormNumber } from '../../form/number'
 import { FormSwitch } from '../../form/switch'
@@ -38,48 +39,16 @@ export function EditableFormCell({
 }: InlineCellProps) {
   const field = column.value || ''
   const [draftValue, setDraftValue] = useState(value ?? '')
-  const [saving, setSaving] = useState(false)
   const optionList = resolveColumnOptionList(store, column)
 
   useEffect(() => {
     setDraftValue(value ?? '')
   }, [value])
 
-  const commit = useCallback(
-    async (nextValue: any = draftValue) => {
-      if (!canEdit || !field || saving || !inlineAction) {
-        return
-      }
-
-      if (isSameEditableValue(value, nextValue)) {
-        return
-      }
-
-      setSaving(true)
-      let saved = false
-      try {
-        const result = await runActionsWithResult(store, inlineAction, {
-          row,
-          rowIndex,
-          value: nextValue,
-          field,
-        })
-        saved = result.success
-        if (result.success) {
-          onValueSaved?.(nextValue)
-        }
-        if (shouldToastInlineAction(result, inlineAction, store.getState().action)) {
-          toastActionResult(result, buildInlineToastOptions(column))
-        }
-      } finally {
-        if (!saved) {
-          setDraftValue(value ?? '')
-        }
-        setSaving(false)
-      }
-    },
-    [canEdit, column, draftValue, field, inlineAction, onValueSaved, row, rowIndex, saving, store, value]
-  )
+  const { saving, commit } = useInlineCellCommit({
+    column, value, row, rowIndex, rowKey, store, onValueSaved,
+    inlineAction, canEdit, draftValue, setDraftValue,
+  })
 
   const formItem = {
     id: `table-cell-${row[rowKey] ?? 'row'}-${field}`,
@@ -195,7 +164,6 @@ export function EditableShowCell({
   const field = column.value || ''
   const [editing, setEditing] = useState(false)
   const [draftValue, setDraftValue] = useState(value ?? '')
-  const [saving, setSaving] = useState(false)
   const optionList = resolveColumnOptionList(store, column)
   const editorStyle = useMemo(
     () => buildInlineEditorStyle(displayValue ?? value, editorType),
@@ -206,43 +174,11 @@ export function EditableShowCell({
     setDraftValue(value ?? '')
   }, [value])
 
-  const commit = useCallback(
-    async (nextValue: any = draftValue) => {
-      if (!canEdit || !field || saving || !inlineAction) {
-        return
-      }
-
-      if (isSameEditableValue(value, nextValue)) {
-        setEditing(false)
-        return
-      }
-
-      setSaving(true)
-      let saved = false
-      try {
-        const result = await runActionsWithResult(store, inlineAction, {
-          row,
-          rowIndex,
-          value: nextValue,
-          field,
-        })
-        saved = result.success
-        if (result.success) {
-          onValueSaved?.(nextValue)
-          setEditing(false)
-        }
-        if (shouldToastInlineAction(result, inlineAction, store.getState().action)) {
-          toastActionResult(result, buildInlineToastOptions(column))
-        }
-      } finally {
-        if (!saved) {
-          setDraftValue(value ?? '')
-        }
-        setSaving(false)
-      }
-    },
-    [canEdit, column, draftValue, field, inlineAction, onValueSaved, row, rowIndex, saving, store, value]
-  )
+  const { saving, commit } = useInlineCellCommit({
+    column, value, row, rowIndex, rowKey, store, onValueSaved,
+    inlineAction, canEdit, draftValue, setDraftValue,
+    finishEditing: () => setEditing(false),
+  })
 
   const cancel = useCallback(() => {
     setDraftValue(value ?? '')
@@ -350,6 +286,82 @@ export function EditableShowCell({
       />
     </div>
   )
+}
+
+function useInlineCellCommit({
+  column,
+  value,
+  row,
+  rowIndex,
+  rowKey,
+  store,
+  onValueSaved,
+  inlineAction,
+  canEdit,
+  draftValue,
+  setDraftValue,
+  finishEditing,
+}: Omit<InlineCellProps, 'onAction'> & {
+  draftValue: InlineCellProps['value']
+  setDraftValue: (value: InlineCellProps['value']) => void
+  finishEditing?: () => void
+}) {
+  const field = column.value || ''
+  const { submitting: saving, run } = useActionSubmission(store, inlineAction, {
+    row,
+    rowIndex,
+    rowKey,
+    field,
+  })
+  const commit = useCallback(
+    async (nextValue: any = draftValue) => {
+      if (!canEdit || !field || saving || !inlineAction) return
+      if (isSameEditableValue(value, nextValue)) {
+        finishEditing?.()
+        return
+      }
+      await run(async (execution) => {
+        let saved = false
+        try {
+          const result = await runActionsWithResult(store, inlineAction, {
+            ...execution,
+            value: nextValue,
+          })
+          saved = result.success
+          if (result.success) {
+            onValueSaved?.(nextValue)
+            finishEditing?.()
+          }
+          if (
+            shouldToastInlineAction(
+              result,
+              inlineAction,
+              store.getState().action
+            )
+          ) {
+            toastActionResult(result, buildInlineToastOptions(column))
+          }
+        } finally {
+          if (!saved) setDraftValue(value ?? '')
+        }
+      })
+    },
+    [
+      canEdit,
+      column,
+      draftValue,
+      field,
+      finishEditing,
+      inlineAction,
+      onValueSaved,
+      run,
+      saving,
+      setDraftValue,
+      store,
+      value,
+    ]
+  )
+  return { saving, commit }
 }
 
 export function buildInlineChangeAction(

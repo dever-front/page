@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/table'
 import { uploadFileByRule } from '@/lib/upload'
 import { useUploadRuleMetas } from '@/hooks/use-upload-rule-metas'
+import { useActionSubmission } from '@/hooks/use-action-submission'
 import {
   analyzeImportFile,
   createImportTask,
@@ -64,7 +65,12 @@ export function ImportDialog({
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [uploading, setUploading] = useState(false)
   const [loadingAnalysis, setLoadingAnalysis] = useState(false)
-  const [submitLoading, setSubmitLoading] = useState(false)
+  const { submitting: submitLoading, isSubmitting, run } = useActionSubmission(
+    store, undefined, {}, JSON.stringify(['import', payload?.path, payload?.importKey])
+  )
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!isSubmitting()) onOpenChange(nextOpen)
+  }
   const [uploadedFile, setUploadedFile] = useState<{ id: number; name: string; hash: string } | null>(null)
   const [analysis, setAnalysis] = useState<ImportAnalyzeResult | null>(null)
   const [sheetName, setSheetName] = useState('')
@@ -84,7 +90,6 @@ export function ImportDialog({
 
     setUploading(false)
     setLoadingAnalysis(false)
-    setSubmitLoading(false)
     setUploadedFile(null)
     setAnalysis(null)
     setSheetName('')
@@ -243,44 +248,44 @@ export function ImportDialog({
       return
     }
 
-    setSubmitLoading(true)
-    setMessage('')
-    try {
-      const nextTask = await createImportTask({
-        path: payload.path,
-        importKey: payload.importKey,
-        fileId: uploadedFile.id,
-        fileHash: uploadedFile.hash,
-        sheetName,
-        mappings,
-        matchFields,
-        matchMode,
-        fieldSettings: fieldSettingsByField,
-      })
-      setTask(nextTask)
-    } catch (error: any) {
-      setMessage(error?.message || '创建导入任务失败')
-    } finally {
-      setSubmitLoading(false)
-    }
+    await run(async () => {
+      setMessage('')
+      try {
+        const nextTask = await createImportTask({
+          path: payload.path,
+          importKey: payload.importKey,
+          fileId: uploadedFile.id,
+          fileHash: uploadedFile.hash,
+          sheetName,
+          mappings,
+          matchFields,
+          matchMode,
+          fieldSettings: fieldSettingsByField,
+        })
+        setTask(nextTask)
+      } catch (error: unknown) {
+        setMessage(error instanceof Error ? error.message : '创建导入任务失败')
+      }
+    })
   }
 
-  const handleFinish = async () => {
+  const handleFinish = () => run(async execution => {
     if (task?.status === 'success') {
       if (payload?.then) {
-        await runActionsWithResult(store, payload.then)
+        const result = await runActionsWithResult(store, payload.then, execution)
+        if (result.ignored) return
       } else {
         await reloadStorePageSchema(store)
       }
       toast.success(task.failed_rows > 0 ? `导入完成，失败 ${task.failed_rows} 行` : '导入完成')
     }
     onOpenChange(false)
-  }
+  })
 
   const progressValue = Math.max(0, Math.min(Number(task?.progress || 0), 100))
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className='max-h-[90vh] overflow-hidden sm:max-w-2xl'>
         <DialogHeader>
           <DialogTitle>{title || '导入配置'}</DialogTitle>
@@ -624,12 +629,12 @@ export function ImportDialog({
 
         <DialogFooter>
           {task ? (
-            <Button type='button' onClick={() => void handleFinish()}>
+            <Button type='button' disabled={submitLoading} onClick={() => void handleFinish()}>
               {task.status === 'failed' ? '关闭' : '完成'}
             </Button>
           ) : (
             <>
-              <Button type='button' variant='outline' onClick={() => onOpenChange(false)}>
+              <Button type='button' variant='outline' disabled={submitLoading} onClick={() => handleOpenChange(false)}>
                 取消
               </Button>
               <Button

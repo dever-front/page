@@ -17,6 +17,8 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { useActionSubmission } from '@/hooks/use-action-submission'
+import { FORM_SUBMISSION_KEY } from '@/lib/action-submission'
 import { cn } from '@/lib/utils'
 import { getByPath, resolvePath } from '@/lib/path'
 import { loadPageSchema } from '@/lib/request'
@@ -65,7 +67,7 @@ function resolveDialogBodyOverflowClass(meta: Record<string, any> | undefined) {
   return meta?.bodyScroll === false ? 'overflow-hidden' : 'overflow-y-auto'
 }
 
-export function FeedbackModal({ item, store }: NodeItemProps) {
+export function FeedbackModal({ item, store, runAction, layoutId }: NodeItemProps) {
   // 从 state 读取开关状态
   const stateKey = item.meta?.stateKey || item.id
   const open = useStore(store, (s) => !!getByPath(s.state, stateKey))
@@ -79,7 +81,19 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
   const [pageSchema, setPageSchema] = useState<PageSchemaType | null>(null)
   const [pageStore, setPageStore] = useState<PageStore | null>(null)
   const [loadingPage, setLoadingPage] = useState(false)
-  const refreshParentOnCloseRef = useRef(false)
+  const formStore = pageStore ?? store
+  const submitOwner = item.action?.submit ? store : pageStore?.getState().action.submit ? pageStore : store
+  const submitAction = item.action?.submit ?? 'submit'
+  const submissionContext = {
+    modalStore: formStore,
+    modalData: formStore.getState().data,
+    modalState: formStore.getState().state,
+    modalForm: formStore.getState().data?.form,
+  }
+  const { submitting, isSubmitting, run } = useActionSubmission(
+    submitOwner, submitAction, submissionContext, FORM_SUBMISSION_KEY
+  )
+  const waitingForPage = loadingPage || (!!(item.meta?.pageRoute || item.meta?.pageRoutePath) && !pageStore)
   const assistantFloatingBlockIdRef = useRef(
     `feedback-modal:${item.id}:${Math.random().toString(36).slice(2)}`
   )
@@ -136,6 +150,7 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
   }, [maximized, open])
 
   const handleOpenChange = (val: boolean) => {
+    if (isSubmitting()) return
     store.getState().setPageState(stateKey, val)
   }
 
@@ -150,6 +165,7 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
 
       setLoadingPage(true)
       setPageSchema(null)
+      setPageStore(null)
 
       try {
         const raw = await loadPageSchema(String(pageRoute))
@@ -184,22 +200,12 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
     const timer = window.setTimeout(() => {
       setPageSchema(null)
       setPageStore(null)
-
-      if (refreshParentOnCloseRef.current) {
-        refreshParentOnCloseRef.current = false
-        const reloadDataKey = String(item.meta?.reloadDataKey || '').trim()
-        if (reloadDataKey) {
-          void reloadStoreDataContainer(store, reloadDataKey)
-        } else {
-          void reloadStorePageSchema(store)
-        }
-      }
     }, OVERLAY_CONTENT_CLEANUP_DELAY)
 
     return () => {
       window.clearTimeout(timer)
     }
-  }, [item.meta?.reloadDataKey, open, store])
+  }, [open])
 
   useEffect(() => {
     if (!import.meta.env.DEV || !import.meta.hot) {
@@ -228,58 +234,57 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     event.stopPropagation()
+    if (waitingForPage || !getByPath(store.getState().state, stateKey)) return
 
-    if (pageStore && !pageStore.getState().validateForm()) {
-      return
-    }
+    await run(async (executionContext) => {
+      Object.assign(executionContext, {
+        modalData: formStore.getState().data,
+        modalState: formStore.getState().state,
+        modalForm: formStore.getState().data?.form,
+      })
+      if (!formStore.getState().validateForm()) return
 
-    if (!pageStore && !store.getState().validateForm()) {
-      return
-    }
+      const closeOverlayAndRefreshParent = async (submitResult?: ActionRunResult) => {
+        if (item.action?.success) {
+          const result = await runActionsWithResult(store, item.action.success, {
+            ...executionContext,
+            modalData: formStore.getState().data,
+            modalState: formStore.getState().state,
+            modalForm: formStore.getState().data?.form,
+            result: submitResult?.data,
+            message: submitResult?.message,
+          })
+          if (!result.success || result.ignored) return
+        }
 
-    const closeOverlayAndRefreshParent = async (submitResult?: ActionRunResult) => {
-      if (item.action?.success) {
-        const result = await runActionsWithResult(store, item.action.success, {
-          modalStore: pageStore,
-          modalData: pageStore?.getState().data,
-          modalState: pageStore?.getState().state,
-          modalForm: pageStore?.getState().data?.form,
-          result: submitResult?.data,
-          message: submitResult?.message,
-        })
-        if (!result.success) {
-          return
+        store.getState().setPageState(stateKey, false)
+        if (item.meta?.refreshParentOnSuccess === false) return
+
+        await new Promise(resolve => window.setTimeout(resolve, OVERLAY_CONTENT_CLEANUP_DELAY))
+        const reloadDataKey = String(item.meta?.reloadDataKey || '').trim()
+        if (reloadDataKey) {
+          await reloadStoreDataContainer(store, reloadDataKey)
+        } else {
+          await reloadStorePageSchema(store)
         }
       }
 
-      refreshParentOnCloseRef.current = item.meta?.refreshParentOnSuccess !== false
-      handleOpenChange(false)
-    }
-
-    if (item.action?.submit) {
-      const result = await runActionsWithResult(store, item.action.submit, {
-        modalStore: pageStore,
-        modalData: pageStore?.getState().data,
-        modalState: pageStore?.getState().state,
-        modalForm: pageStore?.getState().data?.form,
-      })
-      if (result.success) {
-        await closeOverlayAndRefreshParent(result)
+      if (item.action?.submit) {
+        const result = await runActionsWithResult(store, item.action.submit, executionContext)
+        if (result.success && !result.ignored) await closeOverlayAndRefreshParent(result)
+        return
       }
-      return
-    }
 
-    if (pageStore?.getState().action.submit) {
-      const result = await runStoreActionWithResult(pageStore, 'submit')
-      if (result.success) {
-        await closeOverlayAndRefreshParent(result)
+      if (pageStore?.getState().action.submit) {
+        const result = await runStoreActionWithResult(pageStore, 'submit', executionContext)
+        if (result.success && !result.ignored) await closeOverlayAndRefreshParent(result)
+        return
       }
-      return
-    }
 
-    if (store.getState().action.submit) {
-      await runStoreActionWithResult(store, 'submit')
-    }
+      if (store.getState().action.submit) {
+        await runStoreActionWithResult(store, 'submit', executionContext)
+      }
+    })
   }
 
   const renderBodyContent = () => {
@@ -372,6 +377,7 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
                   variant="ghost"
                   size="icon"
                   className="-mr-3 -mt-2 size-8 shrink-0 self-start"
+                  disabled={submitting}
                 >
                   <span className="sr-only">关闭</span>
                   <svg
@@ -411,6 +417,7 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
                   item={{
                     type: 'show-button',
                     ...buttonConfig,
+                    meta: { ...buttonConfig.meta, disabled: !!buttonConfig.meta?.disabled || waitingForPage || submitting },
                     id: buttonConfig.id ?? `${item.id}-footer-button-${index}`,
                   }}
                   value={buttonConfig.value}
@@ -419,18 +426,19 @@ export function FeedbackModal({ item, store }: NodeItemProps) {
                   runAction={runAction}
                   store={store}
                   layoutId={layoutId}
+                  context={submissionContext}
                 />
               ))}
 
               {showClose && (
-                <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+                <Button type="button" variant="outline" disabled={submitting} onClick={() => handleOpenChange(false)}>
                   {footer.closeText || '关闭'}
                 </Button>
               )}
 
               {showConfirm && (
-                <Button type="submit" form={formId}>
-                  {footer.confirmText || '确定'}
+                <Button type="submit" form={formId} disabled={submitting || waitingForPage}>
+                  {submitting ? '提交中...' : footer.confirmText || '确定'}
                 </Button>
               )}
             </DialogFooter>
