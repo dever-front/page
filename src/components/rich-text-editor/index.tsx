@@ -8,6 +8,7 @@ import {
   type ComponentProps,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
 } from 'react'
 import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight'
 import { Markdown } from '@tiptap/markdown'
@@ -118,6 +119,18 @@ import { inferCodeBlockLanguage } from './code-language'
 
 type TiptapEditor = NonNullable<ReturnType<typeof useEditor>>
 
+export type RichTextSelection = {
+  from: number
+  to: number
+  text: string
+  content: string
+}
+
+export type RichTextSelectionActions = {
+  replaceSelection: (selection: RichTextSelection, replacement: string) => boolean
+  clearSelection: () => void
+}
+
 type ToolbarItem = {
   icon: LucideIcon
   label: string
@@ -141,6 +154,8 @@ type RichTextEditorProps = {
   floatingLayerZIndex?: number
   uploadRules?: EditorUploadRule[]
   assistantAdornment?: ReactNode
+  onTextSelectionChange?: (selection: RichTextSelection | null) => void
+  selectionActionsRef?: RefObject<RichTextSelectionActions | null>
   renderAiGenerate?: (input: {
     kind: EditorMediaKind
     disabled: boolean
@@ -349,6 +364,8 @@ function RichTextEditorContent({
   floatingLayerZIndex,
   uploadRules = [],
   assistantAdornment,
+  onTextSelectionChange,
+  selectionActionsRef,
   renderAiGenerate,
 }: RichTextEditorProps) {
   const format = resolveRichTextContentFormat(contentFormat)
@@ -396,12 +413,14 @@ function RichTextEditorContent({
   const selectionRef = useRef<{ from: number; to: number } | null>(null)
   const composingRef = useRef(false)
   const onChangeRef = useRef(onChange)
+  const onTextSelectionChangeRef = useRef(onTextSelectionChange)
   const formatRef = useRef(format)
 
   useEffect(() => {
     onChangeRef.current = onChange
+    onTextSelectionChangeRef.current = onTextSelectionChange
     formatRef.current = format
-  }, [format, onChange])
+  }, [format, onChange, onTextSelectionChange])
 
   const editorExtensions = useMemo(
     () => [
@@ -524,6 +543,7 @@ function RichTextEditorContent({
       onChangeRef.current(
         serializeRichTextEditorContent(currentEditor, formatRef.current)
       )
+      onTextSelectionChangeRef.current?.(null)
     },
   })
 
@@ -531,7 +551,8 @@ function RichTextEditorContent({
     if (!editor) {
       return
     }
-    editor.setEditable(!disabled)
+    // 只切换交互状态，不能把旧内容当成用户修改回传。
+    editor.setEditable(!disabled, false)
   }, [disabled, editor])
 
   useEffect(() => {
@@ -549,6 +570,7 @@ function RichTextEditorContent({
     }
 
     selectionRef.current = null
+    onTextSelectionChangeRef.current?.(null)
     editor.commands.setContent(parseRichTextEditorContent(value, format), {
       emitUpdate: false,
       contentType: format,
@@ -564,6 +586,15 @@ function RichTextEditorContent({
       const { from, to } = editor.state.selection
       if (from !== to) {
         selectionRef.current = { from, to }
+        const text = editor.state.doc.textBetween(from, to, '\n')
+        onTextSelectionChangeRef.current?.(text ? {
+          from,
+          to,
+          text,
+          content: serializeRichTextEditorContent(editor, formatRef.current),
+        } : null)
+      } else if (editor.isFocused) {
+        onTextSelectionChangeRef.current?.(null)
       }
     }
 
@@ -572,6 +603,35 @@ function RichTextEditorContent({
       editor.off('selectionUpdate', rememberNonEmptySelection)
     }
   }, [editor])
+
+  useEffect(() => {
+    if (!editor || !selectionActionsRef) return
+
+    selectionActionsRef.current = {
+      replaceSelection(selection, replacement) {
+        if (
+          disabled || editor.isDestroyed ||
+          serializeRichTextEditorContent(editor, formatRef.current) !== selection.content ||
+          selection.from < 0 || selection.to > editor.state.doc.content.size ||
+          selection.from >= selection.to ||
+          editor.state.doc.textBetween(selection.from, selection.to, '\n') !== selection.text
+        ) return false
+
+        // 定位到生成前的精确选区，不能按文本搜索替换重复的句子。
+        return editor.chain().focus().insertContentAt(
+          { from: selection.from, to: selection.to },
+          replacement,
+          { contentType: 'markdown' }
+        ).run()
+      },
+      clearSelection() {
+        selectionRef.current = null
+        editor.commands.setTextSelection(editor.state.selection.to)
+        onTextSelectionChangeRef.current?.(null)
+      },
+    }
+    return () => { selectionActionsRef.current = null }
+  }, [disabled, editor, selectionActionsRef])
 
   const openUploadPicker = (kind: EditorMediaKind) => {
     if (disabled) {

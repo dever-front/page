@@ -1,5 +1,10 @@
 import path from 'path'
-import { type PluginOption, type RenderBuiltAssetUrl, defineConfig } from 'vite'
+import {
+  type PluginOption,
+  type RenderBuiltAssetUrl,
+  type Rollup,
+  defineConfig,
+} from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
 import {
@@ -24,6 +29,20 @@ function isSingleBundleMode(value: string | undefined) {
   )
 }
 
+const deferredCompatEntries = {
+  memory: '/src/components/assistant/memory-dialog.tsx',
+  history: '/src/components/assistant/session-history-dialog.tsx',
+  interaction: '/src/components/assistant/interaction-dialog.tsx',
+  composer: '/src/components/reference-composer/index.tsx',
+  editor: '/src/components/rich-text-editor/index.tsx',
+}
+
+const compatPreviewBudget = {
+  maxJs: 12,
+  maxCss: 3,
+  forbid: Object.values(deferredCompatEntries),
+}
+
 const hostBundleBudget = validateBundleBudget(
   {
     maxJs: 40,
@@ -41,12 +60,58 @@ const hostBundleBudget = validateBundleBudget(
         maxJs: 12,
         maxCss: 3,
       },
+      'compat-protocol': {
+        ...compatPreviewBudget,
+        facadeSuffix: '/lib/agent-result-protocol.ts',
+      },
+      'compat-video': {
+        ...compatPreviewBudget,
+        facadeSuffix: '/components/media/first-frame-video.tsx',
+      },
+      'compat-content': {
+        ...compatPreviewBudget,
+        facadeSuffix: '/components/energon/content-view.tsx',
+      },
     },
   },
   'host bundle budget'
 )
 
 const minimumSplitChunkSize = 64 * 1024
+
+function createHostManualChunks(): Rollup.GetManualChunk {
+  let sharedUI: Set<string> | undefined
+  return (id, { getModuleIds, getModuleInfo }) => {
+    // 历史弹窗不能被最小块合并进共享输出协议；只保护入口，依赖仍按图拆分。
+    if (id.endsWith(deferredCompatEntries.history)) {
+      return 'assistant-history'
+    }
+
+    if (!sharedUI) {
+      const dependencies = new Set<string>()
+      const collectDependency = (moduleId: string) => {
+        if (dependencies.has(moduleId)) return
+        dependencies.add(moduleId)
+        for (const imported of getModuleInfo(moduleId)?.importedIds || []) {
+          collectDependency(imported)
+        }
+      }
+      // 这些基础依赖没有宿主反向引用。包含其 React 静态依赖可避免入口回环，
+      // 完整图标目录和编辑器保留独立加载边界。
+      for (const moduleId of getModuleIds()) {
+        if (
+          /\/node_modules\/(?:@radix-ui\/(?!react-icons\/)|@floating-ui\/|lucide-react\/dist\/esm\/|cmdk\/)/.test(
+            moduleId
+          )
+        ) {
+          collectDependency(moduleId)
+        }
+      }
+      sharedUI = dependencies
+    }
+    return sharedUI.has(id) ? 'ui-primitives' : undefined
+  }
+}
 
 const renderFrontBuiltAssetUrl: RenderBuiltAssetUrl = (
   _filename,
@@ -121,6 +186,8 @@ export default defineConfig(async ({ command }) => {
               // implementation chunks so a page does not fan out into many
               // small synchronous requests.
               experimentalMinChunkSize: minimumSplitChunkSize,
+              manualChunks: createHostManualChunks(),
+              onlyExplicitManualChunks: true,
             },
           },
     },

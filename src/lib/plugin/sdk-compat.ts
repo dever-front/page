@@ -1,8 +1,8 @@
 import { useNavigate, useSearch } from '@tanstack/react-router'
+import { assistantCompatModuleLoaders } from './compat/assistant'
+import { contentCompatModuleLoaders } from './compat/content'
 import { pageCompatModuleLoaders } from './compat/page'
 import {
-  assistantCompatSources,
-  contentCompatSources,
   directCompatSources,
   editorCompatSources,
   runtimeCompatSources,
@@ -34,10 +34,7 @@ function createCompatGroupLoaders<
     return groupPromise
   }
 
-  const moduleLoaders = {} as Record<
-    Sources[keyof Sources],
-    CompatModuleLoader
-  >
+  const moduleLoaders = {} as Record<Sources[keyof Sources], CompatModuleLoader>
   for (const source of Object.values(sources) as Sources[keyof Sources][]) {
     moduleLoaders[source] = async () => {
       const group = await loadGroup()
@@ -52,10 +49,8 @@ function createCompatGroupLoaders<
 }
 
 const compatModuleLoaders = {
-  ...createCompatGroupLoaders(
-    { ...assistantCompatSources, ...contentCompatSources },
-    () => import('./compat/workbench')
-  ),
+  ...assistantCompatModuleLoaders,
+  ...contentCompatModuleLoaders,
   ...createCompatGroupLoaders(editorCompatSources, async () => {
     const module = await import('@/page/nodes/groups/rich-editor')
     return {
