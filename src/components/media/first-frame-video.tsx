@@ -13,7 +13,13 @@ type FirstFrameVideoProps = VideoHTMLAttributes<HTMLVideoElement> & {
 }
 
 function seekToFirstFrame(video: HTMLVideoElement) {
-  if (video.readyState < HTMLMediaElement.HAVE_METADATA) return
+  if (
+    video.readyState < HTMLMediaElement.HAVE_METADATA ||
+    video.seeking ||
+    !Number.isFinite(video.duration)
+  ) {
+    return
+  }
 
   const duration = video.duration
   const target =
@@ -45,6 +51,14 @@ export function FirstFrameVideo({
   const hasPoster = Boolean(poster?.trim())
 
   function notifyFirstFrameReady(video: HTMLVideoElement) {
+    if (
+      video.seeking ||
+      video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
+      video.videoWidth <= 0 ||
+      video.videoHeight <= 0
+    ) {
+      return
+    }
     const currentSrc = src || video.currentSrc
     if (readySrcRef.current === currentSrc) return
     readySrcRef.current = currentSrc

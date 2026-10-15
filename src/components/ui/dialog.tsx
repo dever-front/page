@@ -53,6 +53,7 @@ function DialogContent({
   className,
   layerClassName,
   layerZIndex,
+  portalContainer,
   children,
   showCloseButton = true,
   onFocusOutside,
@@ -62,12 +63,13 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   layerClassName?: string
   layerZIndex?: number
+  portalContainer?: React.ComponentProps<typeof DialogPrimitive.Portal>['container']
   showCloseButton?: boolean
 }) {
   const assistantLayer = isAssistantLayerProp(props as Record<string, unknown>)
 
   return (
-    <DialogPortal data-slot='dialog-portal'>
+    <DialogPortal data-slot='dialog-portal' container={portalContainer}>
       <div
         data-slot='dialog-layer'
         data-assistant-layer={assistantLayer ? 'true' : undefined}

@@ -30,6 +30,8 @@ type PowerParamOptionDialogProps = {
   options: ParamPreviewOption[]
   value: unknown
   disabled?: boolean
+  portalContainer?: HTMLElement | null
+  layerZIndex?: number
   onOpenChange: (open: boolean) => void
   onConfirm: (value: string) => void
 }
@@ -41,6 +43,8 @@ export function PowerParamOptionDialog({
   options,
   value,
   disabled = false,
+  portalContainer,
+  layerZIndex = 180,
   onOpenChange,
   onConfirm,
 }: PowerParamOptionDialogProps) {
@@ -83,7 +87,8 @@ export function PowerParamOptionDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        layerZIndex={180}
+        portalContainer={portalContainer}
+        layerZIndex={layerZIndex}
         className='flex max-h-[min(88vh,52rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl'
       >
         <DialogHeader className='border-b px-5 py-4 pr-12 sm:px-6'>
