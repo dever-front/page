@@ -116,15 +116,11 @@ import {
   type RichTextContentFormat,
 } from './format'
 import { inferCodeBlockLanguage } from './code-language'
+import { replaceRichTextSelection, type RichTextSelection } from './selection'
+
+export type { RichTextSelection } from './selection'
 
 type TiptapEditor = NonNullable<ReturnType<typeof useEditor>>
-
-export type RichTextSelection = {
-  from: number
-  to: number
-  text: string
-  content: string
-}
 
 export type RichTextSelectionActions = {
   replaceSelection: (selection: RichTextSelection, replacement: string) => boolean
@@ -609,20 +605,10 @@ function RichTextEditorContent({
 
     selectionActionsRef.current = {
       replaceSelection(selection, replacement) {
-        if (
-          disabled || editor.isDestroyed ||
-          serializeRichTextEditorContent(editor, formatRef.current) !== selection.content ||
-          selection.from < 0 || selection.to > editor.state.doc.content.size ||
-          selection.from >= selection.to ||
-          editor.state.doc.textBetween(selection.from, selection.to, '\n') !== selection.text
-        ) return false
-
-        // 定位到生成前的精确选区，不能按文本搜索替换重复的句子。
-        return editor.chain().focus().insertContentAt(
-          { from: selection.from, to: selection.to },
-          replacement,
-          { contentType: 'markdown' }
-        ).run()
+        if (disabled) return false
+        const applied = replaceRichTextSelection(editor, formatRef.current, selection, replacement)
+        if (applied) editor.commands.focus()
+        return applied
       },
       clearSelection() {
         selectionRef.current = null
