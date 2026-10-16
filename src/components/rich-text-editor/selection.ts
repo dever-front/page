@@ -20,6 +20,7 @@ export function replaceRichTextSelection(
 ): boolean {
   if (
     editor.isDestroyed ||
+    !editor.isEditable ||
     !editor.markdown ||
     serializeRichTextEditorContent(editor, format) !== selection.content ||
     selection.from < 0 ||

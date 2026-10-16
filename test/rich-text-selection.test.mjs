@@ -187,3 +187,16 @@ test('空替换只删除捕获区间，原文已变化和无效区间拒绝写�
   assert.equal(editor.state.doc.childCount, 1)
   assert.equal(editor.state.doc.textContent, '前文，。后文。')
 })
+
+test('只读或已销毁的编辑器拒绝应用过期建议', () => {
+  const editor = editorFor('前文，原文。后文。')
+  const selection = capture(editor, '原文')
+  const before = editor.getJSON()
+  editor.setEditable(false)
+  assert.equal(replaceRichTextSelection(editor, 'markdown', selection, '修改'), false)
+  assert.deepEqual(editor.getJSON(), before)
+  editor.setEditable(true)
+  Object.defineProperty(editor, 'isDestroyed', { value: true, configurable: true })
+  assert.equal(replaceRichTextSelection(editor, 'markdown', selection, '修改'), false)
+  assert.deepEqual(editor.getJSON(), before)
+})
