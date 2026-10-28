@@ -46,6 +46,9 @@ function harness() {
       }
       calls.push(specifier)
       if (failures.delete(specifier)) throw new Error('simulated load failure')
+      if (specifier === '@/components/resource/resource-preview-dialog') {
+        return { source: specifier, ResourcePreviewDialog() {} }
+      }
       return {
         source: specifier,
         richTextEditorModule: { source: specifier },
@@ -75,6 +78,34 @@ test('画布协议和视频预览加载不带入助手弹窗或输入编辑器',
     h.api.getCompatModule(h.sources.contentCompatSources.referenceComposer),
     {}
   )
+  assert.deepEqual(
+    h.api.getCompatModule(h.sources.contentCompatSources.resourcePreviewDialog),
+    {}
+  )
+})
+
+test('资源详情按需加载现有组件，不加载其他兼容模块', async () => {
+  const h = harness()
+  const source = h.sources.contentCompatSources.resourcePreviewDialog
+  assert.equal(source, '@/components/resource/resource-preview-dialog')
+  assert.deepEqual(h.calls, [])
+  assert.deepEqual(h.api.getCompatModule(source), {})
+
+  await h.ensureCompatModules([source])
+
+  assert.deepEqual(h.calls, [source])
+  assert.equal(h.api.getCompatModule(source).source, source)
+  assert.equal(
+    typeof h.api.getCompatModule(source).ResourcePreviewDialog,
+    'function'
+  )
+  for (const otherSource of [
+    h.sources.contentCompatSources.referenceComposer,
+    h.sources.assistantCompatSources.memoryDialog,
+    h.sources.editorCompatSources.richTextEditor,
+  ]) {
+    assert.deepEqual(h.api.getCompatModule(otherSource), {})
+  }
 })
 
 test('显式空依赖不加载模块，同一模块的并发请求只加载一次', async () => {

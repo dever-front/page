@@ -617,8 +617,8 @@ function RichTextEditorContent({
           editor.state.doc.textBetween(selection.from, selection.to, '\n') !== selection.text
         ) return false
 
-        // 定位到生成前的精确选区，不能按文本搜索替换重复的句子。
-        return editor.chain().focus().insertContentAt(
+        // 定位到生成前的精确选区；后台应用不抢走助手焦点或滚动阅读位置。
+        return editor.chain().insertContentAt(
           { from: selection.from, to: selection.to },
           replacement,
           { contentType: 'markdown' }

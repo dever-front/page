@@ -17,6 +17,7 @@ export const contentCompatSources = {
   firstFrameVideo: '@/components/media/first-frame-video',
   progress: '@/components/energon/progress',
   referenceComposer: '@/components/reference-composer',
+  resourcePreviewDialog: '@/components/resource/resource-preview-dialog',
   richTextView: '@/components/rich-text-view',
   streamTiming: '@/components/stream-timing',
   floatingLayer: '@/lib/floating-layer',
