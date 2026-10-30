@@ -1,4 +1,4 @@
-import { getSiteConfig } from '@/config/app-config'
+import { getRuntimeConfig, getSiteConfig } from '@/config/app-config'
 import { hasInitialBootScreen } from '@/lib/initial-boot'
 
 export function FrontBootFallback() {
@@ -7,6 +7,7 @@ export function FrontBootFallback() {
 
 export function FrontBootScreen() {
   const site = getSiteConfig()
+  const siteKey = getRuntimeConfig().siteKey
   const initials = site.name
     .split(/\s+/)
     .map((part) => part.slice(0, 1))
@@ -15,9 +16,15 @@ export function FrontBootScreen() {
     .toUpperCase()
 
   return (
-    <div className='front-boot-screen'>
+    <div
+      className='front-boot-screen'
+      role='status'
+      aria-live='polite'
+      aria-label={`正在加载${site.name}`}
+      data-site-key={siteKey}
+    >
       <div className='front-boot-panel'>
-        <div className='front-boot-logo'>
+        <div className='front-boot-logo' aria-hidden='true'>
           {site.logo ? (
             <img src={site.logo} alt={site.name} />
           ) : (
@@ -28,7 +35,7 @@ export function FrontBootScreen() {
           <h1 className='front-boot-title'>{site.name}</h1>
           <p className='front-boot-text'>正在加载，请稍后</p>
         </div>
-        <div className='front-boot-progress'>
+        <div className='front-boot-progress' aria-hidden='true'>
           <div className='front-boot-progress-bar' />
         </div>
       </div>
