@@ -27,6 +27,8 @@ export function FormDate({ item, value, setValue, error, store }: NodeItemProps)
     [endRawValue, inputType]
   )
 
+  const calendarYear = (startDate ?? endDate ?? new Date()).getFullYear()
+
   const displayText = rangeMode
     ? formatRangeDisplayText(startDate, endDate, inputType, item.placeholder)
     : formatSingleDisplayText(startDate, inputType, item.placeholder)
@@ -136,6 +138,9 @@ export function FormDate({ item, value, setValue, error, store }: NodeItemProps)
             mode={rangeMode ? 'range' : 'single'}
             numberOfMonths={rangeMode ? 2 : 1}
             captionLayout='dropdown'
+            defaultMonth={startDate ?? endDate}
+            startMonth={new Date(calendarYear - 100, 0)}
+            endMonth={new Date(calendarYear + 100, 11)}
             selected={rangeMode ? rangeValue : startDate}
             onSelect={(selected) => {
               if (rangeMode) {
